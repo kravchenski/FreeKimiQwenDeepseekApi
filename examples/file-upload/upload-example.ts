@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import axios from 'axios';
+import { ofetch } from 'ofetch';
 import FormData from 'form-data';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,25 +19,19 @@ async function uploadTestFile(filePath) {
         const formData = new FormData();
         formData.append('file', fs.createReadStream(filePath));
 
-        const response = await axios.post(`${API_URL}/files/upload`, formData, {
-            headers: {
-                ...formData.getHeaders()
-            },
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity
+        const response = await ofetch(`${API_URL}/files/upload`, {
+            method: 'POST',
+            headers: formData.getHeaders(),
+            body: formData,
+            timeout: Infinity
         });
 
         console.log('Файл успешно загружен:');
-        console.log(JSON.stringify(response.data, null, 2));
+        console.log(JSON.stringify(response, null, 2));
 
-        return response.data;
+        return response;
     } catch (error) {
-        console.error('Ошибка при загрузке файла:');
-        if (error.response) {
-            console.error(error.response.data);
-        } else {
-            console.error(error.message);
-        }
+        console.error('Ошибка при загрузке файла:', error.message);
         throw error;
     }
 }

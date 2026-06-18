@@ -175,6 +175,17 @@ describe('tool call JSON repair', () => {
             arguments: { path: 'main.py' }
         });
         expect(parseToolCallJson('<bash>\nfind . -name "*.ts"\n</bash>')?.[0].function.name).toBe('bash');
+        expect(recoverXmlStyleToolCall('<function=read>\n<parameter=filePath>\n/home/kravchenski/projects/NODE.JS/FreeQwenApi/README.md</filePath>\n</parameter>\n</function>')).toEqual({
+            name: 'read',
+            arguments: { filepath: '/home/kravchenski/projects/NODE.JS/FreeQwenApi/README.md' }
+        });
+        expect(parseToolCallJson('<function=read>\n<parameter=filePath>\n/home/kravchenski/projects/NODE.JS/FreeQwenApi/README.md</filePath>\n</parameter>\n</function>')?.[0].function.name).toBe('read');
+        const multiParam = '<function=context7_query-docs>\n<parameter=libraryId>\n/websites/nuxt_4_x\n</parameter>\n<parameter=query>\nnuxt context mcp integration\n</parameter>\n</function>';
+        expect(recoverXmlStyleToolCall(multiParam)).toEqual({
+            name: 'context7_query-docs',
+            arguments: { libraryid: '/websites/nuxt_4_x', query: 'nuxt context mcp integration' }
+        });
+        expect(parseToolCallJson(multiParam, [{ function: { name: 'context7_query-docs' } }])?.[0].function.name).toBe('context7_query-docs');
     });
 
     test('converts simulated Chinese-style tools into real tool calls', () => {
@@ -263,6 +274,16 @@ describe('tool call JSON repair', () => {
         expect(recoverFencedShellToolCalls(inspection)).toHaveLength(2);
         expect(parseToolCallJson(inspection, [{ function: { name: 'bash' } }])).toHaveLength(2);
         expect(recoverFencedShellToolCalls(instructions)).toBeNull();
+    });
+
+    test('recovers object-style tool_calls (not array) from Sapiens model', () => {
+        const text = '{"tool_calls":{"name":"context7_resolve-library-id","arguments":{"query":"Nuxt 3","libraryName":"nuxt"}},{"name":"context7_resolve-library-id","arguments":{"query":"MCP server","libraryName":"@openrouter/context7-mcp"}}';
+        const result = parseToolCallJson(text, [
+            { function: { name: 'context7_resolve-library-id' } },
+        ]);
+        expect(result).toHaveLength(2);
+        expect(result![0].function.name).toBe('context7_resolve-library-id');
+        expect(result![1].function.name).toBe('context7_resolve-library-id');
     });
 
     test('only returns tool calls that the client actually supplied', () => {

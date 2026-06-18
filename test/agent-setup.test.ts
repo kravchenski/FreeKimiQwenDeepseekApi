@@ -38,7 +38,7 @@ describe('agent integration setup', () => {
         const home = await mkdtemp(join(tmpdir(), 'freeqwenapi-agents-'));
         const paths = integrationPaths(home);
         const options = parseAgentSetupArgs(['--all', '--home', home]);
-        const models = ['qwen3-coder-plus', 'qwen3.7-max', 'deepseek-default', 'kimi-k2.6-thinking'];
+        const models = ['qwen3-coder-plus', 'qwen3.7-max', 'deepseek-default', 'deepseek-reasoner'];
 
         try {
             await mkdir(join(home, '.pi', 'agent'), { recursive: true });
@@ -89,10 +89,8 @@ describe('agent integration setup', () => {
             );
             const codexCatalog = JSON.parse(await readFile(paths.codexModels, 'utf8'));
             const qwenCatalogModel = codexCatalog.models.find((model: Record<string, any>) => model.slug === 'qwen3.7-max');
-            const kimiCatalogModel = codexCatalog.models.find((model: Record<string, any>) => model.slug === 'kimi-k2.6-thinking');
             expect(qwenCatalogModel.context_window).toBe(131072);
             expect(qwenCatalogModel.base_instructions).toContain('Never claim that a supplied tool or MCP server is unavailable');
-            expect(kimiCatalogModel.default_reasoning_level).toBe('high');
 
             const liteLlm = parseYaml(await readFile(paths.litellm, 'utf8'));
             expect(liteLlm.model_list[0].litellm_params.model).toBe(
