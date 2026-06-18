@@ -1,16 +1,16 @@
 {
-    "name": "free-kimi-qwen-deepseek-api",
+    "name": "free-qwen-deepseek-api",
     "version": "1.0.0",
-    "description": "Unified OpenAI-compatible gateway for Qwen Chat, DeepSeek Web, and Kimi Web",
+    "description": "Unified OpenAI-compatible gateway for Qwen Chat, DeepSeek Web, and ZenMux providers",
     "author": "kravchenski",
     "license": "MIT",
-    "homepage": "https://github.com/kravchenski/FreeKimiQwenDeepseekApi#readme",
+    "homepage": "https://github.com/kravchenski/FreeQwenApi#readme",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/kravchenski/FreeKimiQwenDeepseekApi.git"
+        "url": "git+https://github.com/kravchenski/FreeQwenApi.git"
     },
     "bugs": {
-        "url": "https://github.com/kravchenski/FreeKimiQwenDeepseekApi/issues"
+        "url": "https://github.com/kravchenski/FreeQwenApi/issues"
     },
     "main": "index.ts",
     "type": "module",
@@ -19,21 +19,25 @@
         "bun": ">=1.2.0"
     },
     "scripts": {
-        "start": "bun run index.ts",
+        "start": "bun run src/unified/server.ts",
+        "start:unified": "bun run src/unified/server.ts",
+        "start:qwen": "bun run index.ts",
         "start:deepseek": "bun run deepseek.ts",
         "start:kimi": "bun run kimi.ts",
         "start:gateway": "bun run gateway.ts",
         "start:full": "bun run scripts/start.ts",
         "start:deepseek:full": "bun run scripts/start.ts --service deepseek",
         "start:kimi:full": "bun run scripts/start.ts --service kimi",
-        "dev": "bun --watch index.ts",
+        "dev": "bun --watch src/unified/server.ts",
+        "dev:unified": "bun --watch src/unified/server.ts",
+        "dev:qwen": "bun --watch index.ts",
         "dev:deepseek": "bun --watch deepseek.ts",
         "dev:kimi": "bun --watch kimi.ts",
         "test": "bun test ./test",
         "audit": "bun audit --production",
         "analyze": "knip --reporter compact",
-        "check": "bun build index.ts deepseek.ts kimi.ts gateway.ts --target=bun --external typescript --outdir=.build-check",
-        "ci": "bun run check:no-js && bun run analyze && bun run test && bun run check",
+        "check": "bun build index.ts deepseek.ts kimi.ts gateway.ts src/unified/server.ts src/web/server.ts --target=bun --external typescript --outdir=.build-check --entry-naming '[name].[hash].[ext]'",
+        "ci": "bun run check && bun run test",
         "check:no-js": "bun run scripts/check-no-js.ts",
         "example:stream": "bun run examples/openai-sdk/streaming.ts",
         "example:simple": "bun run examples/openai-sdk/simple.ts",
@@ -42,7 +46,7 @@
         "example:conversation": "bun run examples/openai-sdk/conversation.ts",
         "example:compatibility": "bun run examples/openai-sdk/openai-compatibility.ts",
         "example:direct": "bun run examples/direct-api/fetch-example.ts",
-        "example:axios": "bun run examples/direct-api/axios-example.ts",
+        "example:ofetch": "bun run examples/direct-api/ofetch-example.ts",
         "example:file-upload": "bun run examples/file-upload/upload-example.ts",
         "example:streaming-test": "bun run examples/streaming-test.ts",
         "auth": "bun run scripts/auth.ts",
@@ -50,15 +54,18 @@
         "auth:kimi": "bun run scripts/kimi-auth.ts",
         "setup:agents": "bun run scripts/setup-agents.ts",
         "setup:pi": "bun run scripts/setup-pi.ts",
+        "setup:all": "bun run scripts/setup-and-start.ts",
         "models:sync": "bun run scripts/sync_models.ts",
-        "smoke": "bun run scripts/smoke_test.ts"
+        "smoke": "bun run scripts/smoke_test.ts",
+        "web": "bun run src/web/server.ts",
+        "web:dev": "bun --watch src/web/server.ts"
     },
     "dependencies": {
-        "axios": "^1.9.0",
-        "body-parser": "^1.20.2",
         "express": "^4.18.2",
+        "hono": "^4.12.26",
         "morgan": "^1.10.0",
         "multer": "^2.0.0",
+        "ofetch": "^1.4.0",
         "puppeteer": "^24.31.0",
         "puppeteer-extra": "^3.3.6",
         "puppeteer-extra-plugin-stealth": "^2.11.2",
