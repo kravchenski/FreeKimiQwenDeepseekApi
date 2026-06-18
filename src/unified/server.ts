@@ -9,6 +9,7 @@ import { kimiCompletion, parseKimiEvent } from '../providers/kimi/client.ts';
 import { glmCompletion, parseGlmEvent } from '../providers/glm/client.ts';
 import { sapiensCompletion, parseSapiensEvent } from '../providers/sapiens/client.ts';
 import { stepfunCompletion, parseStepfunEvent } from '../providers/stepfun/client.ts';
+import { nvidiaCompletion, parseNvidiaEvent } from '../providers/nvidia/client.ts';
 
 const app = new Hono();
 const port = Number(process.env.UNIFIED_PORT || 3260);
@@ -17,13 +18,14 @@ const host = process.env.HOST || '0.0.0.0';
 let allModels: string[] = [];
 
 async function refreshModelLists() {
-    const [deepseek, qwen, kimi, glm, sapiens, stepfun] = await Promise.allSettled([
+    const [deepseek, qwen, kimi, glm, sapiens, stepfun, nvidia] = await Promise.allSettled([
         fetchDeepSeekModels(),
         fetchQwenWebModels(),
-        Promise.resolve(['kimi-k2.6', 'kimi-k2.6-thinking', 'kimi-k2.6-search', 'kimi-k2.6-thinking-search']),
+        Promise.resolve(['kimi-k2.7-code-free', 'kimi-k2.6', 'kimi-k2.6-thinking', 'kimi-k2.6-search', 'kimi-k2.6-thinking-search']),
         Promise.resolve(['glm-5.2-free', 'glm-4.7', 'glm-4.7-flashx', 'glm-4.7-flash-free', 'glm-4.6v-flash-free', 'glm-4.5']),
         Promise.resolve(['sapiens-ai/agnes-2.0-flash']),
         Promise.resolve(['stepfun/step-3.7-flash-free']),
+        Promise.resolve(['deepseek-ai/deepseek-v4-pro', 'nvidia/nemotron-3-ultra-550b-a55b']),
     ]);
     const ds = deepseek.status === 'fulfilled' ? deepseek.value : getDeepSeekModels();
     const qw = qwen.status === 'fulfilled' ? qwen.value : getQwenWebModels();
@@ -31,16 +33,18 @@ async function refreshModelLists() {
     const gl = glm.status === 'fulfilled' ? glm.value : [];
     const sa = sapiens.status === 'fulfilled' ? sapiens.value : [];
     const st = stepfun.status === 'fulfilled' ? stepfun.value : [];
-    allModels = [...ds, ...qw, ...km, ...gl, ...sa, ...st];
+    const nv = nvidia.status === 'fulfilled' ? nvidia.value : [];
+    allModels = [...ds, ...qw, ...km, ...gl, ...sa, ...st, ...nv];
 }
 
-function detectProvider(model: string): 'deepseek' | 'qwen' | 'kimi' | 'glm' | 'sapiens' | 'stepfun' | 'unknown' {
+function detectProvider(model: string): 'deepseek' | 'qwen' | 'kimi' | 'glm' | 'sapiens' | 'stepfun' | 'nvidia' | 'unknown' {
     if (model.startsWith('deepseek-')) return 'deepseek';
     if (model.startsWith('qwen') || model.startsWith('qwq') || model.startsWith('qvq')) return 'qwen';
     if (model.startsWith('kimi-')) return 'kimi';
     if (model.startsWith('glm-')) return 'glm';
     if (model.startsWith('sapiens-ai/')) return 'sapiens';
     if (model.startsWith('stepfun/')) return 'stepfun';
+    if (model.startsWith('nvidia/')) return 'nvidia';
     return 'unknown';
 }
 
@@ -302,6 +306,7 @@ function ownedBy(id: string): string {
     if (id.startsWith('glm-')) return 'glm-zenmux';
     if (id.startsWith('sapiens-ai/')) return 'sapiens-zenmux';
     if (id.startsWith('stepfun/')) return 'stepfun-zenmux';
+    if (id.startsWith('nvidia/')) return 'nvidia';
     return 'unknown';
 }
 
@@ -489,6 +494,30 @@ app.post('/api/chat/completions', async (c) => {
             });
         }
 
+        if (provider === 'nvidia') {
+            const result = await nvidiaCompletion({ messages: upstreamMessages, model, stream });
+            const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
+                collectSseResponse(parseNvidiaEvent as any, r, cb);
+            const retry = () => nvidiaCompletion({ messages, model, stream }).then(r => r.response);
+
+            if (stream) {
+                return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
+            }
+            const { content, reasoning } = await handleWebProviderNonStream(result.response, collect, retry, captureToolCalls, combinedTools, messages);
+            const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
+            return c.json({
+                id, object: 'chat.completion', created, model,
+                choices: [{
+                    index: 0,
+                    message: toolCalls?.length
+                        ? { role: 'assistant', content: null, tool_calls: buildToolCallResponse(toolCalls) }
+                        : { role: 'assistant', content: conversationalText || content, reasoning_content: reasoning || undefined },
+                    finish_reason: toolCalls?.length ? 'tool_calls' : 'stop'
+                }],
+                usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            });
+        }
+
         return c.json({ error: { message: 'Unhandled provider' } }, 500);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -536,8 +565,9 @@ export async function startUnifiedServer() {
   Endpoint: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}
   Models:   ${modelCount} total (fetched from upstream APIs)
 
-  Providers: deepseek qwen kimi glm sapiens stepfun
+  Providers: deepseek qwen kimi glm sapiens stepfun nvidia
   Kimi, GLM, Sapiens, and StepFun use ZenMux proxy; set ZENMUX_API_KEY in .env.
+  NVIDIA models use NVIDIA API; set NVIDIA_API_KEY in .env.
   No API keys required — authenticate via browser.
 
   No API key required for OpenCode. Configure:

@@ -45,10 +45,11 @@ bun run start
 |-----------|--------|
 | **DeepSeek** | `deepseek-default`, `deepseek-reasoner`, `deepseek-expert`, `deepseek-search` |
 | **Qwen** | `qwen3.6-plus`, `qwen3.7-max`, `qwen3.7-plus`, `qwq-32b` и др. |
-| **Kimi** (ZenMux) | `kimi-k2.6`, `kimi-k2.6-thinking`, `kimi-k2.6-search`, `kimi-k2.6-thinking-search` |
+| **Kimi** (ZenMux) | `kimi-k2.7-code-free`, `kimi-k2.6`, `kimi-k2.6-thinking`, `kimi-k2.6-search`, `kimi-k2.6-thinking-search` |
 | **GLM** (ZenMux) | `glm-5.2-free`, `glm-4.7`, `glm-4.7-flashx`, `glm-4.7-flash-free`, `glm-4.6v-flash-free`, `glm-4.5` |
 | **Sapiens** (ZenMux) | `sapiens-ai/agnes-2.0-flash` |
 | **StepFun** (ZenMux) | `stepfun/step-3.7-flash-free` |
+| **NVIDIA** | `deepseek-ai/deepseek-v4-pro`, `nvidia/nemotron-3-ultra-550b-a55b` |
 
 ```bash
 curl http://localhost:3260/v1/models
@@ -77,7 +78,7 @@ curl http://localhost:3260/v1/chat/completions \
     "baseURL": "http://localhost:3260/v1",
     "models": {
       "default": ["qwen-max-latest"],
-      "all": ["deepseek-default", "deepseek-reasoner", "deepseek-expert", "deepseek-search", "qwen-max-latest", "qwen-plus", "qwen3-max", "qwen3-plus", "qwen3-coder-plus", "qwen3-omni-flash", "qwen3.5-flash", "qwen-turbo-latest", "qwen2.5-coder-32b-instruct", "qwq-32b", "glm-5.2-free", "glm-4.7", "glm-4.7-flashx", "glm-4.7-flash-free", "glm-4.6v-flash-free", "glm-4.5", "kimi-k2.6", "kimi-k2.6-thinking", "kimi-k2.6-search", "sapiens-ai/agnes-2.0-flash", "stepfun/step-3.7-flash-free"]
+      "all": ["deepseek-default", "deepseek-reasoner", "deepseek-expert", "deepseek-search", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "glm-5.2-free", "glm-4.7", "glm-4.7-flashx", "glm-4.7-flash-free", "glm-4.6v-flash-free", "glm-4.5", "kimi-k2.7-code-free", "kimi-k2.6", "kimi-k2.6-thinking", "kimi-k2.6-search", "kimi-k2.6-thinking-search", "sapiens-ai/agnes-2.0-flash", "stepfun/step-3.7-flash-free"]
     }
   }
 }
