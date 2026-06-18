@@ -1,4 +1,5 @@
-import express from 'express';
+import { Hono } from 'hono';
+import { stream } from 'hono/streaming';
 import { sendMessage, getAllModels, createChatV2, pollQwenTaskStatus, extractMediaUrl, pagePool, extractAuthToken } from './chat.ts';
 import { getAuthenticationStatus, getBrowserContext } from '../browser/browser.ts';
 import { checkAuthentication } from '../browser/auth.ts';
@@ -8,7 +9,6 @@ import { getStsToken, uploadFileToQwen } from './fileUpload.ts';
 import { loadHistory, saveHistory } from './chatHistory.ts';
 import { generateImage, getAvailableImageModels, checkImageApiAvailability } from './imageGeneration.ts';
 import { MAX_FILE_SIZE, UPLOADS_DIR, DEFAULT_MODEL, STREAMING_CHUNK_DELAY, ALLOW_UNSCOPED_SESSION_CHAT_RESTORE } from '../config.ts';
-import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -85,8 +85,8 @@ function buildInternalChatIdFromHint(hint) {
     return `chat_${hash}`;
 }
 
-function extractConversationHint(req) {
-    const body = req.body || {};
+function extractConversationHint(c) {
+    const body = c._body || {};
     const metadata = body && typeof body.metadata === 'object' ? body.metadata : {};
 
     return pickFirstId([
@@ -97,15 +97,15 @@ function extractConversationHint(req) {
         metadata.conversationId,
         metadata.chat_id,
         metadata.chatId,
-        req.get?.('x-conversation-id'),
-        req.get?.('x-openwebui-conversation-id'),
-        req.get?.('x-chat-id'),
-        req.get?.('x-openwebui-chat-id')
+        c.req.header('x-conversation-id'),
+        c.req.header('x-openwebui-conversation-id'),
+        c.req.header('x-chat-id'),
+        c.req.header('x-openwebui-chat-id')
     ]);
 }
 
-function extractParentHint(req) {
-    const body = req.body || {};
+function extractParentHint(c) {
+    const body = c._body || {};
     const metadata = body && typeof body.metadata === 'object' ? body.metadata : {};
 
     return pickFirstId([
@@ -116,8 +116,8 @@ function extractParentHint(req) {
         metadata.parentId,
         metadata.parent_id,
         metadata.response_id,
-        req.get?.('x-parent-id'),
-        req.get?.('x-openwebui-parent-id')
+        c.req.header('x-parent-id'),
+        c.req.header('x-openwebui-parent-id')
     ]);
 }
 
@@ -128,16 +128,16 @@ function isTruthyFlag(value) {
     return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
 }
 
-function shouldForceNewChat(req) {
-    const body = req.body || {};
+function shouldForceNewChat(c) {
+    const body = c._body || {};
 
     return [
         body.newChat,
         body.new_chat,
         body.resetChat,
         body.reset_chat,
-        req.get?.('x-new-chat'),
-        req.get?.('x-reset-chat')
+        c.req.header('x-new-chat'),
+        c.req.header('x-reset-chat')
     ].some(isTruthyFlag);
 }
 
@@ -207,20 +207,20 @@ function isOpenWebUiMetaRequest(messages) {
 
 const sessionToChatMap = new Map();
 
-function getSessionKey(req) {
-    const ip = req.ip || req.connection.remoteAddress || 'unknown';
-    const userAgent = req.get('user-agent') || 'unknown';
+function getSessionKey(c) {
+    const ip = c.req.header('x-forwarded-for') || 'unknown';
+    const userAgent = c.req.header('user-agent') || 'unknown';
     return crypto.createHash('sha256').update(`${ip}||${userAgent}`).digest('hex');
 }
 
-function getScopedSessionKey(req, scope = null) {
-    const baseKey = getSessionKey(req);
+function getScopedSessionKey(c, scope = null) {
+    const baseKey = getSessionKey(c);
     const normalizedScope = normalizeIdValue(scope);
     return normalizedScope ? `${baseKey}::${normalizedScope}` : baseKey;
 }
 
-function getSavedChatId(req, scope = null) {
-    const keysToTry = [getScopedSessionKey(req, scope)];
+function getSavedChatId(c, scope = null) {
+    const keysToTry = [getScopedSessionKey(c, scope)];
 
     for (const sessionKey of keysToTry) {
         const sessionData = sessionToChatMap.get(sessionKey);
@@ -231,8 +231,8 @@ function getSavedChatId(req, scope = null) {
 
     return null;
 }
-function saveChatIdForSession(req, chatId, parentId, scope = null) {
-    const sessionKey = getScopedSessionKey(req, scope);
+function saveChatIdForSession(c, chatId, parentId, scope = null) {
+    const sessionKey = getScopedSessionKey(c, scope);
     const normalizedScope = normalizeIdValue(scope);
 
     sessionToChatMap.set(sessionKey, {
@@ -260,25 +260,8 @@ setInterval(() => {
     }
 }, 600000);
 
-const router = express.Router();
+const app = new Hono();
 
-
-const storage = multer.diskStorage({
-    destination(req, file, cb) {
-        const uploadDir = path.join(process.cwd(), UPLOADS_DIR);
-        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-        cb(null, uploadDir);
-    },
-    filename(req, file, cb) {
-        const originalName = path.basename(file.originalname || 'upload')
-            .normalize('NFKC')
-            .replace(/[^a-zA-Z0-9._-]+/g, '_')
-            .slice(-120);
-        cb(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}-${originalName || 'upload'}`);
-    }
-});
-
-const upload = multer({ storage, limits: { fileSize: MAX_FILE_SIZE } });
 
 async function removeUploadedFile(filePath) {
     if (!filePath) return;
@@ -287,6 +270,20 @@ async function removeUploadedFile(filePath) {
     } catch (error) {
         logDebug(`Не удалось удалить временный файл: ${error.message}`);
     }
+}
+
+async function saveUploadedFile(file: File): Promise<string> {
+    const uploadDir = path.join(process.cwd(), UPLOADS_DIR);
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+    const originalName = path.basename(file.name || 'upload')
+        .normalize('NFKC')
+        .replace(/[^a-zA-Z0-9._-]+/g, '_')
+        .slice(-120);
+    const filename = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}-${originalName || 'upload'}`;
+    const filePath = path.join(uploadDir, filename);
+    const arrayBuffer = await file.arrayBuffer();
+    await fs.promises.writeFile(filePath, Buffer.from(arrayBuffer));
+    return filePath;
 }
 
 function parseOpenAIMessages(messages) {
@@ -947,13 +944,15 @@ function writeToolCallsSse(res, mappedModel, result, toolCalls) {
         ...base,
         choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }]
     }) + '\n\n');
-    res.write('data: [DONE]\n\n');
-    res.end();
+    streamWriter.write('data: [DONE]\n\n');
+    streamWriter.close();
 }
 
-router.post('/chat', async (req, res) => {
+app.post('/chat', async (c) => {
     try {
-        const { message, messages, model, chatId, parentId, stream, chatType, size, waitForCompletion } = req.body;
+        const body = await c.req.json();
+        c._body = body;
+        const { message, messages, model, chatId, parentId, stream, chatType, size, waitForCompletion } = body;
 
         let messageContent = message;
         let systemMessage = null;
@@ -968,7 +967,7 @@ router.post('/chat', async (req, res) => {
 
         if (!messageContent) {
             logError('Запрос без сообщения');
-            return res.status(400).json({ error: 'Сообщение не указано' });
+            return c.json({ error: 'Сообщение не указано' }, 400);
         }
 
         logInfo(`Получен запрос: ${typeof messageContent === 'string' ? messageContent.substring(0, 50) + (messageContent.length > 50 ? '...' : '') : 'Составное сообщение'}`);
@@ -994,106 +993,99 @@ router.post('/chat', async (req, res) => {
         logInfo(`Используется модель: ${mappedModel}`);
 
         if (stream) {
-            res.setHeader('Content-Type', 'text/event-stream');
-            res.setHeader('Cache-Control', 'no-cache');
-            res.setHeader('Connection', 'keep-alive');
-            res.setHeader('X-Accel-Buffering', 'no');
+            return stream(c, async (streamWriter) => {
+                const writeSse = (payload) => {
+                    streamWriter.write('data: ' + JSON.stringify(payload) + '\n\n');
+                };
 
-            const writeSse = (payload) => {
-                res.write('data: ' + JSON.stringify(payload) + '\n\n');
-            };
+                try {
+                    let streamingCallback = null;
+                    let hasStreamedChunks = false;
+                    if (stream) {
+                        streamingCallback = (chunk) => {
+                            hasStreamedChunks = true;
+                            writeSse({
+                                id: 'chatcmpl-' + Date.now(),
+                                object: 'chat.completion.chunk',
+                                created: Math.floor(Date.now() / 1000),
+                                model: mappedModel || 'qwen-max-latest',
+                                choices: [
+                                    { index: 0, delta: { content: chunk }, finish_reason: null }
+                                ]
+                            });
+                        };
+                    }
 
-            try {
-                let streamingCallback = null;
-                let hasStreamedChunks = false;
-                if (stream) {
-                    streamingCallback = (chunk) => {
-                        hasStreamedChunks = true;
+                    const result = await sendMessage(
+                        messageContent,
+                        mappedModel,
+                        isMeta ? null : chatId,
+                        isMeta ? null : parentId,
+                        null,
+                        null,
+                        null,
+                        systemMessage,
+                        't2t',
+                        null,
+                        true,
+                        0,
+                        streamingCallback
+                    );
+
+                    if (result.error) {
                         writeSse({
                             id: 'chatcmpl-' + Date.now(),
                             object: 'chat.completion.chunk',
                             created: Math.floor(Date.now() / 1000),
                             model: mappedModel || 'qwen-max-latest',
                             choices: [
-                                { index: 0, delta: { content: chunk }, finish_reason: null }
+                                { index: 0, delta: { content: `Ошибка: ${result.error}` }, finish_reason: 'stop' }
                             ]
                         });
-                    };
-                }
+                    } else if (!hasStreamedChunks && result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content) {
+                        const content = result.choices[0].message.content;
+                        logDebug(`JSON response content length: ${content.length}`);
+                        if (typeof streamingCallback === 'function') {
+                            streamingCallback(content);
+                        } else {
+                            writeSse({
+                                id: 'chatcmpl-stream',
+                                object: 'chat.completion.chunk',
+                                created: Math.floor(Date.now() / 1000),
+                                model: mappedModel || 'qwen-max-latest',
+                                choices: [
+                                    { index: 0, delta: { content }, finish_reason: null }
+                                ]
+                            });
+                        }
+                    } else {
+                        logDebug(`Result structure: ${JSON.stringify(Object.keys(result))}`);
+                    }
 
-                const result = await sendMessage(
-                    messageContent,
-                    mappedModel,
-                    isMeta ? null : chatId,
-                    isMeta ? null : parentId,
-                    null,
-                    null,
-                    null,
-                    systemMessage,
-                    't2t',
-                    null,
-                    true,
-                    0,
-                    streamingCallback
-                );
-
-                if (result.error) {
                     writeSse({
                         id: 'chatcmpl-' + Date.now(),
                         object: 'chat.completion.chunk',
                         created: Math.floor(Date.now() / 1000),
                         model: mappedModel || 'qwen-max-latest',
                         choices: [
-                            { index: 0, delta: { content: `Ошибка: ${result.error}` }, finish_reason: 'stop' }
+                            { index: 0, delta: {}, finish_reason: 'stop' }
                         ]
                     });
-                } else if (!hasStreamedChunks && result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content) {
-                    const content = result.choices[0].message.content;
-                    logDebug(`JSON response content length: ${content.length}`);
-                    if (typeof streamingCallback === 'function') {
-                        streamingCallback(content);
-                    } else {
-                        writeSse({
-                            id: 'chatcmpl-stream',
-                            object: 'chat.completion.chunk',
-                            created: Math.floor(Date.now() / 1000),
-                            model: mappedModel || 'qwen-max-latest',
-                            choices: [
-                                { index: 0, delta: { content }, finish_reason: null }
-                            ]
-                        });
-                    }
-                } else {
-                    logDebug(`Result structure: ${JSON.stringify(Object.keys(result))}`);
+                    streamWriter.write('data: [DONE]\n\n');
+                } catch (error) {
+                    logError('Ошибка при обработке потокового запроса', error);
+                    writeSse({
+                        id: 'chatcmpl-stream',
+                        object: 'chat.completion.chunk',
+                        created: Math.floor(Date.now() / 1000),
+                        model: mappedModel || 'qwen-max-latest',
+                        choices: [
+                            { index: 0, delta: { content: 'Internal server error' }, finish_reason: 'stop' }
+                        ]
+                    });
+                    streamWriter.write('data: [DONE]\n\n');
                 }
-
-                writeSse({
-                    id: 'chatcmpl-' + Date.now(),
-                    object: 'chat.completion.chunk',
-                    created: Math.floor(Date.now() / 1000),
-                    model: mappedModel || 'qwen-max-latest',
-                    choices: [
-                        { index: 0, delta: {}, finish_reason: 'stop' }
-                    ]
-                });
-                res.write('data: [DONE]\n\n');
-                res.end();
-                return;
-            } catch (error) {
-                logError('Ошибка при обработке потокового запроса', error);
-                writeSse({
-                    id: 'chatcmpl-stream',
-                    object: 'chat.completion.chunk',
-                    created: Math.floor(Date.now() / 1000),
-                    model: mappedModel || 'qwen-max-latest',
-                    choices: [
-                        { index: 0, delta: { content: 'Internal server error' }, finish_reason: 'stop' }
-                    ]
-                });
-                res.write('data: [DONE]\n\n');
-                res.end();
-                return;
-            }
+            });
         }
 
             const result = await sendMessage(messageContent, mappedModel, isMeta ? null : chatId, isMeta ? null : parentId, null, null, null, systemMessage, chatType || 't2t', size || null, waitForCompletion ?? true);
@@ -1118,21 +1110,21 @@ router.post('/chat', async (req, res) => {
             logInfo(`Получена ошибка в ответе: ${result.error}`);
         }
 
-        res.json(result);
+        return c.json(result);
     } catch (error) {
         logError('Ошибка при обработке запроса', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
     }
 });
 
-router.get('/health', async (req, res) => {
+app.get('/health', async (c) => {
     try {
         const modelData = getAllModels();
         const tokens = listTokens();
         const now = Date.now();
         const availableAccounts = tokens.filter(t => (!t.resetAt || new Date(t.resetAt).getTime() <= now) && !t.invalid).length;
 
-        res.json({
+        return c.json({
             ok: availableAccounts > 0,
             service: 'FreeQwenApi',
             watermark: FORGETMEAI_WATERMARK,
@@ -1148,11 +1140,11 @@ router.get('/health', async (req, res) => {
         });
     } catch (error) {
         logError('Ошибка health check', error);
-        res.status(500).json({ ok: false, error: 'Health-проверка не удалась' });
+        return c.json({ ok: false, error: 'Health-проверка не удалась' }, 500);
     }
 });
 
-router.get('/models', async (req, res) => {
+app.get('/models', async (c) => {
     try {
         logInfo('Запрос на получение списка моделей');
         const modelsRaw = getAllModels();
@@ -1167,14 +1159,14 @@ router.get('/models', async (req, res) => {
             }))
         };
         logInfo(`Возвращено ${openAiModels.data.length} моделей (OpenAI формат)`);
-        res.json(openAiModels);
+        return c.json(openAiModels);
     } catch (error) {
         logError('Ошибка при получении списка моделей', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
     }
 });
 
-router.get('/status', async (req, res) => {
+app.get('/status', async (c) => {
     try {
         logInfo('Запрос статуса авторизации');
         const tokens = listTokens();
@@ -1197,47 +1189,47 @@ router.get('/status', async (req, res) => {
         const browserContext = getBrowserContext();
         if (!browserContext) {
             logError('Браузер не инициализирован');
-            return res.json({ authenticated: false, message: 'Браузер не инициализирован', accounts });
+            return c.json({ authenticated: false, message: 'Браузер не инициализирован', accounts });
         }
 
-        if (getAuthenticationStatus()) return res.json({ accounts });
+        if (getAuthenticationStatus()) return c.json({ accounts });
 
         await checkAuthentication(browserContext);
         const isAuthenticated = getAuthenticationStatus();
         logInfo(`Статус авторизации: ${isAuthenticated ? 'активна' : 'требуется авторизация'}`);
-        res.json({ authenticated: isAuthenticated, message: isAuthenticated ? 'Авторизация активна' : 'Требуется авторизация', accounts });
+        return c.json({ authenticated: isAuthenticated, message: isAuthenticated ? 'Авторизация активна' : 'Требуется авторизация', accounts });
     } catch (error) {
         logError('Ошибка при проверке статуса авторизации', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
     }
 });
 
-router.post('/chats', async (req, res) => {
+app.post('/chats', async (c) => {
     try {
-        const { name, model } = req.body;
+        const { name, model } = await c.req.json();
         const chatModel = model ? getMappedModel(model) : DEFAULT_MODEL;
         logInfo(`Создание нового чата${name ? ` с именем: ${name}` : ''}, модель: ${chatModel}`);
         const result = await createChatV2(chatModel, name || 'Новый чат');
-        if (result.error) { logError(`Ошибка создания чата: ${result.error}`); return res.status(500).json({ error: result.error }); }
+        if (result.error) { logError(`Ошибка создания чата: ${result.error}`); return c.json({ error: result.error }, 500); }
         logInfo(`Создан новый чат v2 с ID: ${result.chatId}`);
-        res.json({ chatId: result.chatId, success: true });
+        return c.json({ chatId: result.chatId, success: true });
     } catch (error) {
         logError('Ошибка при создании чата', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
     }
 });
 
-router.get('/chat/completions', (req, res) => {
+app.get('/chat/completions', (req, res) => {
     res.status(405).json({
         error: 'Метод не поддерживается',
         message: 'Используйте POST /api/chat/completions'
     });
 });
 
-router.post('/chat/completions', async (req, res) => {
+app.post('/chat/completions', async (c) => {
     try {
-        const { messages, model, stream, tools, functions, tool_choice, chatId } = req.body;
-        const snakeCaseChatId = normalizeIdValue(req.body?.chat_id);
+        const { messages, model, stream, tools, functions, tool_choice, chatId } = await c.req.json();
+        const snakeCaseChatId = normalizeIdValue(body?.chat_id);
         const explicitChatId = normalizeIdValue(chatId) || snakeCaseChatId;
         const explicitParentId = extractParentHint(req);
         const conversationHint = extractConversationHint(req);
@@ -1249,7 +1241,7 @@ router.post('/chat/completions', async (req, res) => {
 
         if (!messages || !Array.isArray(messages) || messages.length === 0) {
             logError('Запрос без сообщений');
-            return res.status(400).json({ error: 'Сообщения не указаны' });
+            return c.json({ error: 'Сообщения не указаны' }, 400);
         }
 
         const isMeta = isOpenWebUiMetaRequest(messages);
@@ -1305,7 +1297,7 @@ router.post('/chat/completions', async (req, res) => {
         const preparedInput = prepareOpenAIMessageInput(messages, combinedTools, effectiveChatId);
         if (preparedInput.missingUser) {
             logError('В запросе нет сообщений от пользователя');
-            return res.status(400).json({ error: 'В запросе нет сообщений от пользователя' });
+            return c.json({ error: 'В запросе нет сообщений от пользователя' }, 400);
         }
 
         let messageContent = preparedInput.messageContent;
@@ -1354,16 +1346,16 @@ router.post('/chat/completions', async (req, res) => {
         }
 
         if (stream) {
-            res.setHeader('Content-Type', 'text/event-stream');
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-            res.setHeader('Pragma', 'no-cache');
-            res.setHeader('Expires', '0');
-            res.setHeader('Connection', 'keep-alive');
-            res.setHeader('X-Accel-Buffering', 'no');
-            res.setHeader('Transfer-Encoding', 'chunked');
+            
+            
+            
+            
+            
+            
+            
 
             const writeSse = (payload) => {
-                res.write('data: ' + JSON.stringify(payload) + '\n\n');
+                streamWriter.write('data: ' + JSON.stringify(payload) + '\n\n');
             };
 
             try {
@@ -1460,8 +1452,8 @@ router.post('/chat/completions', async (req, res) => {
                         { index: 0, delta: {}, finish_reason: 'stop' }
                     ]
                 });
-                res.write('data: [DONE]\n\n');
-                res.end();
+                streamWriter.write('data: [DONE]\n\n');
+                streamWriter.close();
 
             } catch (error) {
                 logError('Ошибка при обработке потокового запроса', error);
@@ -1474,8 +1466,8 @@ router.post('/chat/completions', async (req, res) => {
                         { index: 0, delta: { content: 'Internal server error' }, finish_reason: 'stop' }
                     ]
                 });
-                res.write('data: [DONE]\n\n');
-                res.end();
+                streamWriter.write('data: [DONE]\n\n');
+                streamWriter.close();
             }
         } else {
             const qwenChatId = await resolveQwenChatId(effectiveChatId, mappedModel);
@@ -1501,7 +1493,7 @@ router.post('/chat/completions', async (req, res) => {
                 ? parseToolCallJson(result?.choices?.[0]?.message?.content, combinedTools)
                 : null;
             if (toolCalls && toolCalls.length > 0) {
-                return res.json(buildOpenAIToolResponse(result, mappedModel, toolCalls));
+                return c.json(buildOpenAIToolResponse(result, mappedModel, toolCalls));
             }
 
             const openaiResponse = {
@@ -1540,18 +1532,18 @@ router.post('/chat/completions', async (req, res) => {
                 }
             }
 
-            res.json(openaiResponse);
+            return c.json(openaiResponse);
         }
     } catch (error) {
         logError('Ошибка при обработке запроса', error);
-        res.status(500).json({ error: { message: 'Внутренняя ошибка сервера', type: "server_error" } });
+        return c.json({ error: { message: 'Внутренняя ошибка сервера', type: "server_error" } }, 500);
     }
 });
 
-router.post('/v1/chat/completions', async (req, res) => {
+app.post('/v1/chat/completions', async (c) => {
     try {
-        const { messages, model, stream, tools, functions, tool_choice, chatId } = req.body;
-        const snakeCaseChatId = normalizeIdValue(req.body?.chat_id);
+        const { messages, model, stream, tools, functions, tool_choice, chatId } = await c.req.json();
+        const snakeCaseChatId = normalizeIdValue(body?.chat_id);
         const explicitChatId = normalizeIdValue(chatId) || snakeCaseChatId;
         const explicitParentId = extractParentHint(req);
         const conversationHint = extractConversationHint(req);
@@ -1564,7 +1556,7 @@ router.post('/v1/chat/completions', async (req, res) => {
 
         if (!messages || !Array.isArray(messages) || messages.length === 0) {
             logError('Запрос без сообщений');
-            return res.status(400).json({ error: 'Сообщения не указаны' });
+            return c.json({ error: 'Сообщения не указаны' }, 400);
         }
 
         const isMeta = isOpenWebUiMetaRequest(messages);
@@ -1620,7 +1612,7 @@ router.post('/v1/chat/completions', async (req, res) => {
         const preparedInput = prepareOpenAIMessageInput(messages, combinedTools, effectiveChatId);
         if (preparedInput.missingUser) {
             logError('В запросе нет сообщений от пользователя');
-            return res.status(400).json({ error: 'В запросе нет сообщений от пользователя' });
+            return c.json({ error: 'В запросе нет сообщений от пользователя' }, 400);
         }
 
         let messageContent = preparedInput.messageContent;
@@ -1671,16 +1663,16 @@ router.post('/v1/chat/completions', async (req, res) => {
         }
 
         if (stream) {
-            res.setHeader('Content-Type', 'text/event-stream');
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-            res.setHeader('Pragma', 'no-cache');
-            res.setHeader('Expires', '0');
-            res.setHeader('Connection', 'keep-alive');
-            res.setHeader('X-Accel-Buffering', 'no');
-            res.setHeader('Transfer-Encoding', 'chunked');
+            
+            
+            
+            
+            
+            
+            
 
             const writeSse = (payload) => {
-                res.write('data: ' + JSON.stringify(payload) + '\n\n');
+                streamWriter.write('data: ' + JSON.stringify(payload) + '\n\n');
             };
 
             try {
@@ -1773,8 +1765,8 @@ router.post('/v1/chat/completions', async (req, res) => {
                         { index: 0, delta: {}, finish_reason: 'stop' }
                     ]
                 });
-                res.write('data: [DONE]\n\n');
-                res.end();
+                streamWriter.write('data: [DONE]\n\n');
+                streamWriter.close();
 
             } catch (error) {
                 logError('Ошибка при обработке потокового запроса', error);
@@ -1787,8 +1779,8 @@ router.post('/v1/chat/completions', async (req, res) => {
                         { index: 0, delta: { content: 'Internal server error' }, finish_reason: 'stop' }
                     ]
                 });
-                res.write('data: [DONE]\n\n');
-                res.end();
+                streamWriter.write('data: [DONE]\n\n');
+                streamWriter.close();
             }
         } else {
             const qwenChatId = await resolveQwenChatId(effectiveChatId, mappedModel);
@@ -1822,7 +1814,7 @@ router.post('/v1/chat/completions', async (req, res) => {
                 ? parseToolCallJson(messageText, combinedTools)
                 : null;
             if (toolCalls && toolCalls.length > 0) {
-                return res.json(buildOpenAIToolResponse(result, mappedModel, toolCalls));
+                return c.json(buildOpenAIToolResponse(result, mappedModel, toolCalls));
             }
 
             const openaiResponse = {
@@ -1871,62 +1863,64 @@ router.post('/v1/chat/completions', async (req, res) => {
                 }
             }
 
-            res.json(openaiResponse);
+            return c.json(openaiResponse);
         }
     } catch (error) {
         logError('Ошибка при обработке v1 запроса', error);
-        res.status(500).json({ error: { message: 'Внутренняя ошибка сервера', type: "server_error" } });
+        return c.json({ error: { message: 'Внутренняя ошибка сервера', type: "server_error" } }, 500);
     }
 });
 
-router.post('/files/getstsToken', async (req, res) => {
+app.post('/files/getstsToken', async (c) => {
     try {
-        const fileInfo = req.body;
+        const fileInfo = await c.req.json();
         if (!fileInfo?.filename || !fileInfo?.filesize || !fileInfo?.filetype) {
             logError('Некорректные данные о файле');
-            return res.status(400).json({ error: 'Некорректные данные о файле' });
+            return c.json({ error: 'Некорректные данные о файле' }, 400);
         }
         logInfo(`Запрос на получение STS токена для файла: ${fileInfo.filename}`);
-        res.json(await getStsToken(fileInfo));
+        return c.json(await getStsToken(fileInfo));
     } catch (error) {
         logError('Ошибка при получении STS токена', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
     }
 });
 
-router.post('/files/upload', upload.single('file'), async (req, res) => {
+app.post('/files/upload', async (c) => {
     try {
-        if (!req.file) { logError('Файл не был загружен'); return res.status(400).json({ error: 'Файл не был загружен' }); }
-        logInfo(`Файл загружен на сервер: ${req.file.originalname} (${req.file.size} байт)`);
+        const body = await c.req.parseBody();
+        const file = body['file'];
+        if (!file || !(file instanceof File)) { logError('Файл не был загружен'); return c.json({ error: 'Файл не был загружен' }, 400); }
+        logInfo(`Файл загружен на сервер: ${file.name} (${file.size} байт)`);
 
-        const result = await uploadFileToQwen(req.file.path);
+        const filePath = await saveUploadedFile(file);
+        const result = await uploadFileToQwen(filePath);
 
-        await removeUploadedFile(req.file.path);
+        await removeUploadedFile(filePath);
 
         if (result.success) {
             logInfo(`Файл успешно загружен в OSS: ${result.fileName}`);
-            res.json({ success: true, file: { name: result.fileName, url: result.url, size: req.file.size, type: req.file.mimetype } });
+            return c.json({ success: true, file: { name: result.fileName, url: result.url, size: file.size, type: file.type } });
         } else {
             logError(`Ошибка при загрузке файла в OSS: ${result.error}`);
-            res.status(500).json({ error: 'Ошибка при загрузке файла' });
+            return c.json({ error: 'Ошибка при загрузке файла' }, 500);
         }
     } catch (error) {
         logError('Ошибка при загрузке файла', error);
-        await removeUploadedFile(req.file?.path);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
     }
 });
 
-router.post('/chats/:chatId/history', async (req, res) => {
+app.post('/chats/:chatId/history', async (c) => {
     try {
         const { chatId } = req.params;
-        const { messages } = req.body;
+        const { messages } = await c.req.json();
 
         logInfo(`Запрос сохранения истории для чата: ${chatId}`);
 
         if (!messages || !Array.isArray(messages)) {
             logError('История сообщений не указана или некорректна');
-            return res.status(400).json({ error: 'История сообщений должна быть массивом' });
+            return c.json({ error: 'История сообщений должна быть массивом' }, 400);
         }
 
         res.json({
@@ -1936,11 +1930,11 @@ router.post('/chats/:chatId/history', async (req, res) => {
         });
     } catch (error) {
         logError('Ошибка при сохранении истории чата', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
     }
 });
 
-router.get('/chats/:chatId/history', async (req, res) => {
+app.get('/chats/:chatId/history', async (c) => {
     try {
         const { chatId } = req.params;
 
@@ -1953,7 +1947,7 @@ router.get('/chats/:chatId/history', async (req, res) => {
         });
     } catch (error) {
         logError('Ошибка при получении истории чата', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
     }
 });
 
@@ -2020,15 +2014,15 @@ function buildVideoResponse({ result, prompt, model, waitForCompletion }) {
     };
 }
 
-router.post('/images/generations', async (req, res) => {
+app.post('/images/generations', async (c) => {
     try {
-        const { prompt, model, n, size, response_format, provider } = req.body;
+        const { prompt, model, n, size, response_format, provider } = await c.req.json();
 
         logInfo('Получен запрос на генерацию изображения');
         logDebug(`Запрос: ${prompt?.substring(0, 100)}${prompt?.length > 100 ? '...' : ''}`);
 
         if (!prompt) {
-            return res.status(400).json({ error: 'Параметр "prompt" обязателен' });
+            return c.json({ error: 'Параметр "prompt" обязателен' }, 400);
         }
 
         if (provider === 'dashscope') {
@@ -2051,7 +2045,7 @@ router.post('/images/generations', async (req, res) => {
 
             if (result.error) {
                 logError(`Ошибка генерации DashScope: ${result.error}`);
-                return res.status(500).json({ error: 'Ошибка генерации изображения', message: result.error });
+                return c.json({ error: 'Ошибка генерации изображения', message: result.error }, 500);
             }
 
             return res.json(buildOpenAiImageResponse({
@@ -2064,7 +2058,7 @@ router.post('/images/generations', async (req, res) => {
         }
 
         const chatModel = getMappedModel(model || CHAT_MEDIA_MODEL);
-        const aspectRatio = normalizeQwenAspectRatio(size, req.body.aspect_ratio || '16:9');
+        const aspectRatio = normalizeQwenAspectRatio(size, await c.req.json().aspect_ratio || '16:9');
         const result = await sendMessage(
             prompt,
             chatModel,
@@ -2081,7 +2075,7 @@ router.post('/images/generations', async (req, res) => {
 
         if (result.error) {
             logError(`Ошибка генерации Qwen Chat image: ${result.error}`);
-            return res.status(500).json({ error: 'Ошибка генерации изображения через Qwen Chat', message: result.error, details: result.details });
+            return c.json({ error: 'Ошибка генерации изображения через Qwen Chat', message: result.error, details: result.details }, 500);
         }
 
         const imageUrl = extractMediaUrl(result, 'image') || result.choices?.[0]?.message?.content || null;
@@ -2093,27 +2087,27 @@ router.post('/images/generations', async (req, res) => {
         }
 
         logInfo(`Изображение Qwen Chat сгенерировано: ${imageUrl}`);
-        return res.json(buildOpenAiImageResponse({ imageUrl, prompt, model: chatModel, raw: result }));
+        return c.json(buildOpenAiImageResponse({ imageUrl, prompt, model: chatModel, raw: result }));
     } catch (error) {
         logError('Ошибка при генерации изображения', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера', message: error.message });
+        return c.json({ error: 'Внутренняя ошибка сервера', message: error.message }, 500);
     }
 });
 
-router.post('/videos/generations', async (req, res) => {
+app.post('/videos/generations', async (c) => {
     try {
-        const { prompt, model, size, wait, waitForCompletion } = req.body;
+        const { prompt, model, size, wait, waitForCompletion } = await c.req.json();
         const shouldWait = waitForCompletion ?? wait ?? true;
 
         logInfo('Получен запрос на генерацию видео через Qwen Chat');
         logDebug(`Видео-запрос: ${prompt?.substring(0, 100)}${prompt?.length > 100 ? '...' : ''}`);
 
         if (!prompt) {
-            return res.status(400).json({ error: 'Параметр "prompt" обязателен' });
+            return c.json({ error: 'Параметр "prompt" обязателен' }, 400);
         }
 
         const chatModel = getMappedModel(model || CHAT_MEDIA_MODEL);
-        const aspectRatio = normalizeQwenAspectRatio(size, req.body.aspect_ratio || '16:9');
+        const aspectRatio = normalizeQwenAspectRatio(size, await c.req.json().aspect_ratio || '16:9');
         const result = await sendMessage(
             prompt,
             chatModel,
@@ -2130,36 +2124,36 @@ router.post('/videos/generations', async (req, res) => {
 
         if (result.error) {
             logError(`Ошибка генерации Qwen Chat video: ${result.error}`);
-            return res.status(500).json({ error: 'Ошибка генерации видео через Qwen Chat', message: result.error, details: result.details, task_id: result.task_id });
+            return c.json({ error: 'Ошибка генерации видео через Qwen Chat', message: result.error, details: result.details, task_id: result.task_id }, 500);
         }
 
         const response = buildVideoResponse({ result, prompt, model: chatModel, waitForCompletion: shouldWait });
         logInfo(response.video_url ? `Видео Qwen Chat сгенерировано: ${response.video_url}` : `Видео-задача создана: ${response.task_id}`);
-        return res.json(response);
+        return c.json(response);
     } catch (error) {
         logError('Ошибка при генерации видео', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера', message: error.message });
+        return c.json({ error: 'Внутренняя ошибка сервера', message: error.message }, 500);
     }
 });
 
-router.get('/tasks/status/:taskId', async (req, res) => {
+app.get('/tasks/status/:taskId', async (c) => {
     try {
         const { taskId } = req.params;
-        const wait = ['1', 'true', 'yes'].includes(String(req.query.wait || '').toLowerCase());
-        if (!taskId) return res.status(400).json({ error: 'taskId обязателен' });
+        const wait = ['1', 'true', 'yes'].includes(String(c.req.query("wait") || '').toLowerCase());
+        if (!taskId) return c.json({ error: 'taskId обязателен' }, 400);
 
         const result = await pollQwenTaskStatus(taskId, wait);
         if (result.error && !result.data) {
-            return res.status(500).json(result);
+            return c.json(result, 500);
         }
-        return res.json({ watermark: FORGETMEAI_WATERMARK, ...result });
+        return c.json({ watermark: FORGETMEAI_WATERMARK, ...result });
     } catch (error) {
         logError('Ошибка при проверке статуса задачи', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера', message: error.message });
+        return c.json({ error: 'Внутренняя ошибка сервера', message: error.message }, 500);
     }
 });
 
-router.get('/images/models', async (req, res) => {
+app.get('/images/models', async (c) => {
     try {
         const dashScopeModels = getAvailableImageModels();
         res.json({
@@ -2188,11 +2182,11 @@ router.get('/images/models', async (req, res) => {
         });
     } catch (error) {
         logError('Ошибка при получении списка моделей изображений', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
     }
 });
 
-router.get('/videos/models', async (req, res) => {
+app.get('/videos/models', async (c) => {
     res.json({
         object: 'list',
         watermark: FORGETMEAI_WATERMARK,
@@ -2208,7 +2202,7 @@ router.get('/videos/models', async (req, res) => {
     });
 });
 
-router.get('/images/status', async (req, res) => {
+app.get('/images/status', async (c) => {
     try {
         const apiKey = process.env.DASHSCOPE_API_KEY;
         const dashScopeAvailable = await checkImageApiAvailability();
@@ -2235,11 +2229,11 @@ router.get('/images/status', async (req, res) => {
         });
     } catch (error) {
         logError('Ошибка при проверке статуса API изображений', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
     }
 });
 
-router.get('/videos/status', async (req, res) => {
+app.get('/videos/status', async (c) => {
     const tokens = listTokens();
     const now = Date.now();
     const availableAccounts = tokens.filter(t => (!t.resetAt || new Date(t.resetAt).getTime() <= now) && !t.invalid).length;
@@ -2252,4 +2246,4 @@ router.get('/videos/status', async (req, res) => {
     });
 });
 
-export default router;
+export default app;

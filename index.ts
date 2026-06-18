@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { serve } from 'bun';
-import express from 'express';
+import { cors } from 'hono/cors';
 
 import { initBrowser, shutdownBrowser } from './src/browser/browser.ts';
 import apiRoutes from './src/api/routes.ts';
@@ -49,19 +49,17 @@ app.use('*', async (c, next) => {
     logHttpRequest(c.req.raw, { status: c.res.status, get: () => '' } as any, () => {});
 });
 
+app.use('*', cors({
+    origin: '*',
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+}));
+
 app.use('*', async (c, next) => {
     c.header('X-Content-Type-Options', 'nosniff');
     c.header('X-Frame-Options', 'DENY');
     c.header('Referrer-Policy', 'no-referrer');
     c.header('X-XSS-Protection', '1; mode=block');
-    await next();
-});
-
-app.use('*', async (c, next) => {
-    c.header('Access-Control-Allow-Origin', '*');
-    c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
-    if (c.req.method === 'OPTIONS') return c.body(null, 204);
     await next();
 });
 
@@ -107,21 +105,7 @@ app.use('/api/*', async (c, next) => {
     await next();
 });
 
-app.all('/api/*', async (c) => {
-    return new Promise((resolve) => {
-        const expressApp = express();
-        expressApp.use('/api', apiRoutes);
-        const req = c.req.raw;
-        const res = {
-            status: (code: number) => ({ json: (data: any) => resolve(c.json(data, code as any)) }),
-            json: (data: any) => resolve(c.json(data)),
-            setHeader: () => {},
-            write: () => {},
-            end: () => {}
-        };
-        expressApp(req, res as any, () => resolve(c.json({ error: 'Not found' }, 404)));
-    });
-});
+app.route('/api', apiRoutes);
 
 app.notFound((c) => {
     logWarn(`404 Not Found: ${c.req.method} ${c.req.url}`);
@@ -133,6 +117,8 @@ app.onError((err, c) => {
     return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
 });
 
+let server: ReturnType<typeof serve> | null = null;
+
 process.on('SIGINT', handleShutdown);
 process.on('SIGTERM', handleShutdown);
 process.on('SIGHUP', handleShutdown);
@@ -143,6 +129,10 @@ process.on('uncaughtException', async (error) => {
 
 async function handleShutdown() {
     logInfo('\nПолучен сигнал завершения. Закрываем браузер...');
+    if (server) {
+        server.stop(true);
+        server = null;
+    }
     await shutdownBrowser();
     logInfo('Завершение работы.');
     process.exit(0);
@@ -219,7 +209,7 @@ async function startServer() {
     }
 
     try {
-        serve({ fetch: app.fetch, port, hostname: host, idleTimeout: 255 });
+        server = serve({ fetch: app.fetch, port, hostname: host, idleTimeout: 255 });
         const displayHost = host === '0.0.0.0' ? 'localhost' : host;
         logInfo(`Сервер запущен на ${host}:${port}`);
         logInfo(`API доступен по адресу: http://${displayHost}:${port}/api`);
