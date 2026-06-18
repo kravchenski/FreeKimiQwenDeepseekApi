@@ -1,12 +1,12 @@
 # Platform Support
 
-FreeKimiQwenDeepseekApi uses Bun for the host runtime and supports:
+FreeQwenApi uses Bun for the host runtime and supports:
 
-| Platform | Native Qwen | Native DeepSeek | Native Kimi | Docker Compose | CI |
+| Platform | Native Qwen | Native DeepSeek | Docker Compose | CI |
 | --- | --- | --- | --- | --- |
-| Linux x64/arm64 | Supported | Supported | Supported | Supported | Tested |
-| macOS arm64/x64 | Supported | Supported | Supported | Docker Desktop | Tested |
-| Windows x64 | Supported | Supported | Supported | Docker Desktop / WSL2 | Tested |
+| Linux x64/arm64 | Supported | Supported | Supported | Tested |
+| macOS arm64/x64 | Supported | Supported | Docker Desktop | Tested |
+| Windows x64 | Supported | Supported | Docker Desktop / WSL2 | Tested |
 
 ## Portable Commands
 
@@ -16,20 +16,15 @@ Use the same commands in Bash, zsh, PowerShell, and Command Prompt:
 bun install
 bun run start:full
 bun run start:deepseek:full
-bun run start:kimi:full
+bun run start:deepseek:full
 bun run start:full -- --check-only
 bun run setup:agents -- --dry-run
 bun run setup:pi
 ```
 
-The compatibility wrappers call the same TypeScript launcher:
-
-- Linux/macOS: `./start.sh`, `./start-deepseek.sh`, and `./start-kimi.sh`
-- Windows: `start.bat`
-
 ## Browser Discovery
 
-Qwen, DeepSeek, and Kimi authentication automatically search common installations of:
+Qwen and DeepSeek authentication automatically search common installations of:
 
 - Google Chrome
 - Chromium
@@ -41,12 +36,10 @@ discovery when needed:
 
 ```text
 CHROME_PATH=/path/to/browser
-DEEPSEEK_CHROME_PATH=/path/to/interactive/browser
-KIMI_CHROME_PATH=/path/to/interactive/browser
 ```
 
 Provider-specific browser paths take priority only for their registration flow.
-Headless-only Chromium is never selected for interactive DeepSeek login.
+Headless-only Chromium is never selected for interactive login.
 
 ## Docker
 

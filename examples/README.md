@@ -1,7 +1,7 @@
-# Примеры FreeKimiQwenDeepseekApi
+# Примеры FreeQwenApi
 
-Здесь собраны готовые примеры для OpenAI-совместимого API FreeKimiQwenDeepseekApi:
-TypeScript, Python, Pi Agent, Hermes Agent и LiteLLM.
+Здесь собраны готовые примеры для OpenAI-совместимого API FreeQwenApi:
+TypeScript, Python и LiteLLM.
 
 ## Установка и запуск
 
@@ -53,8 +53,6 @@ python examples/python-direct/httpx_streaming.py
 
 Готовые конфигурации находятся в:
 
-- [`pi-agent/`](pi-agent/) — запуск Pi через единый gateway;
-- [`hermes/`](hermes/) — конфигурация custom provider;
 - [`litellm/`](litellm/) — мост для Codex и Claude Code.
 
 Автоматическая настройка поддерживаемых агентов:

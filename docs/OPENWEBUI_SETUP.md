@@ -1,4 +1,4 @@
-# Настройка Open WebUI для работы с FreeKimiQwenDeepseekApi
+# Настройка Open WebUI для работы с FreeQwenApi
 
 ## 1. Подключение к API
 
@@ -105,7 +105,7 @@ services:
 ## 7. Возможные проблемы
 
 ### "Connection refused" / «соединение отклонено»
-- Убедитесь, что FreeKimiQwenDeepseekApi запущен
+- Убедитесь, что FreeQwenApi запущен
 - Проверьте порт (по умолчанию 3264)
 
 ### "API key required" / «требуется API-ключ»
