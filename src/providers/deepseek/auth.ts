@@ -96,8 +96,8 @@ export async function addDeepSeekAccountInteractive(replaceId?: string) {
         const page = pages.find((candidate: any) => candidate.url().includes('deepseek.com')) || await browser.newPage();
         let capturedToken: string | null = null;
         page.on('request', (request: any) => {
-            const authorization = request.headers()?.authorization;
-            if (typeof authorization === 'string' && authorization.toLowerCase().startsWith('bearer ')) {
+            const authorization = request.headers()?.authorization || '';
+            if (authorization.toLowerCase().startsWith('bearer ')) {
                 capturedToken = authorization.slice(7).trim();
             }
         });

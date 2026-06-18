@@ -7,7 +7,7 @@ import { loadTokens, saveTokens, markValid, removeToken } from '../api/tokenMana
 import { loadAuthToken } from '../browser/session.ts';
 import { logInfo, logError, logWarn } from '../logger/index.ts';
 import { prompt } from './prompt.ts';
-import { formatForgetMeAiWatermark } from './branding.ts';
+
 import { SESSION_DIR, ACCOUNTS_DIR } from '../config.ts';
 
 const ACCOUNTS_PATH = path.resolve(process.cwd(), SESSION_DIR, ACCOUNTS_DIR);
@@ -21,7 +21,6 @@ function ensureAccountDir(id) {
 export async function addAccountInteractive() {
     logInfo('======================================================');
     logInfo('Добавление нового аккаунта Qwen');
-    logInfo(formatForgetMeAiWatermark());
     logInfo('Браузер откроется, войдите в систему, затем вернитесь к консоли.');
     logInfo('======================================================');
 
@@ -80,7 +79,6 @@ export async function reloginAccountInteractive() {
     const account = invalids[num - 1];
 
     logInfo(`Повторная авторизация для ${account.id}`);
-    logInfo(formatForgetMeAiWatermark());
     const ok = await initBrowser(true, true);
     if (!ok) { logError('Не удалось запустить браузер.'); return; }
 

@@ -1,5 +1,6 @@
-export const FORGETMEAI_WATERMARK = 't.me/forgetmeai';
+export const FORGETMEAI_WATERMARK = '';
+export const BRANDING = 'FreeQwenApi';
 
-export function formatForgetMeAiWatermark(prefix = 'ForgetMeAI') {
-    return `${prefix}: ${FORGETMEAI_WATERMARK}`;
+export function formatForgetMeAiWatermark(_prefix = '') {
+    return '';
 }

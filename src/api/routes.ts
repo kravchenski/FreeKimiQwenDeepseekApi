@@ -659,6 +659,25 @@ export function recoverBrokenBashToolCall(text) {
 }
 
 export function recoverXmlStyleToolCall(text) {
+    const outer = text.match(/<function=([A-Za-z0-9_-]+)>\s*([\s\S]*?)\s*<\/function>/i);
+    if (outer) {
+        const name = outer[1].toLowerCase();
+        const args = {};
+        const paramRe = /<parameter=([A-Za-z0-9_-]+)>\s*([\s\S]*?)\s*<\/parameter>/gi;
+        let paramMatch;
+        while ((paramMatch = paramRe.exec(outer[2])) !== null) {
+            const value = paramMatch[2].trim().replace(/<\/[A-Za-z0-9_-]+>/g, '').trim();
+            args[paramMatch[1].toLowerCase()] = value;
+        }
+        if (Object.keys(args).length > 0) {
+            const pathTools = new Set(['read', 'read_file', 'ls', 'find', 'grep', 'search_files']);
+            const commandTools = new Set(['bash', 'terminal']);
+            if (commandTools.has(name)) return { name: 'bash', arguments: { command: args.command || Object.values(args)[0] } };
+            if (pathTools.has(name) && args.path) return { name, arguments: { path: args.path } };
+            return { name, arguments: args };
+        }
+    }
+
     const block = text.match(/<(bash|terminal|read|ls|find|grep)>\s*([\s\S]*?)\s*<\/\1>/i);
     if (!block) return null;
     const name = block[1].toLowerCase();
@@ -807,6 +826,12 @@ export function parseToolCallJson(content, tools = null) {
     }
     if (/^\s*\{\s*"tool_calls"\s*:\s*\[/.test(text) && !/\}\s*$/.test(text)) {
         parseAttempts.push(text + '}');
+    }
+    const objTc = text.match(/^\s*\{\s*"tool_calls"\s*:\s*\{/);
+    if (objTc) {
+        const fixed = text.replace(/^\s*\{\s*"tool_calls"\s*:\s*\{/, '{"tool_calls":[{') + ']}';
+        parseAttempts.push(fixed);
+        parseAttempts.push(repairToolCallJsonKeys(fixed));
     }
 
     for (const candidate of parseAttempts) {

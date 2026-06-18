@@ -1,5 +1,6 @@
+import { Hono } from 'hono';
+import { serve } from 'bun';
 import express from 'express';
-import bodyParser from 'body-parser';
 
 import { initBrowser, shutdownBrowser } from './src/browser/browser.ts';
 import apiRoutes from './src/api/routes.ts';
@@ -8,17 +9,9 @@ import { loadTokens } from './src/api/tokenManager.ts';
 import { addAccountInteractive } from './src/utils/accountSetup.ts';
 import { logHttpRequest, logInfo, logError, logWarn } from './src/logger/index.ts';
 import { prompt } from './src/utils/prompt.ts';
-import { FORGETMEAI_WATERMARK } from './src/utils/branding.ts';
 import { PORT, HOST, REQUEST_BODY_LIMIT } from './src/config.ts';
-import {
-    apiKeyAuth,
-    corsMiddleware,
-    normalizeApiVersion,
-    rateLimitMiddleware,
-    securityHeaders
-} from './src/middleware/security.ts';
 
-const app = express();
+const app = new Hono();
 
 const port = Number.parseInt(process.env.PORT ?? PORT, 10);
 const host = process.env.HOST || HOST;
@@ -49,40 +42,95 @@ function ensureNonInteractiveTokens() {
     logInfo(`Автоматический запуск: обнаружено ${tokens.length} аккаунтов, из них ${validTokens.length} активны.`);
 }
 
-app.use(logHttpRequest);
-app.use(securityHeaders);
-app.use(corsMiddleware);
-app.use(bodyParser.json({ limit: REQUEST_BODY_LIMIT }));
-app.use(bodyParser.urlencoded({ limit: REQUEST_BODY_LIMIT, extended: true }));
-
-app.use((err, req, res, next) => {
-    const isJsonSyntaxError = err instanceof SyntaxError && err.status === 400 && Object.prototype.hasOwnProperty.call(err, 'body');
-
-    if (err?.type === 'entity.too.large') {
-        return res.status(413).json({ error: 'Тело запроса превышает допустимый размер' });
-    }
-
-    if (isJsonSyntaxError) {
-        logWarn(`Некорректный JSON в запросе: ${err.message}`);
-        return res.status(400).json({
-            error: 'Некорректный JSON',
-            message: 'Проверьте тело запроса: используйте валидный JSON с двойными кавычками.'
-        });
-    }
-
-    return next(err);
+app.use('*', async (c, next) => {
+    const start = Date.now();
+    await next();
+    const ms = Date.now() - start;
+    logHttpRequest(c.req.raw, { status: c.res.status, get: () => '' } as any, () => {});
 });
 
-app.use('/api', rateLimitMiddleware, apiKeyAuth, normalizeApiVersion, apiRoutes);
-
-app.use((req, res) => {
-    logWarn(`404 Not Found: ${req.method} ${req.originalUrl}`);
-    res.status(404).json({ error: 'Эндпоинт не найден' });
+app.use('*', async (c, next) => {
+    c.header('X-Content-Type-Options', 'nosniff');
+    c.header('X-Frame-Options', 'DENY');
+    c.header('Referrer-Policy', 'no-referrer');
+    c.header('X-XSS-Protection', '1; mode=block');
+    await next();
 });
 
-app.use((err, req, res, next) => {
+app.use('*', async (c, next) => {
+    c.header('Access-Control-Allow-Origin', '*');
+    c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
+    if (c.req.method === 'OPTIONS') return c.body(null, 204);
+    await next();
+});
+
+app.use('/api/*', async (c, next) => {
+    const contentLength = Number(c.req.header('content-length') || 0);
+    const limit = parseInt(REQUEST_BODY_LIMIT) || 25 * 1024 * 1024;
+    if (contentLength > limit) return c.json({ error: 'Тело запроса превышает допустимый размер' }, 413);
+    await next();
+});
+
+app.use('/api/*', async (c, next) => {
+    const contentType = c.req.header('content-type') || '';
+    if (contentType.includes('application/json') && c.req.method === 'POST') {
+        try {
+            await c.req.json();
+        } catch {
+            return c.json({ error: 'Некорректный JSON', message: 'Проверьте тело запроса: используйте валидный JSON с двойными кавычками.' }, 400);
+        }
+    }
+    await next();
+});
+
+app.use('/api/*', async (c, next) => {
+    const url = new URL(c.req.url);
+    if (url.pathname.startsWith('/api/v') && /\/v\d+\//.test(url.pathname)) {
+        const newPath = url.pathname.replace(/\/v\d+/, '');
+        const newUrl = `${url.pathname.replace(/\/v\d+/, '')}${url.search}`;
+        return c.redirect(newUrl, 301);
+    }
+    await next();
+});
+
+app.use('/api/*', async (c, next) => {
+    const apiKeyHeader = c.req.header('x-api-key');
+    const authHeader = c.req.header('authorization');
+    const validKeys = getApiKeys();
+    if (validKeys.length > 0) {
+        const providedKey = apiKeyHeader || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null);
+        if (!providedKey || !validKeys.includes(providedKey)) {
+            return c.json({ error: 'Unauthorized', message: 'Invalid or missing API key' }, 401);
+        }
+    }
+    await next();
+});
+
+app.all('/api/*', async (c) => {
+    return new Promise((resolve) => {
+        const expressApp = express();
+        expressApp.use('/api', apiRoutes);
+        const req = c.req.raw;
+        const res = {
+            status: (code: number) => ({ json: (data: any) => resolve(c.json(data, code as any)) }),
+            json: (data: any) => resolve(c.json(data)),
+            setHeader: () => {},
+            write: () => {},
+            end: () => {}
+        };
+        expressApp(req, res as any, () => resolve(c.json({ error: 'Not found' }, 404)));
+    });
+});
+
+app.notFound((c) => {
+    logWarn(`404 Not Found: ${c.req.method} ${c.req.url}`);
+    return c.json({ error: 'Эндпоинт не найден' }, 404);
+});
+
+app.onError((err, c) => {
     logError('Внутренняя ошибка сервера', err);
-    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    return c.json({ error: 'Внутренняя ошибка сервера' }, 500);
 });
 
 process.on('SIGINT', handleShutdown);
@@ -104,12 +152,11 @@ async function startServer() {
     console.log(`
 ███████ ██████  ███████ ███████  ██████  ██     ██ ███████ ███    ██  █████  ██████  ██
 ██      ██   ██ ██      ██      ██    ██ ██     ██ ██      ████   ██ ██   ██ ██   ██ ██
-█████   ██████  █████   █████   ██    ██ ██  █  ██ █████   ██ ██  ██ ███████ ██████  ██
+███████ ██████  █████   █████   ██    ██ ██  █  ██ █████   ██ ██  ██ ███████ ██████  ██
 ██      ██   ██ ██      ██      ██ ▄▄ ██ ██ ███ ██ ██      ██  ██ ██ ██   ██ ██      ██
 ██      ██   ██ ███████ ███████  ██████   ███ ███  ███████ ██   ████ ██   ██ ██      ██
                                     ▀▀
-   API-прокси для Qwen
-   ${FORGETMEAI_WATERMARK}
+   FreeQwenApi — API-прокси для Qwen
 `);
 
     logInfo('Запуск сервера...');
@@ -131,7 +178,7 @@ async function startServer() {
                 });
             }
             console.log('\n=== Меню ===');
-            console.log(`ForgetMeAI: ${FORGETMEAI_WATERMARK}`);
+            console.log(`FreeQwenApi`);
             console.log('1 - Добавить новый аккаунт');
             console.log('2 - Перелогинить аккаунт с истекшим токеном');
             console.log('3 - Запустить прокси (по умолчанию)');
@@ -172,37 +219,36 @@ async function startServer() {
     }
 
     try {
-        app.listen(port, host, () => {
-            const displayHost = host === '0.0.0.0' ? 'localhost' : host;
-            logInfo(`Сервер запущен на ${host}:${port}`);
-            logInfo(`API доступен по адресу: http://${displayHost}:${port}/api`);
-            logInfo('Для проверки статуса авторизации: GET /api/status');
-            logInfo('Для отправки сообщения: POST /api/chat');
-            logInfo('Для получения списка моделей: GET /api/models');
-            logInfo('======================================================');
-            logInfo('API v2 - История чатов хранится на серверах Qwen');
-            logInfo('Создать новый чат: POST /api/chats');
-            logInfo('Отправить сообщение: POST /api/chat (с chatId и parentId)');
-            logInfo('======================================================');
-            logInfo('Доступно 25 моделей Qwen (через систему маппинга):');
-            logInfo('- Стандартные: qwen-max, qwen-plus, qwen-turbo и их latest-версии');
-            logInfo('- Coder: qwen3-coder-plus, qwen2.5-coder-*b-instruct (0.5b - 32b)');
-            logInfo('- Визуальные: qwen-vl-max, qwen-vl-plus и их latest-версии');
-            logInfo('- Qwen 3: qwen3, qwen3-max, qwen3-plus, qwen3-omni-flash');
-            logInfo('- Qwen 3.5: qwen3.5-plus, qwen3.5-flash, qwen3.5-397b-a17b, qwen3.5-122b-a10b, qwen3.5-27b, qwen3.5-35b-a3b');
-            logInfo('======================================================');
-            logInfo('Формат JSON запроса на чат:');
-            logInfo('{ "message": "текст сообщения", "model": "название модели (опционально)", "chatId": "ID чата (опционально)", "parentId": "ID родительского сообщения (опционально)" }');
-            logInfo('Пример первого запроса: { "message": "Привет, как дела?" }');
-            logInfo('Пример второго запроса: { "message": "А что ты умеешь?", "chatId": "полученный_id_чата", "parentId": "полученный_parentId" }');
-            logInfo('======================================================');
-            logInfo('Поддержка OpenAI совместимого API: POST /api/chat/completions');
-            logInfo('В ответе возвращаются chatId и parentId для продолжения диалога');
-            logInfo('======================================================');
+        serve({ fetch: app.fetch, port, hostname: host, idleTimeout: 255 });
+        const displayHost = host === '0.0.0.0' ? 'localhost' : host;
+        logInfo(`Сервер запущен на ${host}:${port}`);
+        logInfo(`API доступен по адресу: http://${displayHost}:${port}/api`);
+        logInfo('Для проверки статуса авторизации: GET /api/status');
+        logInfo('Для отправки сообщения: POST /api/chat');
+        logInfo('Для получения списка моделей: GET /api/models');
+        logInfo('======================================================');
+        logInfo('API v2 - История чатов хранится на серверах Qwen');
+        logInfo('Создать новый чат: POST /api/chats');
+        logInfo('Отправить сообщение: POST /api/chat (с chatId и parentId)');
+        logInfo('======================================================');
+        logInfo('Доступно 25 моделей Qwen (через систему маппинга):');
+        logInfo('- Стандартные: qwen-max, qwen-plus, qwen-turbo и их latest-версии');
+        logInfo('- Coder: qwen3-coder-plus, qwen2.5-coder-*b-instruct (0.5b - 32b)');
+        logInfo('- Визуальные: qwen-vl-max, qwen-vl-plus и их latest-версии');
+        logInfo('- Qwen 3: qwen3, qwen3-max, qwen3-plus, qwen3-omni-flash');
+        logInfo('- Qwen 3.5: qwen3.5-plus, qwen3.5-flash, qwen3.5-397b-a17b, qwen3.5-122b-a10b, qwen3.5-27b, qwen3.5-35b-a3b');
+        logInfo('======================================================');
+        logInfo('Формат JSON запроса на чат:');
+        logInfo('{ "message": "текст сообщения", "model": "название модели (опционально)", "chatId": "ID чата (опционально)", "parentId": "ID родительского сообщения (опционально)" }');
+        logInfo('Пример первого запроса: { "message": "Привет, как дела?" }');
+        logInfo('Пример второго запроса: { "message": "А что ты умеешь?", "chatId": "полученный_id_чата", "parentId": "полученный_parentId" }');
+        logInfo('======================================================');
+        logInfo('Поддержка OpenAI совместимого API: POST /api/chat/completions');
+        logInfo('В ответе возвращаются chatId и parentId для продолжения диалога');
+        logInfo('======================================================');
 
-            getApiKeys();
-            getAvailableModelsFromFile();
-        });
+        getApiKeys();
+        getAvailableModelsFromFile();
     } catch (err) {
         if (err.code === 'EADDRINUSE') {
             logError(`Порт ${port} уже используется. Возможно, сервер уже запущен.`);

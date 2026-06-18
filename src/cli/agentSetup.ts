@@ -119,10 +119,6 @@ export async function loadAvailableModelIds(baseUrl: string, apiKey?: string): P
         'deepseek-reasoner',
         'deepseek-expert',
         'deepseek-search',
-        'kimi-k2.6',
-        'kimi-k2.6-thinking',
-        'kimi-k2.6-search',
-        'kimi-k2.6-thinking-search'
     ])];
 }
 
@@ -285,7 +281,7 @@ function freeModel(id: string) {
     return {
         id,
         name: `Free ${displayName(id)}`,
-        reasoning: id === 'deepseek-reasoner' || id.includes('kimi-k2.6-thinking'),
+        reasoning: id === 'deepseek-reasoner',
         input: ['text'],
         contextWindow: CODEX_CONTEXT_WINDOW,
         maxTokens: CODEX_TOOL_OUTPUT_TOKEN_LIMIT,
@@ -375,7 +371,7 @@ function mergeHermesConfig(current: Record<string, any>, options: AgentSetupOpti
 }
 
 function codexReasoningEffort(model: string) {
-    if (model === 'deepseek-reasoner' || model.includes('kimi-k2.6-thinking')) return 'high';
+    if (model === 'deepseek-reasoner') return 'high';
     if (model.includes('qwq') || model.includes('qvq')) return 'medium';
     return 'none';
 }
@@ -599,7 +595,7 @@ FREEAI_API_KEY=${options.apiKey} codex -p ${codexProfileName(model)}
 \`\`\`
 
 Codex profiles are generated for every model as \`freeai-<model>\`, for example
-\`codex -p freeai-kimi-k2-6-thinking\` and \`codex -p freeai-deepseek-reasoner\`.
+\`codex -p freeai-deepseek-reasoner\`.
 
 On PowerShell, set \`$env:FREEAI_API_KEY="${options.apiKey}"\` before starting Codex.
 

@@ -64,6 +64,6 @@ export function requireBrowserExecutable(options: Parameters<typeof findBrowserE
     const executable = findBrowserExecutable(options);
     if (executable) return executable;
     throw new Error(
-        'Chrome/Chromium/Edge/Brave не найден. Установите браузер или задайте CHROME_PATH/DEEPSEEK_CHROME_PATH/KIMI_CHROME_PATH.'
+        'Chrome/Chromium/Edge/Brave не найден. Установите браузер или задайте CHROME_PATH/DEEPSEEK_CHROME_PATH.'
     );
 }

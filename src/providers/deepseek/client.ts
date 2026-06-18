@@ -8,6 +8,37 @@ import { PersistentStringMap } from '../../utils/persistentMap.ts';
 const BASE_URL = process.env.DEEPSEEK_BASE_URL || 'https://chat.deepseek.com';
 const SESSION_MAP_FILE = process.env.DEEPSEEK_SESSION_MAP_FILE || path.join(process.cwd(), 'session', 'deepseek', 'chat-sessions.json');
 
+const HARDCODED_DEEPSEEK_MODELS = ['deepseek-default', 'deepseek-reasoner', 'deepseek-expert', 'deepseek-search'];
+let cachedDeepSeekModels: string[] | null = null;
+
+export async function fetchDeepSeekModels(): Promise<string[]> {
+    if (cachedDeepSeekModels) return cachedDeepSeekModels;
+    try {
+        const response = await fetch(`${BASE_URL}/api/v0/models`, {
+            signal: AbortSignal.timeout(5000),
+        });
+        if (response.ok) {
+            const data = await response.json() as any;
+            const models: string[] = (data?.data || [])
+                .map((m: any) => m.id || m.name)
+                .filter(Boolean)
+                .sort();
+            if (models.length > 0) {
+                cachedDeepSeekModels = models;
+                return models;
+            }
+        }
+    } catch {
+        // API unavailable, use fallback
+    }
+    cachedDeepSeekModels = HARDCODED_DEEPSEEK_MODELS;
+    return HARDCODED_DEEPSEEK_MODELS;
+}
+
+export function getDeepSeekModels(): string[] {
+    return cachedDeepSeekModels || HARDCODED_DEEPSEEK_MODELS;
+}
+
 const sessions = new PersistentStringMap(SESSION_MAP_FILE);
 
 function envAccount(): DeepSeekAccount | null {

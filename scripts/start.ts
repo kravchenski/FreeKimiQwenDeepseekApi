@@ -40,14 +40,14 @@ async function requireSuccess(args: string[], env: Record<string, string> = {}) 
 function hasAccount(service: Service) {
     if (service === 'qwen') return hasValidTokens();
     if (service === 'deepseek') return hasValidDeepSeekAccounts() || Boolean(process.env.DEEPSEEK_TOKEN);
-    if (service === 'kimi') return hasValidKimiAccounts() || Boolean(process.env.KIMI_TOKEN);
+    if (service === 'kimi') return hasValidKimiAccounts() || Boolean(process.env.KIMI_TOKEN) || Boolean(process.env.ZENMUX_API_KEY);
     return true;
 }
 
 async function authenticate(service: Service) {
     if (service === 'qwen') return requireSuccess(['run', 'auth', '--', '--add']);
     if (service === 'deepseek') return requireSuccess(['run', 'auth:deepseek', '--', '--add']);
-    if (service === 'kimi') return requireSuccess(['run', 'auth:kimi', '--', '--add']);
+    if (service === 'kimi') return; // ZenMux — не требует браузерной аутентификации
 }
 
 async function start(service: Service) {

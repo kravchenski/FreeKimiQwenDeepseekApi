@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { ofetch } from 'ofetch';
 import { logInfo, logError, logDebug } from '../logger/index.ts';
 
 const DASHSCOPE_API_BASE = 'https://dashscope-intl.aliyuncs.com/api/v1';
@@ -45,16 +45,16 @@ export async function generateImage(prompt, model = 'qwen-image-plus', options =
             ? `${DASHSCOPE_API_BASE}/services/aigc/text2image/image-synthesis`
             : `${DASHSCOPE_API_BASE}/services/aigc/text2image/image-synthesis`;
 
-        const response = await axios.post(endpoint, payload, {
+        const data = await ofetch(endpoint, {
+            method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json',
                 'X-DashScope-Async': isWanModel ? 'enable' : undefined
             },
+            body: payload,
             timeout: 120000
         });
-
-        const data = response.data;
 
         if (data.output?.task_id) {
             logInfo(`Задача создана: ${data.output.task_id}`);
@@ -81,7 +81,7 @@ export async function generateImage(prompt, model = 'qwen-image-plus', options =
     } catch (error) {
         logError('Ошибка при генерации изображения', error);
         return {
-            error: error.response?.data?.message || error.message || 'Неизвестная ошибка'
+            error: error.data?.message || error.message || 'Неизвестная ошибка'
         };
     }
 }
@@ -92,16 +92,12 @@ async function pollTaskStatus(taskId, apiKey) {
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
-            const response = await axios.get(
-                `${DASHSCOPE_API_BASE}/tasks/${taskId}`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`
-                    }
+            const task = await ofetch(`${DASHSCOPE_API_BASE}/tasks/${taskId}`, {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`
                 }
-            );
+            });
 
-            const task = response.data;
             const taskStatus = task.output?.task_status;
 
             logDebug(`Статус задачи ${taskId}: ${taskStatus} (попытка ${attempt + 1}/${maxAttempts})`);
@@ -153,7 +149,7 @@ export async function checkImageApiAvailability() {
     }
 
     try {
-        await axios.get(`${DASHSCOPE_API_BASE}/models`, {
+        await ofetch(`${DASHSCOPE_API_BASE}/models`, {
             headers: {
                 'Authorization': `Bearer ${apiKey}`
             },
