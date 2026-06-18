@@ -20,12 +20,12 @@ let allModels: string[] = [];
 async function refreshModelLists() {
     const [deepseek, qwen, kimi, glm, sapiens, stepfun, nvidia] = await Promise.allSettled([
         fetchDeepSeekModels(),
-        fetchQwenWebModels(),
+        Promise.resolve([]),
         Promise.resolve(['kimi-k2.7-code-free']),
         Promise.resolve(['glm-5.2-free', 'glm-4.7-flash-free', 'glm-4.6v-flash-free']),
         Promise.resolve(['sapiens-ai/agnes-2.0-flash']),
         Promise.resolve(['stepfun/step-3.7-flash-free']),
-        Promise.resolve(['deepseek-ai/deepseek-v4-pro', 'nvidia/nemotron-3-ultra-550b-a55b']),
+        Promise.resolve(['deepseek-ai/deepseek-v4-pro', 'nvidia/nemotron-3-ultra-550b-a55b', 'moonshotai/kimi-k2.6', 'minimaxai/minimax-m2.7']),
     ]);
     const ds = deepseek.status === 'fulfilled' ? deepseek.value : getDeepSeekModels();
     const qw = qwen.status === 'fulfilled' ? qwen.value : getQwenWebModels();

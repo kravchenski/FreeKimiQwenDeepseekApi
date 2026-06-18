@@ -49,7 +49,7 @@ bun run start
 | **GLM** (ZenMux) | `glm-5.2-free`, `glm-4.7-flash-free`, `glm-4.6v-flash-free` |
 | **Sapiens** (ZenMux) | `sapiens-ai/agnes-2.0-flash` |
 | **StepFun** (ZenMux) | `stepfun/step-3.7-flash-free` |
-| **NVIDIA** | `deepseek-ai/deepseek-v4-pro`, `nvidia/nemotron-3-ultra-550b-a55b` |
+| **NVIDIA** | `deepseek-ai/deepseek-v4-pro`, `nvidia/nemotron-3-ultra-550b-a55b`, `moonshotai/kimi-k2.6`, `minimaxai/minimax-m2.7` |
 
 ```bash
 curl http://localhost:3260/v1/models

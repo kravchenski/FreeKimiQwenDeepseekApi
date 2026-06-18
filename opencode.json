@@ -28,7 +28,9 @@
         "sapiens-ai/agnes-2.0-flash": { "name": "Sapiens Agnes 2.0 Flash", "family": "sapiens", "tool_call": true, "cost": { "input": 0, "output": 0 } },
         "stepfun/step-3.7-flash-free": { "name": "StepFun Step 3.7 Flash Free", "family": "stepfun", "tool_call": true, "cost": { "input": 0, "output": 0 } },
         "deepseek-ai/deepseek-v4-pro": { "name": "DeepSeek V4 Pro (NVIDIA)", "family": "nvidia", "tool_call": true, "cost": { "input": 0, "output": 0 } },
-        "nvidia/nemotron-3-ultra-550b-a55b": { "name": "Nemotron 3 Ultra 550B (NVIDIA)", "family": "nvidia", "reasoning": true, "tool_call": true, "cost": { "input": 0, "output": 0 } }
+        "nvidia/nemotron-3-ultra-550b-a55b": { "name": "Nemotron 3 Ultra 550B (NVIDIA)", "family": "nvidia", "reasoning": true, "tool_call": true, "cost": { "input": 0, "output": 0 } },
+        "moonshotai/kimi-k2.6": { "name": "Kimi K2.6 (NVIDIA)", "family": "nvidia", "tool_call": true, "cost": { "input": 0, "output": 0 } },
+        "minimaxai/minimax-m2.7": { "name": "MiniMax M2.7 (NVIDIA)", "family": "nvidia", "tool_call": true, "cost": { "input": 0, "output": 0 } }
       }
     }
   },
