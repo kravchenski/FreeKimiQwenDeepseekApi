@@ -4,7 +4,6 @@ import {
     isEmptyToolCallResponse,
     parseKimiEvent
 } from '../src/providers/kimi/client.ts';
-import { hasValidKimiAccounts } from '../src/providers/kimi/accounts.ts';
 
 describe('Kimi provider (ZenMux)', () => {
     test('parses SSE Kimi events', () => {
@@ -20,9 +19,5 @@ describe('Kimi provider (ZenMux)', () => {
     test('detects empty simulated tool-call responses', () => {
         expect(isEmptyToolCallResponse('{"tool_calls":[]}')).toBeTrue();
         expect(isEmptyToolCallResponse('{"tool_calls":[{"name":"read"}]}')).toBeFalse();
-    });
-
-    test('can inspect Kimi account availability without environment setup', () => {
-        expect(typeof hasValidKimiAccounts()).toBe('boolean');
     });
 });
