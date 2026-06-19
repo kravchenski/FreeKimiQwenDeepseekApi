@@ -1,5 +1,4 @@
 import winston from 'winston';
-import morgan from 'morgan';
 import path from 'path';
 import fs from 'fs';
 import { LOG_LEVEL, LOG_MAX_SIZE, LOG_MAX_FILES, LOGS_DIR } from '../config.ts';
@@ -61,14 +60,14 @@ const logger = winston.createLogger({
 
 winston.addColors(customLevels.colors);
 
-const morganStream = {
-    write: (message) => logger.http(message.trim())
+export const logHttpRequest = (req: any, res: any, next?: () => void) => {
+    const start = Date.now();
+    res.on('finish', () => {
+        const ms = Date.now() - start;
+        logger.http(`${req.method || ''} ${req.url || ''} ${res.status || ''} - ${ms}ms`);
+    });
+    if (next) next();
 };
-
-const morganFormat = ':remote-addr :method :url :status :res[content-length] - :response-time ms';
-const httpLogger = morgan(morganFormat, { stream: morganStream });
-
-export const logHttpRequest = httpLogger;
 export const logInfo = (message) => logger.info(message);
 export const logError = (message, error) => {
     if (error) {

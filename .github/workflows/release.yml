@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 15
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
     steps:
       - name: Checkout
@@ -40,26 +41,10 @@ jobs:
         run: bun run ci
 
   publish:
-    name: Publish ${{ matrix.image }} GHCR image
+    name: Publish GHCR image
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: qwen
-            dockerfile: Dockerfile
-            cache-scope: release-qwen
-          - image: gateway
-            dockerfile: Dockerfile.light
-            cache-scope: release-gateway
-          - image: deepseek
-            dockerfile: Dockerfile.light
-            cache-scope: release-deepseek
-          - image: kimi
-            dockerfile: Dockerfile.light
-            cache-scope: release-kimi
     permissions:
       contents: read
       packages: write
@@ -85,7 +70,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/freekimiqwendeepseekapi/${{ matrix.image }}
+          images: ghcr.io/${{ github.repository_owner }}/freeqwenapi
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -98,10 +83,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.cache-scope }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.cache-scope }}
+          cache-from: type=gha,scope=release
+          cache-to: type=gha,mode=max,scope=release

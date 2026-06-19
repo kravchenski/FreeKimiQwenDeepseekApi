@@ -62,7 +62,6 @@
     },
     "dependencies": {
         "hono": "^4.12.26",
-        "morgan": "^1.10.0",
         "ofetch": "^1.4.0",
         "puppeteer": "^24.31.0",
         "puppeteer-extra": "^3.3.6",
