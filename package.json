@@ -54,7 +54,6 @@
         "auth:kimi": "bun run scripts/kimi-auth.ts",
         "setup:agents": "bun run scripts/setup-agents.ts",
         "setup:pi": "bun run scripts/setup-pi.ts",
-        "setup:all": "bun run scripts/setup-and-start.ts",
         "models:sync": "bun run scripts/sync_models.ts",
         "smoke": "bun run scripts/smoke_test.ts",
         "web": "bun run src/web/server.ts",

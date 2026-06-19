@@ -3,7 +3,6 @@ import { serve } from 'bun';
 import crypto from 'crypto';
 
 import { deepSeekCompletion, isEmptyToolCallResponse, parseDeepSeekEvent, fetchDeepSeekModels, getDeepSeekModels } from '../providers/deepseek/client.ts';
-import { qwenCompletion as qwenWebCompletion, parseQwenEvent, fetchQwenModels as fetchQwenWebModels, getQwenModels as getQwenWebModels } from '../providers/qwen/client.ts';
 import { conversationalShellText, parseToolCallJson, recoverBrokenBashToolCall, toolsToPrompt } from '../api/routes.ts';
 import { kimiCompletion, parseKimiEvent } from '../providers/kimi/client.ts';
 import { glmCompletion, parseGlmEvent } from '../providers/glm/client.ts';
@@ -18,9 +17,8 @@ const host = process.env.HOST || '0.0.0.0';
 let allModels: string[] = [];
 
 async function refreshModelLists() {
-    const [deepseek, qwen, kimi, glm, sapiens, stepfun, nvidia] = await Promise.allSettled([
+    const [deepseek, kimi, glm, sapiens, stepfun, nvidia] = await Promise.allSettled([
         fetchDeepSeekModels(),
-        Promise.resolve([]),
         Promise.resolve(['kimi-k2.7-code-free']),
         Promise.resolve(['glm-5.2-free', 'glm-4.7-flash-free']),
         Promise.resolve(['sapiens-ai/agnes-2.0-flash']),
@@ -28,19 +26,17 @@ async function refreshModelLists() {
         Promise.resolve(['deepseek-ai/deepseek-v4-pro', 'moonshotai/kimi-k2.6']),
     ]);
     const ds = deepseek.status === 'fulfilled' ? deepseek.value : getDeepSeekModels();
-    const qw = qwen.status === 'fulfilled' ? qwen.value : getQwenWebModels();
     const km = kimi.status === 'fulfilled' ? kimi.value : [];
     const gl = glm.status === 'fulfilled' ? glm.value : [];
     const sa = sapiens.status === 'fulfilled' ? sapiens.value : [];
     const st = stepfun.status === 'fulfilled' ? stepfun.value : [];
     const nv = nvidia.status === 'fulfilled' ? nvidia.value : [];
-    allModels = [...ds, ...qw, ...km, ...gl, ...sa, ...st, ...nv];
+    allModels = [...ds, ...km, ...gl, ...sa, ...st, ...nv];
 }
 
-function detectProvider(model: string): 'deepseek' | 'qwen' | 'kimi' | 'glm' | 'sapiens' | 'stepfun' | 'nvidia' | 'unknown' {
+function detectProvider(model: string): 'deepseek' | 'kimi' | 'glm' | 'sapiens' | 'stepfun' | 'nvidia' | 'unknown' {
     if (model.startsWith('deepseek-ai/')) return 'nvidia';
     if (model.startsWith('deepseek-')) return 'deepseek';
-    if (model.startsWith('qwen') || model.startsWith('qwq') || model.startsWith('qvq')) return 'qwen';
     if (model.startsWith('kimi-')) return 'kimi';
     if (model.startsWith('glm-')) return 'glm';
     if (model.startsWith('sapiens-ai/')) return 'sapiens';
@@ -303,7 +299,6 @@ app.get('/health', (c) => {
 function ownedBy(id: string): string {
     if (id.startsWith('deepseek-ai/')) return 'nvidia';
     if (id.startsWith('deepseek-')) return 'deepseek-web';
-    if (id.startsWith('qwen') || id.startsWith('qwq') || id.startsWith('qvq')) return 'qwen-web';
     if (id.startsWith('kimi-')) return 'kimi-zenmux';
     if (id.startsWith('glm-')) return 'glm-zenmux';
     if (id.startsWith('sapiens-ai/')) return 'sapiens-zenmux';
@@ -336,7 +331,7 @@ app.post('/api/chat/completions', async (c) => {
 
         const provider = detectProvider(model);
         if (provider === 'unknown') {
-            return c.json({ error: { message: `Unknown model: ${model}. Available: deepseek-*, kimi-*, glm-*, sapiens/*, stepfun/*, qwen-*` } }, 400);
+            return c.json({ error: { message: `Unknown model: ${model}. Available: deepseek-*, kimi-*, glm-*, sapiens/*, stepfun/*, nvidia/*` } }, 400);
         }
 
         const conversationId = body.conversation_id || body.chat_id || c.req.header('x-conversation-id') || undefined;
@@ -381,30 +376,6 @@ app.post('/api/chat/completions', async (c) => {
             const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
                 collectSseResponse(parseSapiensEvent as any, r, cb);
             const retry = () => sapiensCompletion({ messages, model, conversationId }).then(r => r.response);
-
-            if (stream) {
-                return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
-            }
-            const { content, reasoning } = await handleWebProviderNonStream(result.response, collect, retry, captureToolCalls, combinedTools, messages);
-            const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
-            return c.json({
-                id, object: 'chat.completion', created, model,
-                choices: [{
-                    index: 0,
-                    message: toolCalls?.length
-                        ? { role: 'assistant', content: null, tool_calls: buildToolCallResponse(toolCalls) }
-                        : { role: 'assistant', content: conversationalText || content, reasoning_content: reasoning || undefined },
-                    finish_reason: toolCalls?.length ? 'tool_calls' : 'stop'
-                }],
-                usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-            });
-        }
-
-        if (provider === 'qwen') {
-            const result = await qwenWebCompletion({ messages: upstreamMessages, model, conversationId });
-            const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
-                collectSseResponse(parseQwenEvent as any, r, cb);
-            const retry = () => qwenWebCompletion({ messages, model, conversationId }).then(r => r.response);
 
             if (stream) {
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
