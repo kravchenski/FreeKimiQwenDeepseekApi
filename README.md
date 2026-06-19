@@ -2,67 +2,55 @@
 
 # FreeQwenApi
 
-**Turn DeepSeek Web, Qwen Chat, and ZenMux models into a local OpenAI-compatible API — подключи к OpenCode, Continue, Cline, Aider и любым AI-агентам.**
+**Free API proxy for DeepSeek, Kimi, GLM, Sapiens, StepFun and NVIDIA models — OpenAI-compatible endpoint for OpenCode, Continue, Cline, Aider and any AI agent.**
 
 [![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun&logoColor=000)](https://bun.sh)
 [![OpenAI compatible](https://img.shields.io/badge/API-OpenAI%20compatible-412991)](#api-reference)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[Быстрый старт](#быстрый-старт) · [Модели](#модели) · [API](#api-reference) · [OpenCode](#opencode) · [Docker](#docker)
+[Quick Start](#quick-start) · [Models](#models) · [API](#api-reference) · [OpenCode](#opencode) · [Docker](#docker)
 
 </div>
 
-FreeQwenApi — прокси для [DeepSeek Web](https://chat.deepseek.com/), [Qwen Chat](https://chat.qwen.ai/), а также моделей [Kimi](https://kimi.ai), [GLM](https://z.ai), [Sapiens](https://sapiens.ai) и [StepFun](https://stepfun.com) через [ZenMux](https://zenmux.ai) с OpenAI-совместимым API. Для Web-провайдеров не нужны API-ключи; для ZenMux-провайдеров нужен `ZENMUX_API_KEY`.
+FreeQwenApi is a proxy for [DeepSeek Web](https://chat.deepseek.com/), [Kimi](https://kimi.ai), [GLM](https://z.ai), [Sapiens](https://sapiens.ai), [StepFun](https://stepfun.com) via [ZenMux](https://zenmux.ai), and [NVIDIA API](https://build.nvidia.com) models with an OpenAI-compatible API. Web providers don't need API keys. ZenMux providers need `ZENMUX_API_KEY`. NVIDIA providers need `NVIDIA_API_KEY`.
 
-## Быстрый старт
+## Quick Start
 
 ```bash
 git clone https://github.com/kravchenski/FreeQwenApi.git
 cd FreeQwenApi
 bun install
-bun run setup:all
-```
-
-Скрипт проверит наличие аккаунтов для всех провайдеров, при необходимости откроет браузер для входа, и запустит сервер.
-
-**Сервер:** `http://localhost:3260`  
-**OpenCode:** `OPENCODE_API_URL=http://localhost:3260`, `OPENCODE_API_KEY=` (пусто)
-
-### Вручную
-
-```bash
-# Авторизация (разово)
-bun run auth             # Qwen
-bun run auth:all         # DeepSeek, ChatGPT, Qwen, Gemini (браузер)
-
-# Запуск
 bun run start
 ```
 
-## Модели
+**Server:** `http://localhost:3260`
+**OpenCode:** `OPENCODE_API_URL=http://localhost:3260`, `OPENCODE_API_KEY=` (empty)
 
-| Провайдер | Модели |
-|-----------|--------|
-| **DeepSeek** | `deepseek-default`, `deepseek-reasoner`, `deepseek-expert`, `deepseek-search` |
-| **Qwen** | `qwen3.6-plus`, `qwen3.7-max`, `qwen3.7-plus`, `qwq-32b` и др. |
-| **Kimi** (ZenMux) | `kimi-k2.7-code-free` |
-| **GLM** (ZenMux) | `glm-5.2-free`, `glm-4.7-flash-free`, `glm-4.6v-flash-free` |
-| **Sapiens** (ZenMux) | `sapiens-ai/agnes-2.0-flash` |
-| **StepFun** (ZenMux) | `stepfun/step-3.7-flash-free` |
-| **NVIDIA** | `deepseek-ai/deepseek-v4-pro`, `nvidia/nemotron-3-ultra-550b-a55b`, `moonshotai/kimi-k2.6`, `minimaxai/minimax-m2.7` |
+## Models
+
+| Provider | Models | Key |
+|----------|--------|-----|
+| **DeepSeek** | `deepseek-default`, `deepseek-expert`, `deepseek-search` | Browser auth |
+| **Kimi** (ZenMux) | `kimi-k2.7-code-free` | `ZENMUX_API_KEY` |
+| **GLM** (ZenMux) | `glm-5.2-free`, `glm-4.7-flash-free` | `ZENMUX_API_KEY` |
+| **Sapiens** (ZenMux) | `sapiens-ai/agnes-2.0-flash` | `ZENMUX_API_KEY` |
+| **StepFun** (ZenMux) | `stepfun/step-3.7-flash-free` | `ZENMUX_API_KEY` |
+| **NVIDIA** | `deepseek-ai/deepseek-v4-pro`, `moonshotai/kimi-k2.6` | `NVIDIA_API_KEY` |
+
+All models are free. ZenMux and NVIDIA require API keys.
 
 ```bash
 curl http://localhost:3260/v1/models
 ```
 
-## Первый запрос
+## First Request
 
 ```bash
 curl http://localhost:3260/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen-max-latest",
-    "messages": [{"role": "user", "content": "Привет!"}],
+    "model": "deepseek-default",
+    "messages": [{"role": "user", "content": "Hello!"}],
     "stream": false
   }'
 ```
@@ -77,8 +65,8 @@ curl http://localhost:3260/v1/chat/completions \
     "apiKey": "",
     "baseURL": "http://localhost:3260/v1",
     "models": {
-      "default": ["qwen-max-latest"],
-      "all": ["deepseek-default", "deepseek-reasoner", "deepseek-expert", "deepseek-search", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "glm-5.2-free", "glm-4.7-flash-free", "glm-4.6v-flash-free", "kimi-k2.7-code-free", "sapiens-ai/agnes-2.0-flash", "stepfun/step-3.7-flash-free"]
+      "default": ["deepseek-default"],
+      "all": ["deepseek-default", "deepseek-expert", "deepseek-search", "kimi-k2.7-code-free", "glm-5.2-free", "glm-4.7-flash-free", "sapiens-ai/agnes-2.0-flash", "stepfun/step-3.7-flash-free", "deepseek-ai/deepseek-v4-pro", "moonshotai/kimi-k2.6"]
     }
   }
 }
@@ -86,30 +74,26 @@ curl http://localhost:3260/v1/chat/completions \
 
 ## API Reference
 
-Все эндпоинты OpenAI-совместимы:
+All endpoints are OpenAI-compatible:
 
-| Метод | Эндпоинт | Описание |
-|-------|----------|----------|
-| `GET` | `/v1/models` | Список моделей |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/v1/models` | List models |
 | `POST` | `/v1/chat/completions` | Chat Completions (streaming + non-streaming) |
-| `GET` | `/health` | Статус сервера |
+| `GET` | `/health` | Server status |
 
-DeepSeek и Qwen поддерживают tool calls.
-Web-провайдеры (DeepSeek, Qwen) работают через браузер (Puppeteer) и поддерживают streaming.
-ZenMux-провайдеры (Kimi, GLM, Sapiens, StepFun) используют OpenAI-совместимый API `https://zenmux.ai/api/v1`.
+DeepSeek and Kimi support tool calls. Web providers (DeepSeek) work through browser (Puppeteer) and support streaming. ZenMux providers (Kimi, GLM, Sapiens, StepFun) use `https://zenmux.ai/api/v1`. NVIDIA providers use `https://integrate.api.nvidia.com/v1`.
 
-## Команды
+## Commands
 
-| Команда | Описание |
-|---------|----------|
-| `bun run start` | Запуск unified сервера (все провайдеры, порт 3260) |
-| `bun run setup:all` | Авторизация всех провайдеров + запуск |
-| `bun run dev` | Запуск с watch-mode |
-| `bun run auth` | Управление Qwen аккаунтами |
-| `bun run auth:all` | Управление DeepSeek, ChatGPT, Qwen, Gemini аккаунтами |
-| `bun run web` | Веб-интерфейс (порт 3000) |
-| `bun run test` | Запуск тестов |
-| `bun run check` | Проверка сборки |
+| Command | Description |
+|---------|-------------|
+| `bun run start` | Start unified server (all providers, port 3260) |
+| `bun run dev` | Start with watch mode |
+| `bun run auth` | Manage DeepSeek accounts |
+| `bun run web` | Web interface (port 3000) |
+| `bun run test` | Run tests |
+| `bun run check` | Validate build |
 
 ## Docker
 
@@ -118,41 +102,31 @@ docker build -t freeqwenapi .
 docker run -d \
   -p 3260:3260 \
   -v ./session:/app/session \
+  -e ZENMUX_API_KEY=your_key \
+  -e NVIDIA_API_KEY=your_key \
   freeqwenapi
 ```
 
-Аккаунты должны быть настроены на хосте перед запуском:
+## Environment Variables
 
-```bash
-bun install
-bun run auth
-bun run auth:all
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `UNIFIED_PORT` | `3260` | Server port |
+| `HOST` | `0.0.0.0` | Bind address |
+| `ZENMUX_API_KEY` | - | ZenMux API key (for Kimi, GLM, Sapiens, StepFun) |
+| `NVIDIA_API_KEY` | - | NVIDIA API key (for DeepSeek V4 Pro, Kimi K2.6) |
+| `SKIP_ACCOUNT_MENU` | `false` | Skip account menu on startup |
 
-## Переменные окружения
-
-| Переменная | По умолчанию | Описание |
-|-----------|-------------|----------|
-| `UNIFIED_PORT` | `3260` | Порт unified сервера |
-| `HOST` | `0.0.0.0` | Адрес для бинда |
-| `DEFAULT_MODEL` | `qwen-max-latest` | Модель по умолчанию |
-| `SKIP_ACCOUNT_MENU` | `false` | Пропустить меню аккаунтов |
-| `CHROME_PATH` | авто | Путь к Chrome/Chromium |
-| `UI_PORT` | `3000` | Порт веб-интерфейса (`bun run web`) |
-
-Полный список в [`src/config.ts`](src/config.ts).
-
-## Структура проекта
+## Project Structure
 
 ```
 src/
-  unified/server.ts    — основной сервер (DeepSeek + ChatGPT + Qwen + Gemini)
-  providers/           — клиенты провайдеров (deepseek/, chatgpt/, qwen/, gemini/)
-  api/                 — Qwen API (чат, модели, токены, файлы)
-  browser/             — Puppeteer браузер
-  web/server.ts        — веб-интерфейс (порт 3000)
-  scripts/             — авторизация, setup, smoke-тесты
-session/               — токены аккаунтов (в .gitignore)
+  unified/server.ts      — main server (all providers)
+  providers/             — provider clients (deepseek/, kimi/, glm/, sapiens/, stepfun/, nvidia/)
+  api/                   — API routes and chat logic
+  browser/               — Puppeteer browser
+  web/server.ts          — web interface (port 3000)
+session/                 — account tokens (gitignored)
 ```
 
 ## License
