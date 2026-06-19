@@ -38,13 +38,14 @@ async function refreshModelLists() {
 }
 
 function detectProvider(model: string): 'deepseek' | 'qwen' | 'kimi' | 'glm' | 'sapiens' | 'stepfun' | 'nvidia' | 'unknown' {
+    if (model.startsWith('deepseek-ai/')) return 'nvidia';
     if (model.startsWith('deepseek-')) return 'deepseek';
     if (model.startsWith('qwen') || model.startsWith('qwq') || model.startsWith('qvq')) return 'qwen';
     if (model.startsWith('kimi-')) return 'kimi';
     if (model.startsWith('glm-')) return 'glm';
     if (model.startsWith('sapiens-ai/')) return 'sapiens';
     if (model.startsWith('stepfun/')) return 'stepfun';
-    if (model.startsWith('nvidia/')) return 'nvidia';
+    if (model.startsWith('nvidia/') || model.startsWith('moonshotai/') || model.startsWith('minimaxai/')) return 'nvidia';
     return 'unknown';
 }
 
@@ -300,13 +301,14 @@ app.get('/health', (c) => {
 });
 
 function ownedBy(id: string): string {
+    if (id.startsWith('deepseek-ai/')) return 'nvidia';
     if (id.startsWith('deepseek-')) return 'deepseek-web';
     if (id.startsWith('qwen') || id.startsWith('qwq') || id.startsWith('qvq')) return 'qwen-web';
     if (id.startsWith('kimi-')) return 'kimi-zenmux';
     if (id.startsWith('glm-')) return 'glm-zenmux';
     if (id.startsWith('sapiens-ai/')) return 'sapiens-zenmux';
     if (id.startsWith('stepfun/')) return 'stepfun-zenmux';
-    if (id.startsWith('nvidia/')) return 'nvidia';
+    if (id.startsWith('nvidia/') || id.startsWith('moonshotai/') || id.startsWith('minimaxai/')) return 'nvidia';
     return 'unknown';
 }
 
@@ -496,14 +498,18 @@ app.post('/api/chat/completions', async (c) => {
 
         if (provider === 'nvidia') {
             const result = await nvidiaCompletion({ messages: upstreamMessages, model, stream });
-            const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
-                collectSseResponse(parseNvidiaEvent as any, r, cb);
-            const retry = () => nvidiaCompletion({ messages, model, stream }).then(r => r.response);
 
             if (stream) {
+                const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
+                    collectSseResponse(parseNvidiaEvent as any, r, cb);
+                const retry = () => nvidiaCompletion({ messages, model, stream }).then(r => r.response);
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
             }
-            const { content, reasoning } = await handleWebProviderNonStream(result.response, collect, retry, captureToolCalls, combinedTools, messages);
+
+            const nvidiaData = await result.response.json() as any;
+            const choice = nvidiaData?.choices?.[0];
+            const content = choice?.message?.content || '';
+            const reasoning = choice?.message?.reasoning_content || '';
             const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
             return c.json({
                 id, object: 'chat.completion', created, model,
@@ -514,7 +520,7 @@ app.post('/api/chat/completions', async (c) => {
                         : { role: 'assistant', content: conversationalText || content, reasoning_content: reasoning || undefined },
                     finish_reason: toolCalls?.length ? 'tool_calls' : 'stop'
                 }],
-                usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+                usage: nvidiaData?.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
             });
         }
 
