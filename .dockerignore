@@ -18,7 +18,6 @@ cookies.json
 *.cookies.json
 logs
 node_modules
-session
 uploads
 venv
 .venv
