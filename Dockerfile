@@ -8,11 +8,6 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 
-FROM base AS builder
-
-COPY . .
-RUN bun build src/unified/server.ts --target=bun --outdir=dist --minify
-
 FROM oven/bun:1.3.14-slim AS runtime
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update \
@@ -31,9 +26,9 @@ ENV CHROME_PATH=/usr/bin/chromium-headless-shell \
 WORKDIR /app
 
 COPY --from=base /app/node_modules ./node_modules
-COPY --from=builder /app/dist/server.js ./server.js
-COPY --from=builder /app/package.json ./
-COPY src/AvailableModels.txt ./src/AvailableModels.txt
+COPY package.json ./
+COPY src/ ./src/
+COPY index.ts deepseek.ts kimi.ts gateway.ts ./
 
 RUN install -d -o bun -g bun /app/session /app/logs /app/uploads
 
@@ -44,4 +39,4 @@ EXPOSE 3260
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD curl -f http://localhost:3260/health || exit 1
 
-CMD ["bun", "run", "server.js"]
+CMD ["bun", "run", "src/unified/server.ts"]
