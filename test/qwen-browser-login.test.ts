@@ -38,7 +38,7 @@ beforeAll(() => {
 
 afterAll(() => server?.stop(true));
 
-describe.skipIf(!findBrowserExecutable())('qwenBrowserSignIn over CDP', () => {
+describe.skipIf(process.env.RUN_BROWSER_TESTS !== '1' || !findBrowserExecutable())('qwenBrowserSignIn over CDP', () => {
   test('fills the form and returns the token with cookies', async () => {
     const session = await qwenBrowserSignIn('user@example.com', 'right', { baseUrl, timeoutMs: 15_000 });
     expect(session.token).toBe('browser-token');
