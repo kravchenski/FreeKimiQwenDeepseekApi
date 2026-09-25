@@ -2,8 +2,10 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 
 let app: { fetch: (request: Request) => Response | Promise<Response> };
 
+let key = '';
+
 beforeAll(async () => {
-    process.env.GATEWAY_API_KEY = 'test-key';
+    key = process.env.GATEWAY_API_KEY ||= 'test-key';
     ({ app } = await import('../src/unified/server.ts'));
 });
 
@@ -27,17 +29,17 @@ describe('unified server security', () => {
     });
 
     test('accepts a valid bearer token', async () => {
-        const response = await app.fetch(new Request('http://local/v1/models', { headers: { authorization: 'Bearer test-key' } }));
+        const response = await app.fetch(new Request('http://local/v1/models', { headers: { authorization: `Bearer ${key}` } }));
         expect(response.status).toBe(200);
     });
 
     test('returns 400 for malformed JSON', async () => {
-        const response = await chat({ authorization: 'Bearer test-key' }, '{bad');
+        const response = await chat({ authorization: `Bearer ${key}` }, '{bad');
         expect(response.status).toBe(400);
     });
 
     test('returns 413 for oversized bodies', async () => {
-        const response = await chat({ authorization: 'Bearer test-key' }, 'a'.repeat(26 * 1024 * 1024));
+        const response = await chat({ authorization: `Bearer ${key}` }, 'a'.repeat(26 * 1024 * 1024));
         expect(response.status).toBe(413);
     });
 });
