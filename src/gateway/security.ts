@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 
+const comparisonKey = crypto.randomBytes(32);
+
 const HOP_BY_HOP_HEADERS = new Set([
     'connection',
     'content-length',
@@ -21,8 +23,8 @@ export function bearerToken(header: unknown) {
 export function tokenMatches(token: string | null, expected: string | undefined) {
     if (!expected) return true;
     if (!token) return false;
-    const actualDigest = crypto.createHash('sha256').update(token).digest();
-    const expectedDigest = crypto.createHash('sha256').update(expected).digest();
+    const actualDigest = crypto.createHmac('sha256', comparisonKey).update(token).digest();
+    const expectedDigest = crypto.createHmac('sha256', comparisonKey).update(expected).digest();
     return crypto.timingSafeEqual(actualDigest, expectedDigest);
 }
 
