@@ -231,44 +231,55 @@ async function handleWebProviderStream(
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
         async start(controller) {
-            controller.enqueue(encoder.encode(streamChunk(id, created, model, { role: 'assistant' })));
-
-            let { content, reasoning } = await collectFn(response, event => {
-                if (!captureToolCalls && event.content) {
-                    controller.enqueue(encoder.encode(streamChunk(id, created, model, { content: event.content })));
-                }
-                if (!captureToolCalls && event.reasoning) {
-                    controller.enqueue(encoder.encode(streamChunk(id, created, model, { reasoning_content: event.reasoning })));
-                }
-            });
-
-            if (captureToolCalls && isEmptyToolCallResponse(content) && !isCodebaseActionRequest(messages) && retryFn) {
-                ({ content, reasoning } = await collectFn(await retryFn()));
+            try {
+                await writeStream(controller);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message, type: 'upstream_error' } })}\n\n`));
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                controller.close();
             }
-
-            const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
-            if (conversationalText) content = conversationalText;
-
-            if (toolCalls?.length) {
-                for (const call of toolCalls) {
-                    controller.enqueue(encoder.encode(streamChunk(id, created, model, {
-                        tool_calls: [{ index: call.index, id: call.id, type: call.type, function: call.function }]
-                    })));
-                }
-                controller.enqueue(encoder.encode(streamChunk(id, created, model, {}, 'tool_calls')));
-            } else {
-                if (captureToolCalls && reasoning) {
-                    controller.enqueue(encoder.encode(streamChunk(id, created, model, { reasoning_content: reasoning })));
-                }
-                if (captureToolCalls && content) {
-                    controller.enqueue(encoder.encode(streamChunk(id, created, model, { content })));
-                }
-                controller.enqueue(encoder.encode(streamChunk(id, created, model, {}, 'stop')));
-            }
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-            controller.close();
         }
     });
+
+    async function writeStream(controller: ReadableStreamDefaultController) {
+        controller.enqueue(encoder.encode(streamChunk(id, created, model, { role: 'assistant' })));
+
+        let { content, reasoning } = await collectFn(response, event => {
+            if (!captureToolCalls && event.content) {
+                controller.enqueue(encoder.encode(streamChunk(id, created, model, { content: event.content })));
+            }
+            if (!captureToolCalls && event.reasoning) {
+                controller.enqueue(encoder.encode(streamChunk(id, created, model, { reasoning_content: event.reasoning })));
+            }
+        });
+
+        if (captureToolCalls && isEmptyToolCallResponse(content) && !isCodebaseActionRequest(messages) && retryFn) {
+            ({ content, reasoning } = await collectFn(await retryFn()));
+        }
+
+        const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
+        if (conversationalText) content = conversationalText;
+
+        if (toolCalls?.length) {
+            for (const call of toolCalls) {
+                controller.enqueue(encoder.encode(streamChunk(id, created, model, {
+                    tool_calls: [{ index: call.index, id: call.id, type: call.type, function: call.function }]
+                })));
+            }
+            controller.enqueue(encoder.encode(streamChunk(id, created, model, {}, 'tool_calls')));
+        } else {
+            if (captureToolCalls && reasoning) {
+                controller.enqueue(encoder.encode(streamChunk(id, created, model, { reasoning_content: reasoning })));
+            }
+            if (captureToolCalls && content) {
+                controller.enqueue(encoder.encode(streamChunk(id, created, model, { content })));
+            }
+            controller.enqueue(encoder.encode(streamChunk(id, created, model, {}, 'stop')));
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+    }
 
     return new Response(stream, {
         headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }
