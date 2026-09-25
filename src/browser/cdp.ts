@@ -48,9 +48,13 @@ export async function launchCdpBrowser(options: { headless?: boolean } = {}): Pr
     ...(options.headless === false ? [] : ['--headless=new']),
     'about:blank',
   ], { stdio: 'ignore' });
-  const cleanup = () => {
+  const exited = new Promise(resolve => child.once('exit', resolve));
+  const cleanup = async () => {
     child.kill();
-    rmSync(profile, { recursive: true, force: true });
+    await Promise.race([exited, Bun.sleep(5_000)]);
+    try {
+      rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch {}
   };
   try {
     await waitForEndpoint(port, 15_000);
@@ -59,11 +63,11 @@ export async function launchCdpBrowser(options: { headless?: boolean } = {}): Pr
       browser,
       async close() {
         await browser.close().catch(() => {});
-        cleanup();
+        await cleanup();
       },
     };
   } catch (error) {
-    cleanup();
+    await cleanup();
     throw error;
   }
 }
