@@ -40,7 +40,7 @@ describe('CredentialStore', () => {
     const raw = readFileSync(file, 'utf8');
     expect(raw).not.toContain('example.com');
     expect(raw).not.toContain('pw-a');
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600);
 
     const reopened = new CredentialStore(file, SECRET);
     expect(reopened.list('qwen').map(credential => credential.email)).toEqual(['a@example.com', 'b@example.com']);
