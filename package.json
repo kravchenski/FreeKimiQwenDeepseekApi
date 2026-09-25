@@ -65,7 +65,8 @@
         "puppeteer-extra": "^3.3.6",
         "puppeteer-extra-plugin-stealth": "^2.11.2",
         "winston": "^3.17.0",
-        "yaml": "^2.9.0"
+        "yaml": "^2.9.0",
+        "zod": "^4.6.5"
     },
     "devDependencies": {
         "form-data": "^4.0.2",
