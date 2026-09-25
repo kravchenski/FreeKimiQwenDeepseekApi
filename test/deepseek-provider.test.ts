@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { conversationKey, isEmptyToolCallResponse, messagesToPrompt, parseDeepSeekEvent } from '../src/providers/deepseek/client.ts';
 import { validateDeepSeekPowSolver } from '../src/providers/deepseek/pow.ts';
 import { hasValidDeepSeekAccounts } from '../src/providers/deepseek/accounts.ts';
+import { isDeepSeekUrl } from '../src/providers/deepseek/url.ts';
 
 describe('DeepSeek web provider', () => {
     test('keeps a stable conversation key during a pi tool loop', () => {
@@ -56,5 +57,20 @@ describe('DeepSeek web provider', () => {
 
     test('can inspect DeepSeek account availability without environment setup', () => {
         expect(typeof hasValidDeepSeekAccounts()).toBe('boolean');
+    });
+});
+
+describe('isDeepSeekUrl', () => {
+    test('accepts DeepSeek hosts over https', () => {
+        expect(isDeepSeekUrl('https://chat.deepseek.com/sign_in')).toBeTrue();
+        expect(isDeepSeekUrl('https://deepseek.com/')).toBeTrue();
+    });
+
+    test('rejects look-alike and non-https urls', () => {
+        expect(isDeepSeekUrl('https://evil.test/?next=deepseek.com')).toBeFalse();
+        expect(isDeepSeekUrl('https://deepseek.com.evil.test/')).toBeFalse();
+        expect(isDeepSeekUrl('https://evildeepseek.com/')).toBeFalse();
+        expect(isDeepSeekUrl('http://chat.deepseek.com/')).toBeFalse();
+        expect(isDeepSeekUrl('about:blank')).toBeFalse();
     });
 });
