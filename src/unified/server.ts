@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { serve } from 'bun';
 import crypto from 'crypto';
 
@@ -9,10 +10,24 @@ import { glmCompletion, parseGlmEvent } from '../providers/glm/client.ts';
 import { sapiensCompletion, parseSapiensEvent } from '../providers/sapiens/client.ts';
 import { stepfunCompletion, parseStepfunEvent } from '../providers/stepfun/client.ts';
 import { nvidiaCompletion, parseNvidiaEvent } from '../providers/nvidia/client.ts';
+import { bearerToken, tokenMatches } from '../gateway/security.ts';
 
-const app = new Hono();
+export const app = new Hono();
 const port = Number(process.env.UNIFIED_PORT || 3260);
 const host = process.env.HOST || '0.0.0.0';
+const apiKey = process.env.GATEWAY_API_KEY || undefined;
+const maxBodyBytes = 25 * 1024 * 1024;
+
+app.use('*', async (c, next) => {
+    if (c.req.path === '/health') return next();
+    if (tokenMatches(bearerToken(c.req.header('authorization')), apiKey)) return next();
+    return c.json({ error: { message: 'Invalid bearer token', type: 'authentication_error' } }, 401);
+});
+
+app.use('*', bodyLimit({
+    maxSize: maxBodyBytes,
+    onError: (c) => c.json({ error: { message: 'Request body too large', type: 'invalid_request_error' } }, 413),
+}));
 
 let allModels: string[] = [];
 
@@ -333,8 +348,13 @@ app.get('/api/v1/models', (c) => {
 });
 
 app.post('/api/chat/completions', async (c) => {
+    let body: Record<string, any>;
     try {
-        const body = await c.req.json();
+        body = await c.req.json();
+    } catch {
+        return c.json({ error: { message: 'Invalid JSON body', type: 'invalid_request_error' } }, 400);
+    }
+    try {
         const { messages, model = 'deepseek-default', stream = false, tools, functions } = body || {};
         if (!Array.isArray(messages) || messages.length === 0) {
             return c.json({ error: { message: 'messages must be a non-empty array' } }, 400);
@@ -558,9 +578,9 @@ export async function startUnifiedServer() {
   NVIDIA models use NVIDIA API; set NVIDIA_API_KEY in .env.
   No API keys required — authenticate via browser.
 
-  No API key required for OpenCode. Configure:
+  ${apiKey ? 'API key required (GATEWAY_API_KEY).' : 'No API key required. Set GATEWAY_API_KEY to protect the API.'} Configure OpenCode:
     OPENCODE_API_URL=http://${host === '0.0.0.0' ? 'localhost' : host}:${port}
-    OPENCODE_API_KEY=
+    OPENCODE_API_KEY=${apiKey ? '<GATEWAY_API_KEY>' : ''}
 `);
 }
 
