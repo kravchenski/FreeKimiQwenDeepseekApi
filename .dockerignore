@@ -24,3 +24,5 @@ venv
 __pycache__
 *.log
 *.pyc
+session
+data
