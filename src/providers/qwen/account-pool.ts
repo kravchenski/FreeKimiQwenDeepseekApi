@@ -1,5 +1,5 @@
 import type { Credential } from '../../core/accounts/credential-store.ts';
-import { qwenSignIn, type QwenSession } from './auth.ts';
+import type { QwenSession } from './auth.ts';
 
 interface CredentialSource {
   list(provider?: string): Credential[];
@@ -19,7 +19,7 @@ export class QwenAccountPool {
 
   constructor(
     private readonly source: CredentialSource,
-    private readonly signIn: SignIn = qwenSignIn,
+    private readonly signIn: SignIn,
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -43,7 +43,7 @@ export class QwenAccountPool {
         return session.token;
       } catch (error) {
         this.cooldownUntil.set(account.id, this.now() + FAILURE_COOLDOWN_MS);
-        errors.push(error instanceof Error ? error.message : String(error));
+        errors.push(`${account.id}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     if (errors.length) throw new Error(errors.join('; '));
