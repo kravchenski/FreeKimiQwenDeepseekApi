@@ -1,6 +1,5 @@
 import { hasValidTokens } from '../src/api/tokenManager.ts';
 import { hasValidDeepSeekAccounts } from '../src/providers/deepseek/accounts.ts';
-import { hasValidKimiAccounts } from '../src/providers/kimi/accounts.ts';
 import { parseStartupArgs, type Service } from '../src/cli/startup.ts';
 
 const usage = `Usage: bun run start:full -- [options]
@@ -40,7 +39,7 @@ async function requireSuccess(args: string[], env: Record<string, string> = {}) 
 function hasAccount(service: Service) {
     if (service === 'qwen') return hasValidTokens();
     if (service === 'deepseek') return hasValidDeepSeekAccounts() || Boolean(process.env.DEEPSEEK_TOKEN);
-    if (service === 'kimi') return hasValidKimiAccounts() || Boolean(process.env.KIMI_TOKEN) || Boolean(process.env.ZENMUX_API_KEY);
+    if (service === 'kimi') return Boolean(process.env.ZENMUX_API_KEY);
     return true;
 }
 
