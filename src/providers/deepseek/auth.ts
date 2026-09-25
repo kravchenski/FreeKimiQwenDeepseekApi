@@ -12,6 +12,7 @@ import {
     removeDeepSeekAccount,
     type DeepSeekAccount
 } from './accounts.ts';
+import { isDeepSeekUrl } from './url.ts';
 
 puppeteer.use(StealthPlugin());
 
@@ -93,16 +94,17 @@ export async function addDeepSeekAccountInteractive(replaceId?: string) {
     const { browser, processHandle } = await launchUserBrowser();
     try {
         const pages = await browser.pages();
-        const page = pages.find((candidate: any) => candidate.url().includes('deepseek.com')) || await browser.newPage();
+        const page = pages.find((candidate: any) => isDeepSeekUrl(candidate.url())) || await browser.newPage();
         let capturedToken: string | null = null;
         page.on('request', (request: any) => {
+            if (!isDeepSeekUrl(request.url())) return;
             const authorization = request.headers()?.authorization || '';
             if (authorization.toLowerCase().startsWith('bearer ')) {
                 capturedToken = authorization.slice(7).trim();
             }
         });
         await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
-        if (!page.url().includes('deepseek.com')) {
+        if (!isDeepSeekUrl(page.url())) {
             await page.goto(signInUrl, { waitUntil: 'domcontentloaded', timeout: 120_000 });
         }
         await prompt('После регистрации/входа и появления чата нажмите Enter...');

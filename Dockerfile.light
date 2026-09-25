@@ -11,5 +11,6 @@ WORKDIR /app
 COPY --from=builder --chown=bun:bun /app/node_modules ./node_modules
 COPY --chown=bun:bun package.json bun.lock deepseek.ts kimi.ts gateway.ts ./
 COPY --chown=bun:bun src ./src
-RUN install -d -o bun -g bun /app/session /app/logs
+RUN install -d -o bun -g bun /app/session /app/logs \
+ && find / -xdev -perm /6000 -type f -exec chmod a-s {} +
 USER bun

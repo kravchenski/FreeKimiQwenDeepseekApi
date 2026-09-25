@@ -51,7 +51,6 @@
         "example:streaming-test": "bun run examples/streaming-test.ts",
         "auth": "bun run scripts/auth.ts",
         "auth:deepseek": "bun run scripts/deepseek-auth.ts",
-        "auth:kimi": "bun run scripts/kimi-auth.ts",
         "setup:agents": "bun run scripts/setup-agents.ts",
         "setup:pi": "bun run scripts/setup-pi.ts",
         "models:sync": "bun run scripts/sync_models.ts",
@@ -66,7 +65,8 @@
         "puppeteer-extra": "^3.3.6",
         "puppeteer-extra-plugin-stealth": "^2.11.2",
         "winston": "^3.17.0",
-        "yaml": "^2.9.0"
+        "yaml": "^2.9.0",
+        "zod": "^4.6.5"
     },
     "devDependencies": {
         "form-data": "^4.0.2",

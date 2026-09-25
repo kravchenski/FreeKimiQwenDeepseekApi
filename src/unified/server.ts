@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { serve } from 'bun';
 import crypto from 'crypto';
 
@@ -9,10 +10,24 @@ import { glmCompletion, parseGlmEvent } from '../providers/glm/client.ts';
 import { sapiensCompletion, parseSapiensEvent } from '../providers/sapiens/client.ts';
 import { stepfunCompletion, parseStepfunEvent } from '../providers/stepfun/client.ts';
 import { nvidiaCompletion, parseNvidiaEvent } from '../providers/nvidia/client.ts';
+import { bearerToken, tokenMatches } from '../gateway/security.ts';
 
-const app = new Hono();
+export const app = new Hono();
 const port = Number(process.env.UNIFIED_PORT || 3260);
 const host = process.env.HOST || '0.0.0.0';
+const apiKey = process.env.GATEWAY_API_KEY || undefined;
+const maxBodyBytes = 25 * 1024 * 1024;
+
+app.use('*', async (c, next) => {
+    if (c.req.path === '/health') return next();
+    if (tokenMatches(bearerToken(c.req.header('authorization')), apiKey)) return next();
+    return c.json({ error: { message: 'Invalid bearer token', type: 'authentication_error' } }, 401);
+});
+
+app.use('*', bodyLimit({
+    maxSize: maxBodyBytes,
+    onError: (c) => c.json({ error: { message: 'Request body too large', type: 'invalid_request_error' } }, 413),
+}));
 
 let allModels: string[] = [];
 
@@ -231,44 +246,55 @@ async function handleWebProviderStream(
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
         async start(controller) {
-            controller.enqueue(encoder.encode(streamChunk(id, created, model, { role: 'assistant' })));
-
-            let { content, reasoning } = await collectFn(response, event => {
-                if (!captureToolCalls && event.content) {
-                    controller.enqueue(encoder.encode(streamChunk(id, created, model, { content: event.content })));
-                }
-                if (!captureToolCalls && event.reasoning) {
-                    controller.enqueue(encoder.encode(streamChunk(id, created, model, { reasoning_content: event.reasoning })));
-                }
-            });
-
-            if (captureToolCalls && isEmptyToolCallResponse(content) && !isCodebaseActionRequest(messages) && retryFn) {
-                ({ content, reasoning } = await collectFn(await retryFn()));
+            try {
+                await writeStream(controller);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message, type: 'upstream_error' } })}\n\n`));
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                controller.close();
             }
-
-            const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
-            if (conversationalText) content = conversationalText;
-
-            if (toolCalls?.length) {
-                for (const call of toolCalls) {
-                    controller.enqueue(encoder.encode(streamChunk(id, created, model, {
-                        tool_calls: [{ index: call.index, id: call.id, type: call.type, function: call.function }]
-                    })));
-                }
-                controller.enqueue(encoder.encode(streamChunk(id, created, model, {}, 'tool_calls')));
-            } else {
-                if (captureToolCalls && reasoning) {
-                    controller.enqueue(encoder.encode(streamChunk(id, created, model, { reasoning_content: reasoning })));
-                }
-                if (captureToolCalls && content) {
-                    controller.enqueue(encoder.encode(streamChunk(id, created, model, { content })));
-                }
-                controller.enqueue(encoder.encode(streamChunk(id, created, model, {}, 'stop')));
-            }
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-            controller.close();
         }
     });
+
+    async function writeStream(controller: ReadableStreamDefaultController) {
+        controller.enqueue(encoder.encode(streamChunk(id, created, model, { role: 'assistant' })));
+
+        let { content, reasoning } = await collectFn(response, event => {
+            if (!captureToolCalls && event.content) {
+                controller.enqueue(encoder.encode(streamChunk(id, created, model, { content: event.content })));
+            }
+            if (!captureToolCalls && event.reasoning) {
+                controller.enqueue(encoder.encode(streamChunk(id, created, model, { reasoning_content: event.reasoning })));
+            }
+        });
+
+        if (captureToolCalls && isEmptyToolCallResponse(content) && !isCodebaseActionRequest(messages) && retryFn) {
+            ({ content, reasoning } = await collectFn(await retryFn()));
+        }
+
+        const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
+        if (conversationalText) content = conversationalText;
+
+        if (toolCalls?.length) {
+            for (const call of toolCalls) {
+                controller.enqueue(encoder.encode(streamChunk(id, created, model, {
+                    tool_calls: [{ index: call.index, id: call.id, type: call.type, function: call.function }]
+                })));
+            }
+            controller.enqueue(encoder.encode(streamChunk(id, created, model, {}, 'tool_calls')));
+        } else {
+            if (captureToolCalls && reasoning) {
+                controller.enqueue(encoder.encode(streamChunk(id, created, model, { reasoning_content: reasoning })));
+            }
+            if (captureToolCalls && content) {
+                controller.enqueue(encoder.encode(streamChunk(id, created, model, { content })));
+            }
+            controller.enqueue(encoder.encode(streamChunk(id, created, model, {}, 'stop')));
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+    }
 
     return new Response(stream, {
         headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }
@@ -322,8 +348,13 @@ app.get('/api/v1/models', (c) => {
 });
 
 app.post('/api/chat/completions', async (c) => {
+    let body: Record<string, any>;
     try {
-        const body = await c.req.json();
+        body = await c.req.json();
+    } catch {
+        return c.json({ error: { message: 'Invalid JSON body', type: 'invalid_request_error' } }, 400);
+    }
+    try {
         const { messages, model = 'deepseek-default', stream = false, tools, functions } = body || {};
         if (!Array.isArray(messages) || messages.length === 0) {
             return c.json({ error: { message: 'messages must be a non-empty array' } }, 400);
@@ -350,7 +381,7 @@ app.post('/api/chat/completions', async (c) => {
         if (provider === 'deepseek') {
             const { response, sessionId } = await deepSeekCompletion({ messages: upstreamMessages, model, conversationId });
             const collect = (r: Response, cb?: (e: Record<string, any>) => void) => collectDeepSeekResponse(r, cb);
-            const retry = () => deepSeekCompletion({ messages, model, conversationId }).then(r => r.response);
+            const retry = () => deepSeekCompletion({ messages: upstreamMessages, model, conversationId }).then(r => r.response);
 
             if (stream) {
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, response, collect, retry);
@@ -375,7 +406,7 @@ app.post('/api/chat/completions', async (c) => {
             const result = await sapiensCompletion({ messages: upstreamMessages, model, conversationId });
             const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
                 collectSseResponse(parseSapiensEvent as any, r, cb);
-            const retry = () => sapiensCompletion({ messages, model, conversationId }).then(r => r.response);
+            const retry = () => sapiensCompletion({ messages: upstreamMessages, model, conversationId }).then(r => r.response);
 
             if (stream) {
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
@@ -399,7 +430,7 @@ app.post('/api/chat/completions', async (c) => {
             const result = await stepfunCompletion({ messages: upstreamMessages, model, conversationId });
             const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
                 collectSseResponse(parseStepfunEvent as any, r, cb);
-            const retry = () => stepfunCompletion({ messages, model, conversationId }).then(r => r.response);
+            const retry = () => stepfunCompletion({ messages: upstreamMessages, model, conversationId }).then(r => r.response);
 
             if (stream) {
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
@@ -423,7 +454,7 @@ app.post('/api/chat/completions', async (c) => {
             const result = await kimiCompletion({ messages: upstreamMessages, model, conversationId });
             const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
                 collectSseResponse(parseKimiEvent as any, r, cb);
-            const retry = () => kimiCompletion({ messages, model, conversationId }).then(r => r.response);
+            const retry = () => kimiCompletion({ messages: upstreamMessages, model, conversationId }).then(r => r.response);
 
             if (stream) {
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
@@ -447,7 +478,7 @@ app.post('/api/chat/completions', async (c) => {
             const result = await glmCompletion({ messages: upstreamMessages, model, conversationId });
             const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
                 collectSseResponse(parseGlmEvent as any, r, cb);
-            const retry = () => glmCompletion({ messages, model, conversationId }).then(r => r.response);
+            const retry = () => glmCompletion({ messages: upstreamMessages, model, conversationId }).then(r => r.response);
 
             if (stream) {
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
@@ -473,7 +504,7 @@ app.post('/api/chat/completions', async (c) => {
             if (stream) {
                 const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
                     collectSseResponse(parseNvidiaEvent as any, r, cb);
-                const retry = () => nvidiaCompletion({ messages, model, stream }).then(r => r.response);
+                const retry = () => nvidiaCompletion({ messages: upstreamMessages, model, stream }).then(r => r.response);
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
             }
 
@@ -547,9 +578,9 @@ export async function startUnifiedServer() {
   NVIDIA models use NVIDIA API; set NVIDIA_API_KEY in .env.
   No API keys required — authenticate via browser.
 
-  No API key required for OpenCode. Configure:
+  ${apiKey ? 'API key required (GATEWAY_API_KEY).' : 'No API key required. Set GATEWAY_API_KEY to protect the API.'} Configure OpenCode:
     OPENCODE_API_URL=http://${host === '0.0.0.0' ? 'localhost' : host}:${port}
-    OPENCODE_API_KEY=
+    OPENCODE_API_KEY=${apiKey ? '<GATEWAY_API_KEY>' : ''}
 `);
 }
 
