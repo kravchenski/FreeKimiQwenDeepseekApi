@@ -24,3 +24,16 @@ describe('security boundaries', () => {
         expect(isForwardableResponseHeader('Content-Length')).toBeFalse();
     });
 });
+
+describe('tokenMatches edge cases', () => {
+    test('rejects tokens of different length and prefixes', () => {
+        expect(tokenMatches('local', 'local-secret')).toBeFalse();
+        expect(tokenMatches('local-secret-extra', 'local-secret')).toBeFalse();
+        expect(tokenMatches('', 'local-secret')).toBeFalse();
+    });
+
+    test('compares multibyte tokens by bytes', () => {
+        expect(tokenMatches('ключ-✓', 'ключ-✓')).toBeTrue();
+        expect(tokenMatches('ключ-x', 'ключ-✓')).toBeFalse();
+    });
+});
