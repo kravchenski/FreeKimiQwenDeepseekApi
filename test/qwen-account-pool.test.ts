@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import crypto from 'node:crypto';
 
 import type { Credential } from '../src/core/accounts/credential-store.ts';
 import { QwenAccountPool } from '../src/providers/qwen/account-pool.ts';
-import { parseSignInResponse, qwenSignIn, type QwenSession } from '../src/providers/qwen/auth.ts';
+import { parseSignInResponse, type QwenSession } from '../src/providers/qwen/auth.ts';
 
 const credentials: Credential[] = [
   { id: 'qwen-a', provider: 'qwen', email: 'a@example.com', password: 'pw-a' },
@@ -14,28 +13,19 @@ function source(list: Credential[] = credentials) {
   return { list: () => list };
 }
 
+const unusedSignIn = async (): Promise<QwenSession> => { throw new Error('unexpected sign-in'); };
+
 function jwt(payload: Record<string, unknown>) {
   return `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.sig`;
 }
 
-describe('qwenSignIn', () => {
-  test('posts the sha256 password hash and returns the token with expiry', async () => {
-    let sent: any;
-    const fetchFn = (async (_url: string, init: RequestInit) => {
-      sent = JSON.parse(init.body as string);
-      return Response.json({ token: 'tok', expires_at: 2_000_000_000 });
-    }) as unknown as typeof fetch;
-
-    const session = await qwenSignIn('a@example.com', 'secret', { fetch: fetchFn });
-
-    expect(sent).toEqual({ email: 'a@example.com', password: crypto.createHash('sha256').update('secret').digest('hex') });
-    expect(session).toEqual({ token: 'tok', expiresAt: 2_000_000_000_000 });
+describe('parseSignInResponse', () => {
+  test('returns the token with expiry', () => {
+    expect(parseSignInResponse(200, { token: 'tok', expires_at: 2_000_000_000 })).toEqual({ token: 'tok', expiresAt: 2_000_000_000_000 });
   });
 
-  test('falls back to the jwt exp claim', async () => {
-    const token = jwt({ exp: 1_900_000_000 });
-    const fetchFn = (async () => Response.json({ token })) as unknown as typeof fetch;
-    expect((await qwenSignIn('a@example.com', 'pw', { fetch: fetchFn })).expiresAt).toBe(1_900_000_000_000);
+  test('falls back to the jwt exp claim', () => {
+    expect(parseSignInResponse(200, { token: jwt({ exp: 1_900_000_000 }) }).expiresAt).toBe(1_900_000_000_000);
   });
 
   test('understands the v2 envelope, including errors returned with status 200', () => {
@@ -45,9 +35,8 @@ describe('qwenSignIn', () => {
       .toThrow('Qwen sign-in failed: 200 email not found');
   });
 
-  test('reports the upstream reason on failure', async () => {
-    const fetchFn = (async () => Response.json({ detail: 'email not found' }, { status: 400 })) as unknown as typeof fetch;
-    await expect(qwenSignIn('x@example.com', 'pw', { fetch: fetchFn })).rejects.toThrow('400 email not found');
+  test('reports the upstream reason on failure', () => {
+    expect(() => parseSignInResponse(400, { detail: 'email not found' })).toThrow('400 email not found');
   });
 });
 
@@ -118,8 +107,8 @@ describe('QwenAccountPool', () => {
   });
 
   test('returns undefined without accounts and hides store errors from health', async () => {
-    expect(await new QwenAccountPool(source([])).token()).toBeUndefined();
-    const broken = new QwenAccountPool({ list: () => { throw new Error('ACCOUNTS_SECRET is not set'); } });
+    expect(await new QwenAccountPool(source([]), unusedSignIn).token()).toBeUndefined();
+    const broken = new QwenAccountPool({ list: () => { throw new Error('ACCOUNTS_SECRET is not set'); } }, unusedSignIn);
     expect(broken.hasAccounts()).toBeFalse();
     await expect(broken.token()).rejects.toThrow('ACCOUNTS_SECRET');
   });
