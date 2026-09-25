@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 
 import type { Credential } from '../src/core/accounts/credential-store.ts';
 import { QwenAccountPool } from '../src/providers/qwen/account-pool.ts';
-import { qwenSignIn, type QwenSession } from '../src/providers/qwen/auth.ts';
+import { parseSignInResponse, qwenSignIn, type QwenSession } from '../src/providers/qwen/auth.ts';
 
 const credentials: Credential[] = [
   { id: 'qwen-a', provider: 'qwen', email: 'a@example.com', password: 'pw-a' },
@@ -36,6 +36,13 @@ describe('qwenSignIn', () => {
     const token = jwt({ exp: 1_900_000_000 });
     const fetchFn = (async () => Response.json({ token })) as unknown as typeof fetch;
     expect((await qwenSignIn('a@example.com', 'pw', { fetch: fetchFn })).expiresAt).toBe(1_900_000_000_000);
+  });
+
+  test('understands the v2 envelope, including errors returned with status 200', () => {
+    expect(parseSignInResponse(200, { success: true, data: { token: 'v2-token', expires_at: 1_800_000_000 } }))
+      .toEqual({ token: 'v2-token', expiresAt: 1_800_000_000_000 });
+    expect(() => parseSignInResponse(200, { success: false, data: { code: 'Bad_Request', details: 'email not found' } }))
+      .toThrow('Qwen sign-in failed: 200 email not found');
   });
 
   test('reports the upstream reason on failure', async () => {

@@ -5,6 +5,8 @@ import { SESSION_DIR } from '../../config.ts';
 import { CredentialStore } from '../../core/accounts/credential-store.ts';
 import { OpenAICompatibleProvider, type OpenAICompatibleConfig } from '../openai-compatible.ts';
 import { QwenAccountPool } from './account-pool.ts';
+import { qwenSignIn } from './auth.ts';
+import { qwenBrowserSignIn } from './browser-login.ts';
 
 type Overrides = Partial<Pick<OpenAICompatibleConfig, 'env' | 'fetch' | 'resolveApiKey' | 'hasApiKey'>>;
 
@@ -24,8 +26,13 @@ export const QWEN_FALLBACK_MODELS = [
 
 export const QWEN_CREDENTIALS_FILE = path.resolve(SESSION_DIR, 'qwen', 'accounts.enc');
 
+export function qwenLogin(env: Record<string, string | undefined> = process.env) {
+  if (env.QWEN_LOGIN_MODE === 'http') return (email: string, password: string) => qwenSignIn(email, password);
+  return (email: string, password: string) => qwenBrowserSignIn(email, password, { headless: env.QWEN_BROWSER_HEADFUL !== '1' });
+}
+
 export function createQwenAccountPool(env: Record<string, string | undefined> = process.env) {
-  return new QwenAccountPool(new CredentialStore(QWEN_CREDENTIALS_FILE, env.ACCOUNTS_SECRET));
+  return new QwenAccountPool(new CredentialStore(QWEN_CREDENTIALS_FILE, env.ACCOUNTS_SECRET), qwenLogin(env));
 }
 
 export function createQwenProvider(overrides: Overrides = {}, accounts = createQwenAccountPool(overrides.env)) {
