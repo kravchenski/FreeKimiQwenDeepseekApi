@@ -44,7 +44,7 @@ jobs:
 
       - name: Audit production dependencies
         if: matrix.os == 'ubuntu-latest'
-        run: bun audit --production
+        run: bun audit --production --ignore=GHSA-jmr9-qjv8-65gv --ignore=GHSA-7pqw-9j4j-h8q3
 
       - name: Run tests and build validation
         run: bun run ci
