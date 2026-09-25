@@ -350,7 +350,7 @@ app.post('/api/chat/completions', async (c) => {
         if (provider === 'deepseek') {
             const { response, sessionId } = await deepSeekCompletion({ messages: upstreamMessages, model, conversationId });
             const collect = (r: Response, cb?: (e: Record<string, any>) => void) => collectDeepSeekResponse(r, cb);
-            const retry = () => deepSeekCompletion({ messages, model, conversationId }).then(r => r.response);
+            const retry = () => deepSeekCompletion({ messages: upstreamMessages, model, conversationId }).then(r => r.response);
 
             if (stream) {
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, response, collect, retry);
@@ -375,7 +375,7 @@ app.post('/api/chat/completions', async (c) => {
             const result = await sapiensCompletion({ messages: upstreamMessages, model, conversationId });
             const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
                 collectSseResponse(parseSapiensEvent as any, r, cb);
-            const retry = () => sapiensCompletion({ messages, model, conversationId }).then(r => r.response);
+            const retry = () => sapiensCompletion({ messages: upstreamMessages, model, conversationId }).then(r => r.response);
 
             if (stream) {
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
@@ -399,7 +399,7 @@ app.post('/api/chat/completions', async (c) => {
             const result = await stepfunCompletion({ messages: upstreamMessages, model, conversationId });
             const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
                 collectSseResponse(parseStepfunEvent as any, r, cb);
-            const retry = () => stepfunCompletion({ messages, model, conversationId }).then(r => r.response);
+            const retry = () => stepfunCompletion({ messages: upstreamMessages, model, conversationId }).then(r => r.response);
 
             if (stream) {
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
@@ -423,7 +423,7 @@ app.post('/api/chat/completions', async (c) => {
             const result = await kimiCompletion({ messages: upstreamMessages, model, conversationId });
             const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
                 collectSseResponse(parseKimiEvent as any, r, cb);
-            const retry = () => kimiCompletion({ messages, model, conversationId }).then(r => r.response);
+            const retry = () => kimiCompletion({ messages: upstreamMessages, model, conversationId }).then(r => r.response);
 
             if (stream) {
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
@@ -447,7 +447,7 @@ app.post('/api/chat/completions', async (c) => {
             const result = await glmCompletion({ messages: upstreamMessages, model, conversationId });
             const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
                 collectSseResponse(parseGlmEvent as any, r, cb);
-            const retry = () => glmCompletion({ messages, model, conversationId }).then(r => r.response);
+            const retry = () => glmCompletion({ messages: upstreamMessages, model, conversationId }).then(r => r.response);
 
             if (stream) {
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
@@ -473,7 +473,7 @@ app.post('/api/chat/completions', async (c) => {
             if (stream) {
                 const collect = (r: Response, cb?: (e: Record<string, any>) => void) =>
                     collectSseResponse(parseNvidiaEvent as any, r, cb);
-                const retry = () => nvidiaCompletion({ messages, model, stream }).then(r => r.response);
+                const retry = () => nvidiaCompletion({ messages: upstreamMessages, model, stream }).then(r => r.response);
                 return handleWebProviderStream(id, created, model, captureToolCalls, combinedTools, messages, result.response, collect, retry);
             }
 
