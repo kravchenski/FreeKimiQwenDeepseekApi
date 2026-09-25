@@ -33,7 +33,7 @@ describe('tokenMatches edge cases', () => {
     });
 
     test('compares multibyte tokens by bytes', () => {
-        expect(tokenMatches('ключ-✓', 'ключ-✓')).toBeTrue();
-        expect(tokenMatches('ключ-x', 'ключ-✓')).toBeFalse();
+        expect(tokenMatches('key-✓-€', 'key-✓-€')).toBeTrue();
+        expect(tokenMatches('key-x-€', 'key-✓-€')).toBeFalse();
     });
 });
