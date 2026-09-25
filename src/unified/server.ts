@@ -11,6 +11,7 @@ import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts
 import { collectChunks } from '../core/streaming/sse.ts';
 import { createNvidiaProvider, createZenMuxProviders } from '../providers/catalog.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
+import { createQwenProvider } from '../providers/qwen/provider.ts';
 
 export const app = new Hono();
 const port = Number(process.env.UNIFIED_PORT || 3260);
@@ -31,7 +32,8 @@ app.use('*', bodyLimit({
 
 export const registry = new ProviderRegistry()
     .register(createNvidiaProvider())
-    .register(createDeepSeekProvider());
+    .register(createDeepSeekProvider())
+    .register(createQwenProvider());
 for (const provider of createZenMuxProviders()) registry.register(provider);
 
 let allModels: ModelEntry[] = [];
@@ -289,7 +291,7 @@ export async function startUnifiedServer() {
   Providers: deepseek qwen kimi glm sapiens stepfun nvidia
   Kimi, GLM, Sapiens, and StepFun use ZenMux proxy; set ZENMUX_API_KEY in .env.
   NVIDIA models use NVIDIA API; set NVIDIA_API_KEY in .env.
-  No API keys required — authenticate via browser.
+  Qwen models use the Qwen API proxy (QWEN_API_BASE_URL); set QWEN_TOKEN or add accounts via bun run auth.
 
   ${apiKey ? 'API key required (GATEWAY_API_KEY).' : 'No API key required. Set GATEWAY_API_KEY to protect the API.'} Configure OpenCode:
     OPENCODE_API_URL=http://${host === '0.0.0.0' ? 'localhost' : host}:${port}

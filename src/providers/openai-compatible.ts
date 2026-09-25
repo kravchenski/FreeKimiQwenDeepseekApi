@@ -19,6 +19,9 @@ export interface OpenAICompatibleConfig {
   upstreamModel?: (model: string) => string;
   extraBody?: Record<string, unknown>;
   capabilities?: Partial<ModelCapabilities>;
+  resolveApiKey?: () => Promise<string | undefined>;
+  hasApiKey?: () => boolean;
+  upstreamModels?: boolean;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
 }
@@ -59,8 +62,12 @@ export class OpenAICompatibleProvider implements Provider {
     this.ownedBy = config.ownedBy;
   }
 
-  private get apiKey() {
+  private get envApiKey() {
     return (this.config.env ?? process.env)[this.config.apiKeyEnv];
+  }
+
+  private async apiKey() {
+    return this.envApiKey || (await this.config.resolveApiKey?.());
   }
 
   supports(model: string) {
@@ -68,7 +75,21 @@ export class OpenAICompatibleProvider implements Provider {
   }
 
   async listModels() {
-    return this.config.models;
+    if (!this.config.upstreamModels) return this.config.models;
+    try {
+      const apiKey = await this.apiKey();
+      if (!apiKey) return this.config.models;
+      const response = await (this.config.fetch ?? fetch)(`${this.config.baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) return this.config.models;
+      const body = await response.json() as { data?: Array<{ id?: unknown }> };
+      const ids = (body.data ?? []).map(model => model.id).filter((id): id is string => typeof id === 'string' && this.supports(id));
+      return ids.length ? ids : this.config.models;
+    } catch {
+      return this.config.models;
+    }
   }
 
   capabilities(): ModelCapabilities {
@@ -76,13 +97,13 @@ export class OpenAICompatibleProvider implements Provider {
   }
 
   health() {
-    return this.apiKey
+    return this.envApiKey || this.config.hasApiKey?.()
       ? { available: true }
       : { available: false, reason: `${this.config.apiKeyEnv} is not set` };
   }
 
   async stream(request: ChatRequest, context: ProviderContext = {}): Promise<ProviderStream> {
-    const apiKey = this.apiKey;
+    const apiKey = await this.apiKey();
     if (!apiKey) throw new Error(`${this.config.apiKeyEnv} is not set`);
     const model = this.config.upstreamModel?.(request.model) ?? request.model;
     const response = await (this.config.fetch ?? fetch)(`${this.config.baseUrl}/chat/completions`, {
