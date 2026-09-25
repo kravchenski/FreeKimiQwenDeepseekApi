@@ -43,7 +43,7 @@ export class QwenAccountPool {
         return session.token;
       } catch (error) {
         this.cooldownUntil.set(account.id, this.now() + FAILURE_COOLDOWN_MS);
-        errors.push(error instanceof Error ? error.message : String(error));
+        errors.push(`${account.id}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     if (errors.length) throw new Error(errors.join('; '));

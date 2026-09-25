@@ -88,7 +88,7 @@ describe('QwenAccountPool', () => {
     const pool = new QwenAccountPool(source(), async email => {
       throw new Error(`denied ${email}`);
     });
-    await expect(pool.token()).rejects.toThrow('denied a@example.com; denied b@example.com');
+    await expect(pool.token()).rejects.toThrow('qwen-a: denied a@example.com; qwen-b: denied b@example.com');
   });
 
   test('deduplicates concurrent sign-ins and supports invalidation', async () => {

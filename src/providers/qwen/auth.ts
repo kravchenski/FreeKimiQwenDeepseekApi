@@ -31,7 +31,7 @@ export async function qwenSignIn(
   const body = await response.json().catch(() => ({})) as { token?: unknown; expires_at?: unknown; detail?: unknown };
   if (!response.ok || typeof body.token !== 'string' || !body.token) {
     const detail = typeof body.detail === 'string' ? body.detail : 'no token in response';
-    throw new Error(`Qwen sign-in failed for ${email}: ${response.status} ${detail}`);
+    throw new Error(`Qwen sign-in failed: ${response.status} ${detail}`);
   }
   const expiresAt = typeof body.expires_at === 'number' ? body.expires_at * 1000 : jwtExpiry(body.token);
   return { token: body.token, expiresAt };
