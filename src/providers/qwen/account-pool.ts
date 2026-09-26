@@ -1,3 +1,4 @@
+import type { AccountPool } from '../../core/accounts/account-pool.ts';
 import type { Credential } from '../../core/accounts/credential-store.ts';
 import type { QwenSession } from './auth.ts';
 
@@ -8,20 +9,33 @@ interface CredentialSource {
 type SignIn = (email: string, password: string) => Promise<QwenSession>;
 
 const EXPIRY_MARGIN_MS = 60_000;
-const FAILURE_COOLDOWN_MS = 10 * 60_000;
+const DEFAULT_RETRY_AFTER_MS = 60_000;
+
+export function retryAfterMs(header: string | null, now: number) {
+  if (!header) return DEFAULT_RETRY_AFTER_MS;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(header);
+  return Number.isNaN(date) ? DEFAULT_RETRY_AFTER_MS : Math.max(date - now, 0);
+}
 
 export class QwenAccountPool {
   private credentials?: Credential[];
   private readonly sessions = new Map<string, QwenSession>();
   private readonly pending = new Map<string, Promise<QwenSession>>();
-  private readonly cooldownUntil = new Map<string, number>();
-  private pointer = 0;
+  private accountPool?: AccountPool;
 
   constructor(
     private readonly source: CredentialSource,
     private readonly signIn: SignIn,
+    private readonly createPool: () => AccountPool,
     private readonly now: () => number = Date.now,
   ) {}
+
+  private get pool() {
+    this.accountPool ??= this.createPool();
+    return this.accountPool;
+  }
 
   hasAccounts() {
     try {
@@ -33,31 +47,53 @@ export class QwenAccountPool {
 
   async token() {
     const accounts = this.accounts();
+    const remaining = new Set(accounts.map(account => account.id));
     const errors: string[] = [];
-    for (let attempt = 0; attempt < accounts.length; attempt++) {
-      const account = accounts[(this.pointer + attempt) % accounts.length]!;
-      if ((this.cooldownUntil.get(account.id) ?? 0) > this.now()) continue;
+    while (remaining.size) {
+      const id = this.pool.acquire([...remaining]);
+      if (!id) break;
+      remaining.delete(id);
+      const account = accounts.find(candidate => candidate.id === id)!;
       try {
-        const session = await this.session(account);
-        this.pointer = (this.pointer + attempt + 1) % accounts.length;
-        return session.token;
+        return (await this.session(account)).token;
       } catch (error) {
-        this.cooldownUntil.set(account.id, this.now() + FAILURE_COOLDOWN_MS);
-        errors.push(`${account.id}: ${error instanceof Error ? error.message : String(error)}`);
+        const message = error instanceof Error ? error.message : String(error);
+        this.pool.markFailure(id, message);
+        errors.push(`${id}: ${message}`);
       }
     }
     if (errors.length) throw new Error(errors.join('; '));
+    if (accounts.length) throw new Error('All Qwen accounts are cooling down or unavailable');
     return undefined;
   }
 
-  invalidate(token: string) {
-    for (const [id, session] of this.sessions) {
-      if (session.token === token) this.sessions.delete(id);
+  report(token: string, response: Response) {
+    const id = this.accountFor(token);
+    if (!id) return;
+    if (response.ok) {
+      this.pool.markSuccess(id);
+    } else if (response.status === 401 || response.status === 403) {
+      this.sessions.delete(id);
+      this.pool.markFailure(id, `upstream ${response.status}`);
+    } else if (response.status === 429) {
+      this.pool.markRateLimited(id, this.now() + retryAfterMs(response.headers.get('retry-after'), this.now()));
+    } else if (response.status >= 500) {
+      this.pool.markFailure(id, `upstream ${response.status}`);
     }
   }
 
+  private accountFor(token: string) {
+    for (const [id, session] of this.sessions) {
+      if (session.token === token) return id;
+    }
+    return undefined;
+  }
+
   private accounts() {
-    this.credentials ??= this.source.list('qwen');
+    if (!this.credentials) {
+      this.credentials = this.source.list('qwen');
+      if (this.credentials.length) this.pool.sync(this.credentials.map(account => account.id));
+    }
     return this.credentials;
   }
 

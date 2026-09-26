@@ -2,12 +2,14 @@ import path from 'node:path';
 
 import { getAvailableToken, hasValidTokens } from '../../api/tokenManager.ts';
 import { SESSION_DIR } from '../../config.ts';
+import { AccountPool } from '../../core/accounts/account-pool.ts';
 import { CredentialStore } from '../../core/accounts/credential-store.ts';
+import { openDatabase } from '../../core/store/database.ts';
 import { OpenAICompatibleProvider, type OpenAICompatibleConfig } from '../openai-compatible.ts';
 import { QwenAccountPool } from './account-pool.ts';
 import { qwenBrowserSignIn } from './browser-login.ts';
 
-type Overrides = Partial<Pick<OpenAICompatibleConfig, 'env' | 'fetch' | 'resolveApiKey' | 'hasApiKey'>>;
+type Overrides = Partial<Pick<OpenAICompatibleConfig, 'env' | 'fetch' | 'resolveApiKey' | 'hasApiKey' | 'reportResult'>>;
 
 const DEFAULT_BASE_URL = 'https://qwen.aikit.club/v1';
 
@@ -30,7 +32,11 @@ export function qwenLogin(env: Record<string, string | undefined> = process.env)
 }
 
 export function createQwenAccountPool(env: Record<string, string | undefined> = process.env) {
-  return new QwenAccountPool(new CredentialStore(QWEN_CREDENTIALS_FILE, env.ACCOUNTS_SECRET), qwenLogin(env));
+  return new QwenAccountPool(
+    new CredentialStore(QWEN_CREDENTIALS_FILE, env.ACCOUNTS_SECRET),
+    qwenLogin(env),
+    () => new AccountPool(openDatabase(), 'qwen'),
+  );
 }
 
 export function createQwenProvider(overrides: Overrides = {}, accounts = createQwenAccountPool(overrides.env)) {
@@ -47,6 +53,7 @@ export function createQwenProvider(overrides: Overrides = {}, accounts = createQ
     capabilities: { reasoning: true, vision: true },
     resolveApiKey: async () => (await accounts.token()) ?? (await getAvailableToken())?.token,
     hasApiKey: () => accounts.hasAccounts() || hasValidTokens(),
+    reportResult: (apiKey, response) => accounts.report(apiKey, response),
     ...overrides,
   });
 }

@@ -67,4 +67,17 @@ describe('Qwen API provider', () => {
     await expect(qwen.stream({ model: 'qwen3.7-plus', messages: [] })).rejects.toThrow('QWEN_TOKEN');
     expect(calls).toHaveLength(0);
   });
+
+  test('reports every upstream response with the token that was used', async () => {
+    const reports: Array<[string, number]> = [];
+    const { fetchFn } = recordingFetch(() => new Response('slow down', { status: 429 }));
+    const qwen = createQwenProvider({
+      ...noPool,
+      env: { QWEN_TOKEN: 'jwt' },
+      fetch: fetchFn,
+      reportResult: (apiKey, response) => reports.push([apiKey, response.status]),
+    });
+    await expect(qwen.stream({ model: 'qwen3.7-plus', messages: [] })).rejects.toThrow('429');
+    expect(reports).toEqual([['jwt', 429]]);
+  });
 });
