@@ -2,6 +2,7 @@ export type ProviderErrorKind = 'rate_limit' | 'quota_exhausted' | 'auth' | 'una
 
 const MAX_DETAIL_LENGTH = 500;
 const QUOTA_PATTERN = /quota|insufficient|exceeded your|billing|balance|credit/i;
+const EXPIRED_AUTH_PATTERN = /token (?:has )?expired|log ?in again|invalid (?:access )?token|not authenticated/i;
 
 export class ProviderError extends Error {
   constructor(
@@ -18,7 +19,7 @@ export class ProviderError extends Error {
 export function classifyStatus(status: number, body: string): ProviderErrorKind {
   if (status === 402) return 'quota_exhausted';
   if (status === 429) return QUOTA_PATTERN.test(body) ? 'quota_exhausted' : 'rate_limit';
-  if (status === 401 || status === 403) return 'auth';
+  if (status === 401 || status === 403 || EXPIRED_AUTH_PATTERN.test(body)) return 'auth';
   if (status === 503) return 'unavailable';
   return 'upstream';
 }

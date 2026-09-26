@@ -6,8 +6,12 @@ import type {
   ProviderContext,
   ProviderStream,
 } from '../core/providers/provider.ts';
-import { ProviderError, upstreamError } from '../core/providers/errors.ts';
+import { ProviderError, upstreamError, type ProviderErrorKind } from '../core/providers/errors.ts';
 import { readLines } from '../core/streaming/sse.ts';
+
+export type UpstreamOutcome =
+  | { ok: true }
+  | { ok: false; kind: ProviderErrorKind; status?: number; retryAfterSeconds?: number };
 
 export interface OpenAICompatibleConfig {
   id: string;
@@ -23,7 +27,7 @@ export interface OpenAICompatibleConfig {
   resolveApiKey?: () => Promise<string | undefined>;
   hasApiKey?: () => boolean;
   upstreamModels?: boolean;
-  reportResult?: (apiKey: string, response: Response) => void;
+  reportResult?: (apiKey: string, outcome: UpstreamOutcome) => void;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
 }
@@ -114,10 +118,12 @@ export class OpenAICompatibleProvider implements Provider {
       body: JSON.stringify({ ...this.config.extraBody, model, messages: request.messages, stream: true }),
       signal: context.signal,
     });
-    this.config.reportResult?.(apiKey, response);
     if (!response.ok) {
-      throw await upstreamError(`${this.config.label} completion`, response);
+      const error = await upstreamError(`${this.config.label} completion`, response);
+      this.config.reportResult?.(apiKey, { ok: false, kind: error.kind, status: error.status, retryAfterSeconds: error.retryAfterSeconds });
+      throw error;
     }
+    this.config.reportResult?.(apiKey, { ok: true });
     return { chunks: openAIChunks(response.body) };
   }
 }

@@ -68,16 +68,24 @@ describe('Qwen API provider', () => {
     expect(calls).toHaveLength(0);
   });
 
-  test('reports every upstream response with the token that was used', async () => {
-    const reports: Array<[string, number]> = [];
-    const { fetchFn } = recordingFetch(() => new Response('slow down', { status: 429 }));
+  test('reports classified upstream outcomes with the token that was used', async () => {
+    const reports: Array<[string, unknown]> = [];
+    let reply = () => new Response('{"error":{"message":"Token has expired, please log in again."}}', { status: 500 });
+    const { fetchFn } = recordingFetch(() => reply());
     const qwen = createQwenProvider({
       ...noPool,
       env: { QWEN_TOKEN: 'jwt' },
       fetch: fetchFn,
-      reportResult: (apiKey, response) => reports.push([apiKey, response.status]),
+      reportResult: (apiKey, outcome) => reports.push([apiKey, outcome]),
     });
-    await expect(qwen.stream({ model: 'qwen3.7-plus', messages: [] })).rejects.toThrow('429');
-    expect(reports).toEqual([['jwt', 429]]);
+    const error = await qwen.stream({ model: 'qwen3.7-plus', messages: [] }).catch(caught => caught);
+    expect(error.kind).toBe('auth');
+    reply = () => new Response('data: [DONE]\n\n');
+    await qwen.stream({ model: 'qwen3.7-plus', messages: [] });
+    expect(reports).toEqual([
+      ['jwt', { ok: false, kind: 'auth', status: 500, retryAfterSeconds: undefined }],
+      ['jwt', { ok: true }],
+    ]);
   });
+
 });

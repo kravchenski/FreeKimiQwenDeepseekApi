@@ -11,6 +11,8 @@ describe('provider errors', () => {
     expect(classifyStatus(403, '')).toBe('auth');
     expect(classifyStatus(503, '')).toBe('unavailable');
     expect(classifyStatus(500, '')).toBe('upstream');
+    expect(classifyStatus(500, '{"error":{"message":"Token has expired, please log in again."}}')).toBe('auth');
+    expect(classifyStatus(400, 'Invalid token')).toBe('auth');
   });
 
   test('builds errors from responses with retry-after and a bounded body', async () => {

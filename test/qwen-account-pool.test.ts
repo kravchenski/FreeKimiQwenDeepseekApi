@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import type { Credential } from '../src/core/accounts/credential-store.ts';
 import { AccountPool } from '../src/core/accounts/account-pool.ts';
 import { openDatabase } from '../src/core/store/database.ts';
-import { QwenAccountPool, retryAfterMs } from '../src/providers/qwen/account-pool.ts';
+import { QwenAccountPool } from '../src/providers/qwen/account-pool.ts';
 import { parseSignInResponse, type QwenSession } from '../src/providers/qwen/auth.ts';
 
 const credentials: Credential[] = [
@@ -116,23 +116,28 @@ describe('QwenAccountPool', () => {
     expect(logins).toBe(1);
   });
 
-  test('maps upstream responses onto account health', async () => {
+  test('maps upstream outcomes onto account health', async () => {
     let logins = 0;
     const { pool, clock, status } = harness(async () => ({ token: `t${++logins}` }), credentials.slice(0, 1));
     const token = (await pool.token())!;
 
-    pool.report(token, new Response('', { status: 429, headers: { 'retry-after': '120' } }));
+    pool.report(token, { ok: false, kind: 'rate_limit', status: 429, retryAfterSeconds: 120 });
     expect(status()).toEqual({ 'qwen-a': 'cooldown' });
     clock.now += 120_000;
 
-    pool.report(token, new Response('', { status: 200 }));
+    pool.report(token, { ok: true });
     expect(status()).toEqual({ 'qwen-a': 'healthy' });
 
-    pool.report(token, new Response('', { status: 401 }));
+    pool.report(token, { ok: false, kind: 'quota_exhausted', status: 429 });
+    expect(status()).toEqual({ 'qwen-a': 'quota_exhausted' });
+    clock.now += 60 * 60_000;
+    pool.report(token, { ok: true });
+
+    pool.report(token, { ok: false, kind: 'auth', status: 500 });
     clock.now += 30_000;
     expect(await pool.token()).toBe('t2');
 
-    pool.report('unknown-token', new Response('', { status: 500 }));
+    pool.report('unknown-token', { ok: false, kind: 'upstream', status: 500 });
     expect(status()).toEqual({ 'qwen-a': 'healthy' });
   });
 
@@ -143,14 +148,5 @@ describe('QwenAccountPool', () => {
     });
     expect(broken.hasAccounts()).toBeFalse();
     await expect(broken.token()).rejects.toThrow('ACCOUNTS_SECRET');
-  });
-});
-
-describe('retryAfterMs', () => {
-  test('parses seconds and http dates with a default', () => {
-    expect(retryAfterMs('30', 0)).toBe(30_000);
-    expect(retryAfterMs(new Date(90_000).toUTCString(), 0)).toBe(90_000);
-    expect(retryAfterMs(null, 0)).toBe(60_000);
-    expect(retryAfterMs('soon', 0)).toBe(60_000);
   });
 });
