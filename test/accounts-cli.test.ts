@@ -110,5 +110,15 @@ describe('accounts CLI', () => {
     await runAccountsCommand(['add', 'qwen', '--browser'], deps);
     expect(saved.at(-1)).toMatchObject({ email: 'typed@example.com', token: 'tok2' });
   });
+
+  test('opens https sites in the browser profile and rejects anything else', async () => {
+    const { deps } = harness();
+    const opened: string[] = [];
+    deps.openWindow = async url => { opened.push(url); };
+    expect(await runAccountsCommand(['open', 'https://www.kimi.com'], deps)).toBe(0);
+    expect(opened).toEqual(['https://www.kimi.com/']);
+    await expect(runAccountsCommand(['open', 'http://chat.z.ai'], deps)).rejects.toThrow('https');
+    await expect(runAccountsCommand(['open', 'kimi.com'], deps)).rejects.toThrow('full https URL');
+  });
 });
 
