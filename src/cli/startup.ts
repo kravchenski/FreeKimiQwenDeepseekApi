@@ -1,22 +1,20 @@
-export type Service = 'qwen' | 'deepseek' | 'gateway';
+export type Service = 'unified' | 'deepseek';
 
 export type StartupOptions = {
     service: Service;
     runChecks: boolean;
     runAuth: boolean;
     forceAuth: boolean;
-    syncModels: boolean;
     checkOnly: boolean;
     help: boolean;
 };
 
 export function parseStartupArgs(args: string[]): StartupOptions {
     const options: StartupOptions = {
-        service: 'qwen',
+        service: 'unified',
         runChecks: true,
         runAuth: true,
         forceAuth: false,
-        syncModels: true,
         checkOnly: false,
         help: false
     };
@@ -26,11 +24,9 @@ export function parseStartupArgs(args: string[]): StartupOptions {
         if (arg === '--auth') options.forceAuth = true;
         else if (arg === '--skip-auth') options.runAuth = false;
         else if (arg === '--skip-checks') options.runChecks = false;
-        else if (arg === '--skip-sync') options.syncModels = false;
         else if (arg === '--check-only') {
             options.checkOnly = true;
             options.runAuth = false;
-            options.syncModels = false;
         } else if (arg === '--service') {
             const value = args[++index];
             if (!isService(value)) throw new Error(`Unknown service: ${value || '(missing)'}`);
@@ -43,11 +39,10 @@ export function parseStartupArgs(args: string[]): StartupOptions {
         else throw new Error(`Unknown option: ${arg}`);
     }
 
-    if (options.service !== 'qwen') options.syncModels = false;
-    if (options.service === 'gateway') options.runAuth = false;
+    if (options.service === 'unified') options.runAuth = false;
     return options;
 }
 
 function isService(value: unknown): value is Service {
-    return value === 'qwen' || value === 'deepseek' || value === 'gateway';
+    return value === 'unified' || value === 'deepseek';
 }

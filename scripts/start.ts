@@ -1,4 +1,3 @@
-import { hasValidTokens } from '../src/api/tokenManager.ts';
 import { hasValidDeepSeekAccounts } from '../src/providers/deepseek/accounts.ts';
 import { parseStartupArgs, type Service } from '../src/cli/startup.ts';
 
@@ -7,11 +6,10 @@ const usage = `Usage: bun run start:full -- [options]
 Cross-platform install, validation, authentication, and startup.
 
 Options:
-  --service <qwen|deepseek|gateway>       Service to start (default: qwen)
+  --service <unified|deepseek>      Service to start (default: unified)
   --auth                            Always open the selected provider login flow
   --skip-auth                       Skip account validation and login
   --skip-checks                     Skip offline analysis, tests, and build validation
-  --skip-sync                       Skip Qwen model synchronization
   --check-only                      Install dependencies, run checks, and exit
   -h, --help                        Show this help
 `;
@@ -37,20 +35,17 @@ async function requireSuccess(args: string[], env: Record<string, string> = {}) 
 }
 
 function hasAccount(service: Service) {
-    if (service === 'qwen') return hasValidTokens();
     if (service === 'deepseek') return hasValidDeepSeekAccounts() || Boolean(process.env.DEEPSEEK_TOKEN);
     return true;
 }
 
 async function authenticate(service: Service) {
-    if (service === 'qwen') return requireSuccess(['run', 'auth', '--', '--add']);
     if (service === 'deepseek') return requireSuccess(['run', 'auth:deepseek', '--', '--add']);
 }
 
 async function start(service: Service) {
-    const script = service === 'qwen' ? 'start' :
-        service === 'deepseek' ? 'start:deepseek' : 'start:gateway';
-    const code = await run(['run', script], service === 'gateway' ? {} : { SKIP_ACCOUNT_MENU: 'true' });
+    const script = service === 'deepseek' ? 'start:deepseek' : 'start';
+    const code = await run(['run', script], { SKIP_ACCOUNT_MENU: 'true' });
     process.exitCode = code;
 }
 
@@ -62,10 +57,7 @@ export async function main(args = process.argv.slice(2)) {
     }
 
     log('Installing dependencies from bun.lock');
-    await requireSuccess(['install', '--frozen-lockfile'], {
-        PUPPETEER_SKIP_DOWNLOAD: 'true',
-        PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
-    });
+    await requireSuccess(['install', '--frozen-lockfile']);
 
     if (options.runChecks) {
         log('Running static analysis, tests, and build validation');
@@ -78,12 +70,6 @@ export async function main(args = process.argv.slice(2)) {
         log(`Opening ${options.service} authentication`);
         await authenticate(options.service);
         if (!hasAccount(options.service)) throw new Error(`Authentication finished without an active ${options.service} account.`);
-    }
-
-    if (options.syncModels) {
-        log('Synchronizing Qwen model metadata');
-        const code = await run(['run', 'models:sync']);
-        if (code !== 0) console.warn('Model synchronization failed; using src/AvailableModels.txt');
     }
 
     log(`Starting ${options.service}`);

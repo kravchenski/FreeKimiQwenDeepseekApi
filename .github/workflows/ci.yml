@@ -26,9 +26,6 @@ jobs:
           - ubuntu-latest
           - macos-latest
           - windows-latest
-    env:
-      PUPPETEER_SKIP_DOWNLOAD: "true"
-      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
     steps:
       - name: Checkout
@@ -44,7 +41,7 @@ jobs:
 
       - name: Audit production dependencies
         if: matrix.os == 'ubuntu-latest'
-        run: bun audit --production --ignore=GHSA-jmr9-qjv8-65gv --ignore=GHSA-7pqw-9j4j-h8q3
+        run: bun audit --production
 
       - name: Run tests and build validation
         run: bun run ci

@@ -35,7 +35,7 @@ export type InstallResult = {
     detail?: string;
 };
 
-const DEFAULT_BASE_URL = 'http://127.0.0.1:3263/api';
+const DEFAULT_BASE_URL = 'http://127.0.0.1:3260/api';
 const DEFAULT_BRIDGE_URL = 'http://127.0.0.1:4000';
 const DEFAULT_API_KEY = 'dummy-key';
 const DEFAULT_MODEL = 'qwen3-coder-plus';

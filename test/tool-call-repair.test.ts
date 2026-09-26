@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 
-import { buildConversationScopeFromHistory } from '../src/api/routes.ts';
 import {
     extractFirstToolCallObject,
     hasObviouslyBrokenEditArguments,
@@ -133,23 +132,6 @@ describe('tool call JSON repair', () => {
             name: 'read',
             arguments: { path: '/tmp/arena.html' }
         });
-    });
-
-    test('keeps a stable scope while a pi tool-loop appends messages', () => {
-        const initial = [
-            { role: 'system', content: 'coding agent' },
-            { role: 'user', content: 'build the feature' }
-        ];
-        const continued = [
-            ...initial,
-            { role: 'assistant', tool_calls: [{ function: { name: 'read' } }] },
-            { role: 'tool', content: 'file contents' },
-            { role: 'assistant', content: 'working' }
-        ];
-
-        expect(buildConversationScopeFromHistory(continued)).toBe(
-            buildConversationScopeFromHistory(initial)
-        );
     });
 
     test('recovers broken bash quoting but rejects conversational echo calls', () => {

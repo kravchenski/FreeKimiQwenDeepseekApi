@@ -8,8 +8,8 @@
 3. Перейдите в **Настройки (Settings)** → **Подключения (Connections)**
 
 ### Шаг 2: Добавление API эндпоинта
-- **Базовый URL (Base URL)**: `http://host.docker.internal:3264/api` (для Docker)
-  - Или: `http://localhost:3264/api` (для локального запуска)
+- **Базовый URL (Base URL)**: `http://host.docker.internal:3260/v1` (для Docker)
+  - Или: `http://localhost:3260/v1` (для локального запуска)
 - **API-ключ (API Key)**: любой (если файл `Authorization.txt` пустой)
 
 ## 2. Настройка генерации изображений
@@ -20,7 +20,7 @@
 
 ### Шаг 2: Настройка параметров
 - **Движок (Engine)**: OpenAI Compatible
-- **Базовый URL (Base URL)**: `http://host.docker.internal:3264/api`
+- **Базовый URL (Base URL)**: `http://host.docker.internal:3260/v1`
 - **API-ключ (API Key)**: любой (если авторизация отключена)
 - **Модель (Model)**: `qwen-image-plus`
 
@@ -78,7 +78,7 @@ services:
     ports:
       - "3000:8080"
     environment:
-      - OPENAI_API_BASE_URLS=http://host.docker.internal:3264/api
+      - OPENAI_API_BASE_URLS=http://host.docker.internal:3260/v1
       - OPENAI_API_KEYS=dummy-key
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -106,7 +106,7 @@ services:
 
 ### "Connection refused" / «соединение отклонено»
 - Убедитесь, что FreeQwenApi запущен
-- Проверьте порт (по умолчанию 3264)
+- Проверьте порт (по умолчанию 3260)
 
 ### "API key required" / «требуется API-ключ»
 - Добавьте любой API ключ в настройках Open WebUI
@@ -114,11 +114,8 @@ services:
 
 ### "Model not found" / «модель не найдена»
 - Обновите список моделей в Open WebUI
-- Проверьте, что модель есть в `AvaibleModels.txt`
+- Проверьте `GET http://localhost:3260/v1/models`
 
-### Генерация изображений не работает
-- Проверьте: `GET http://localhost:3264/api/images/status`
-- Установите `DASHSCOPE_API_KEY` если не установлен
 
 ## 8. Команды Open WebUI
 

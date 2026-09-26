@@ -1,6 +1,5 @@
 import path from 'node:path';
 
-import { getAvailableToken, hasValidTokens } from '../../api/tokenManager.ts';
 import { SESSION_DIR } from '../../config.ts';
 import { AccountPool } from '../../core/accounts/account-pool.ts';
 import { CredentialStore } from '../../core/accounts/credential-store.ts';
@@ -51,8 +50,8 @@ export function createQwenProvider(overrides: Overrides = {}, accounts = createQ
     models: QWEN_FALLBACK_MODELS,
     upstreamModels: true,
     capabilities: { reasoning: true, vision: true },
-    resolveApiKey: async () => (await accounts.token()) ?? (await getAvailableToken())?.token,
-    hasApiKey: () => accounts.hasAccounts() || hasValidTokens(),
+    resolveApiKey: () => accounts.token(),
+    hasApiKey: () => accounts.hasAccounts(),
     reportResult: (apiKey, outcome) => accounts.report(apiKey, outcome),
     ...overrides,
   });

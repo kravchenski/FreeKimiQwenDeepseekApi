@@ -26,10 +26,9 @@ docker compose up -d
 | Проверка OpenAI-совместимости | `bun run example:compatibility` |
 | Прямой запрос через `fetch` | `bun run example:direct` |
 | Прямой запрос через Axios | `bun run example:axios` |
-| Загрузка файла | `bun run example:file-upload` |
 
-Исходники TypeScript находятся в [`openai-sdk/`](openai-sdk/),
-[`direct-api/`](direct-api/) и [`file-upload/`](file-upload/).
+Исходники TypeScript находятся в [`openai-sdk/`](openai-sdk/) и
+[`direct-api/`](direct-api/).
 
 ## Python
 
