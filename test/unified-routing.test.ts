@@ -147,5 +147,39 @@ describe('unified server routing', () => {
     expect((await responses({}, 'Bearer wrong')).status).toBe(401);
     expect((await responses({ model: 'gpt-unknown' })).status).toBe(400);
   });
+
+  test('serves the Anthropic Messages API with x-api-key auth', async () => {
+    const messages = (body: Record<string, unknown>, headers: Record<string, string> = { 'x-api-key': key }) =>
+      server.app.fetch(new Request('http://local/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'anthropic-version': '2023-06-01', ...headers },
+        body: JSON.stringify({ model: 'fake-model', max_tokens: 100, messages: [{ role: 'user', content: 'hi' }], ...body }),
+      }));
+
+    replies.push([{ type: 'content', text: 'Hello Claude Code' }]);
+    const plain = await messages({});
+    const json = await plain.json() as any;
+    expect(plain.status).toBe(200);
+    expect(json).toMatchObject({ type: 'message', role: 'assistant', stop_reason: 'end_turn', model: 'fake-model' });
+    expect(json.content).toEqual([{ type: 'text', text: 'Hello Claude Code' }]);
+
+    replies.push([{ type: 'content', text: 'streamed' }]);
+    const streamed = await (await messages({ stream: true })).text();
+    expect(streamed.startsWith('event: message_start')).toBeTrue();
+    expect(streamed).toContain('"text":"streamed"');
+    expect(streamed.trim().endsWith('"type":"message_stop"}')).toBeTrue();
+
+    expect((await messages({}, { 'x-api-key': 'wrong' })).status).toBe(401);
+    const unknown = await messages({ model: 'gpt-unknown' });
+    expect(unknown.status).toBe(400);
+    expect(((await unknown.json()) as any).type).toBe('error');
+
+    const count = await server.app.fetch(new Request('http://local/v1/messages/count_tokens', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key },
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hello there' }] }),
+    }));
+    expect(((await count.json()) as any).input_tokens).toBeGreaterThan(0);
+  });
 });
 

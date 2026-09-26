@@ -8,6 +8,7 @@ import { isEmptyToolCallResponse } from '../providers/deepseek/client.ts';
 import { conversationalShellText, parseToolCallJson, recoverBrokenBashToolCall, toolsToPrompt } from '../api/routes.ts';
 import { bearerToken, tokenMatches } from '../gateway/security.ts';
 import { chatResponseToResponses, responsesSseEvents, responsesToChatRequest } from '../gateway/responses.ts';
+import { anthropicError, anthropicSseEvents, anthropicToChatRequest, chatToAnthropicMessage, estimateInputTokens } from '../api/anthropic/messages.ts';
 import type { ProviderStream } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
 import { collectChunks } from '../core/streaming/sse.ts';
@@ -25,7 +26,7 @@ const maxBodyBytes = 25 * 1024 * 1024;
 
 app.use('*', async (c, next) => {
     if (c.req.path === '/health') return next();
-    if (tokenMatches(bearerToken(c.req.header('authorization')), apiKey)) return next();
+    if (tokenMatches(bearerToken(c.req.header('authorization')) ?? c.req.header('x-api-key') ?? null, apiKey)) return next();
     return c.json({ error: { message: 'Invalid bearer token', type: 'authentication_error' } }, 401);
 });
 
@@ -310,6 +311,49 @@ async function handleResponses(c: Context) {
         headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', ...passthrough },
     });
 }
+
+async function handleMessages(c: Context) {
+    let body: Record<string, any>;
+    try {
+        body = await c.req.json();
+    } catch {
+        return c.json(anthropicError(400, 'Invalid JSON body'), 400);
+    }
+    if (!Array.isArray(body.messages) || !body.messages.length) {
+        return c.json(anthropicError(400, 'messages must be a non-empty array'), 400);
+    }
+    const headers = new Headers({ 'content-type': 'application/json' });
+    const authorization = c.req.header('authorization');
+    if (authorization) headers.set('authorization', authorization);
+    else if (c.req.header('x-api-key')) headers.set('authorization', `Bearer ${c.req.header('x-api-key')}`);
+    const chat = await app.fetch(new Request(new URL('/api/chat/completions', c.req.url), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(anthropicToChatRequest(body)),
+    }));
+    const payload = await chat.json() as Record<string, any>;
+    const passthrough: Record<string, string> = {};
+    for (const name of ['x-gateway-route', 'retry-after']) {
+        const value = chat.headers.get(name);
+        if (value) passthrough[name] = value;
+    }
+    if (!chat.ok) {
+        return c.json(anthropicError(chat.status, payload?.error?.message ?? 'Upstream error'), chat.status as ContentfulStatusCode, passthrough);
+    }
+    const message = chatToAnthropicMessage(payload, typeof body.model === 'string' ? body.model : payload.model);
+    if (!body.stream) return c.json(message, 200, passthrough);
+    return new Response(anthropicSseEvents(message).join(''), {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', ...passthrough },
+    });
+}
+
+app.post('/v1/messages', handleMessages);
+app.post('/api/v1/messages', handleMessages);
+app.post('/v1/messages/count_tokens', async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json(anthropicError(400, 'Invalid JSON body'), 400);
+    return c.json({ input_tokens: estimateInputTokens(body) });
+});
 
 app.post('/v1/responses', handleResponses);
 app.post('/api/v1/responses', handleResponses);
