@@ -1,5 +1,5 @@
-const BASE_URL = process.env.QWEN_PROXY_BASE_URL || 'http://127.0.0.1:3264/api';
-const MODEL = process.env.QWEN_PROXY_SMOKE_MODEL || 'qwen3.7-max';
+const BASE_URL = process.env.QWEN_PROXY_BASE_URL || 'http://127.0.0.1:3260/api';
+const MODEL = process.env.QWEN_PROXY_SMOKE_MODEL || 'auto';
 
 async function requestJson(path, options = {}) {
   const response = await fetch(`${BASE_URL}${path}`, {

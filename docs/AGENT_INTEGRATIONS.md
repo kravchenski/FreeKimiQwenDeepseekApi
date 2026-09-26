@@ -40,7 +40,7 @@ generated LiteLLM bridge configuration.
 bun run setup:agents -- --agent pi,opencode,hermes
 bun run setup:agents -- --agent claude-code,roo-code
 bun run setup:agents -- --agent codex
-bun run setup:agents -- --base-url http://127.0.0.1:3263/api
+bun run setup:agents -- --base-url http://127.0.0.1:3260/api
 bun run setup:agents -- --bridge-url http://127.0.0.1:4000
 bun run setup:agents -- --api-key dummy-key
 bun run setup:agents -- --home /custom/home
@@ -69,7 +69,7 @@ Cline CLI can be configured with the command generated in
 | Setting | Value |
 | --- | --- |
 | Provider | OpenAI Compatible |
-| Base URL | `http://127.0.0.1:3263/api` |
+| Base URL | `http://127.0.0.1:3260/api` |
 | API key | `dummy-key` |
 | Model | `qwen3-coder-plus`, `deepseek-default`, or another listed model |
 

@@ -34,67 +34,6 @@ services:
       timeout: 5s
       retries: 5
 
-  gateway:
-    profiles: [legacy]
-    build:
-      context: .
-      dockerfile: Dockerfile.light
-    image: ${FREEAI_GATEWAY_IMAGE:-free-ai-gateway:latest}
-    command: ["bun", "run", "gateway.ts"]
-    environment:
-      - GATEWAY_PORT=3263
-      - HOST=0.0.0.0
-      - GATEWAY_API_KEY=${GATEWAY_API_KEY:-}
-      - QWEN_URL=http://qwen-proxy:3264/api
-      - DEEPSEEK_URL=http://deepseek-proxy:3265/api
-    ports:
-      - "127.0.0.1:${GATEWAY_PORT:-3263}:3263"
-    depends_on:
-      qwen-proxy:
-        condition: service_healthy
-      deepseek-proxy:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:3263/ready');process.exit(r.ok?0:1)"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    init: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-
-  qwen-proxy:
-    profiles: [legacy]
-    build: .
-    image: ${FREEAI_QWEN_IMAGE:-freeqwenapi:latest}
-    container_name: qwen-proxy
-    command: ["bun", "run", "index.ts"]
-    environment:
-      - NODE_ENV=production
-      - PORT=${PORT:-3264}
-      - HOST=0.0.0.0
-      - SKIP_ACCOUNT_MENU=true
-    ports:
-      - "127.0.0.1:${PORT:-3264}:3264"
-    volumes:
-      - ./session:/app/session
-      - ./logs:/app/logs
-      - ./uploads:/app/uploads
-    restart: unless-stopped
-    init: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    healthcheck:
-      test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:3264/api/models');process.exit(r.ok?0:1)"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
   deepseek-proxy:
     profiles: [legacy]
     build:

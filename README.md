@@ -66,7 +66,8 @@ DeepSeek supports tool calls. Web providers (DeepSeek) work through browser (Pup
 |---------|-------------|
 | `bun run start` | Start unified server (port 3260) |
 | `bun run dev` | Start with watch mode |
-| `bun run auth` | Manage DeepSeek accounts |
+| `bun run auth:deepseek` | Manage DeepSeek accounts |
+| `bun run account` | Manage Qwen accounts (`add qwen --browser`, `list`, `remove`) |
 | `bun run test` | Run tests |
 | `bun run check` | Validate build |
 

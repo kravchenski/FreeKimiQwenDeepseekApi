@@ -1,11 +1,8 @@
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { spawn } from 'child_process';
-import fs from 'fs';
 import path from 'path';
+import type { Page } from 'playwright-core';
 
 import { prompt } from '../../utils/prompt.ts';
-import { requireBrowserExecutable } from '../../platform/browserExecutable.ts';
+import { launchCdpBrowser } from '../../browser/cdp.ts';
 import {
     addDeepSeekAccount,
     loadDeepSeekAccounts,
@@ -14,48 +11,11 @@ import {
 } from './accounts.ts';
 import { isDeepSeekUrl } from './url.ts';
 
-puppeteer.use(StealthPlugin());
-
 const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://chat.deepseek.com';
 const signInUrl = process.env.DEEPSEEK_SIGN_IN_URL || `${baseUrl}/sign_in`;
-const debugPort = Number(process.env.DEEPSEEK_AUTH_DEBUG_PORT || 9223);
 const profileDir = path.resolve(process.cwd(), process.env.DEEPSEEK_BROWSER_PROFILE || 'session/deepseek/browser-profile');
 
-async function waitForDebugBrowser() {
-    for (let attempt = 0; attempt < 60; attempt++) {
-        try {
-            const response = await fetch(`http://127.0.0.1:${debugPort}/json/version`);
-            if (response.ok) return await response.json() as { webSocketDebuggerUrl: string };
-        } catch {
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    throw new Error('Системный Chromium не открыл remote debugging порт');
-}
-
-async function launchUserBrowser() {
-    fs.mkdirSync(profileDir, { recursive: true });
-    const executable = requireBrowserExecutable({
-        interactive: true,
-        preferredEnvKeys: ['DEEPSEEK_CHROME_PATH', 'CHROME_PATH']
-    });
-    const processHandle = spawn(executable, [
-        `--remote-debugging-port=${debugPort}`,
-        `--user-data-dir=${profileDir}`,
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--start-maximized',
-        signInUrl
-    ], { detached: false, stdio: 'ignore' });
-    const debug = await waitForDebugBrowser();
-    const browser = await puppeteer.connect({
-        browserWSEndpoint: debug.webSocketDebuggerUrl,
-        defaultViewport: null
-    });
-    return { browser, processHandle };
-}
-
-async function extractToken(page: any, capturedToken?: string | null) {
+async function extractToken(page: Page, capturedToken?: string | null) {
     if (capturedToken) return capturedToken;
     const storageToken = await page.evaluate(() => {
         const stores = [localStorage, sessionStorage];
@@ -91,12 +51,13 @@ export async function addDeepSeekAccountInteractive(replaceId?: string) {
     console.log('После появления интерфейса чата вернитесь в консоль и нажмите Enter.');
     console.log('======================================================');
 
-    const { browser, processHandle } = await launchUserBrowser();
+    const cdp = await launchCdpBrowser({ headless: false, profileDir, startUrl: signInUrl });
     try {
-        const pages = await browser.pages();
-        const page = pages.find((candidate: any) => isDeepSeekUrl(candidate.url())) || await browser.newPage();
+        const context = cdp.browser.contexts()[0];
+        if (!context) throw new Error('Browser profile has no default context');
+        const page = context.pages().find(candidate => isDeepSeekUrl(candidate.url())) || await context.newPage();
         let capturedToken: string | null = null;
-        page.on('request', (request: any) => {
+        page.on('request', request => {
             if (!isDeepSeekUrl(request.url())) return;
             const authorization = request.headers()?.authorization || '';
             if (authorization.toLowerCase().startsWith('bearer ')) {
@@ -108,11 +69,11 @@ export async function addDeepSeekAccountInteractive(replaceId?: string) {
             await page.goto(signInUrl, { waitUntil: 'domcontentloaded', timeout: 120_000 });
         }
         await prompt('После регистрации/входа и появления чата нажмите Enter...');
-        await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 120_000 }).catch(() => {});
+        await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 120_000 }).catch(() => {});
         await new Promise(resolve => setTimeout(resolve, 3000));
         const token = await extractToken(page, capturedToken);
-        const cookies = await page.cookies();
-        const sessionCookie = cookies.find((cookie: any) => cookie.name === 'ds_session_id');
+        const cookies = await context.cookies();
+        const sessionCookie = cookies.find(cookie => cookie.name === 'ds_session_id');
         if (!sessionCookie) {
             throw new Error('DeepSeek login не подтверждён: cookie ds_session_id не найден');
         }
@@ -124,8 +85,7 @@ export async function addDeepSeekAccountInteractive(replaceId?: string) {
         console.log(`Аккаунт DeepSeek ${id} сохранён.`);
         return id;
     } finally {
-        await browser.disconnect();
-        processHandle.kill('SIGTERM');
+        await cdp.close();
     }
 }
 

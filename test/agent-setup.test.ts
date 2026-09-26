@@ -62,7 +62,7 @@ describe('agent integration setup', () => {
 
             const openCode = JSON.parse(await readFile(paths.opencode, 'utf8'));
             expect(Object.keys(openCode.provider.freeai.models)).toEqual(models);
-            expect(openCode.provider.freeai.options.baseURL).toBe('http://127.0.0.1:3263/api');
+            expect(openCode.provider.freeai.options.baseURL).toBe('http://127.0.0.1:3260/api');
 
             const continueConfig = parseYaml(await readFile(paths.continue, 'utf8'));
             expect(continueConfig.rules).toEqual(['Keep this']);
@@ -74,7 +74,7 @@ describe('agent integration setup', () => {
 
             expect(await readFile(`${paths.pi}.freeqwenapi.bak`, 'utf8')).toContain('"theme":"dark"');
             expect(await readFile(paths.codex, 'utf8')).toContain('wire_api = "responses"');
-            expect(await readFile(paths.codex, 'utf8')).toContain('base_url = "http://127.0.0.1:3263/api/v1"');
+            expect(await readFile(paths.codex, 'utf8')).toContain('base_url = "http://127.0.0.1:3260/api/v1"');
             expect(await readFile(paths.codex, 'utf8')).not.toContain('127.0.0.1:4000');
             expect(await readFile(paths.codex, 'utf8')).toContain('model_catalog_json = "');
             expect(await readFile(paths.codex, 'utf8')).not.toContain('[profiles.freeai]');

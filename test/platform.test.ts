@@ -26,10 +26,11 @@ describe('cross-platform runtime', () => {
         expect(parseStartupArgs(['--service', 'deepseek', '--skip-checks'])).toMatchObject({
             service: 'deepseek',
             runChecks: false,
-            syncModels: false
+            runAuth: true
         });
-        expect(parseStartupArgs(['--service=gateway', '--skip-sync']).service).toBe('gateway');
-        expect(() => parseStartupArgs(['--service=kimi'])).toThrow('kimi');
+        expect(parseStartupArgs([])).toMatchObject({ service: 'unified', runAuth: false });
+        expect(() => parseStartupArgs(['--service=qwen'])).toThrow('qwen');
+        expect(() => parseStartupArgs(['--service=gateway'])).toThrow('gateway');
         expect(() => parseStartupArgs(['--service', 'unknown'])).toThrow();
     });
 });
