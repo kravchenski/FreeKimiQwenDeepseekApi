@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { launchCdpBrowser } from '../src/browser/cdp.ts';
 import { googleProfileDir, parseListAccounts } from '../src/browser/google-profile.ts';
@@ -16,7 +16,8 @@ describe('google profile', () => {
   });
 
   test('keeps the profile under the session directory', () => {
-    expect(googleProfileDir({ SESSION_DIR: '/tmp/s' })).toBe('/tmp/s/browser-profile');
+    expect(googleProfileDir({ SESSION_DIR: 'custom-session' })).toBe(resolve('custom-session', 'browser-profile'));
+    expect(googleProfileDir({})).toBe(resolve('session', 'browser-profile'));
   });
 });
 
