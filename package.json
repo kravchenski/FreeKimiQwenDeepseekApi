@@ -44,6 +44,8 @@
         "example:streaming-test": "bun run examples/streaming-test.ts",
         "auth:deepseek": "bun run scripts/deepseek-auth.ts",
         "account": "bun run scripts/accounts.ts",
+        "desktop": "cargo run --manifest-path desktop/Cargo.toml",
+        "desktop:test": "cargo test --manifest-path desktop/Cargo.toml",
         "setup:agents": "bun run scripts/setup-agents.ts",
         "setup:pi": "bun run scripts/setup-pi.ts",
         "smoke": "bun run scripts/smoke_test.ts",

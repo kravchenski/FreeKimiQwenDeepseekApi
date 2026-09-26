@@ -61,3 +61,6 @@ session/kimi
 
 # Gateway database
 data/
+
+# Desktop app build output
+desktop/target/
