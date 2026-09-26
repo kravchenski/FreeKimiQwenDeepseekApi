@@ -22,6 +22,7 @@ export interface OpenAICompatibleConfig {
   resolveApiKey?: () => Promise<string | undefined>;
   hasApiKey?: () => boolean;
   upstreamModels?: boolean;
+  reportResult?: (apiKey: string, response: Response) => void;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
 }
@@ -112,6 +113,7 @@ export class OpenAICompatibleProvider implements Provider {
       body: JSON.stringify({ ...this.config.extraBody, model, messages: request.messages, stream: true }),
       signal: context.signal,
     });
+    this.config.reportResult?.(apiKey, response);
     if (!response.ok) {
       throw new Error(`${this.config.label} completion failed: ${response.status} ${await response.text()}`);
     }

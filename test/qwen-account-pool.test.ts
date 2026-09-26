@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { Credential } from '../src/core/accounts/credential-store.ts';
-import { QwenAccountPool } from '../src/providers/qwen/account-pool.ts';
+import { AccountPool } from '../src/core/accounts/account-pool.ts';
+import { openDatabase } from '../src/core/store/database.ts';
+import { QwenAccountPool, retryAfterMs } from '../src/providers/qwen/account-pool.ts';
 import { parseSignInResponse, type QwenSession } from '../src/providers/qwen/auth.ts';
 
 const credentials: Credential[] = [
@@ -40,36 +42,47 @@ describe('parseSignInResponse', () => {
   });
 });
 
+function harness(signIn: (email: string, password: string) => Promise<QwenSession>, list: Credential[] = credentials) {
+  const clock = { now: 1_000_000 };
+  const accounts = new AccountPool(openDatabase(':memory:'), 'qwen', () => clock.now);
+  const pool = new QwenAccountPool(source(list), signIn, () => accounts, () => clock.now);
+  const status = () => Object.fromEntries(accounts.list().map(state => [state.accountId, state.status]));
+  return { pool, accounts, clock, status };
+}
+
 describe('QwenAccountPool', () => {
-  test('signs in lazily, caches sessions and rotates accounts', async () => {
+  test('signs in lazily, caches sessions and spreads load across accounts', async () => {
     const calls: string[] = [];
-    const pool = new QwenAccountPool(source(), async email => {
+    const { pool, clock } = harness(async email => {
       calls.push(email);
       return { token: `token-${email}` };
     });
 
-    expect(await pool.token()).toBe('token-a@example.com');
-    expect(await pool.token()).toBe('token-b@example.com');
-    expect(await pool.token()).toBe('token-a@example.com');
-    expect(calls).toEqual(['a@example.com', 'b@example.com']);
+    const first = await pool.token();
+    clock.now += 1_000;
+    const second = await pool.token();
+    clock.now += 1_000;
+    await pool.token();
+
+    expect(new Set([first, second])).toEqual(new Set(['token-a@example.com', 'token-b@example.com']));
+    expect(calls.sort()).toEqual(['a@example.com', 'b@example.com']);
   });
 
   test('signs in again when the session is about to expire', async () => {
-    let now = 1_000_000;
     let logins = 0;
-    const pool = new QwenAccountPool(source(credentials.slice(0, 1)), async () => {
+    const { pool, clock } = harness(async () => {
       logins++;
-      return { token: `t${logins}`, expiresAt: now + 5 * 60_000 };
-    }, () => now);
+      return { token: `t${logins}`, expiresAt: clock.now + 5 * 60_000 };
+    }, credentials.slice(0, 1));
 
     expect(await pool.token()).toBe('t1');
-    now += 4.5 * 60_000;
+    clock.now += 4.5 * 60_000;
     expect(await pool.token()).toBe('t2');
   });
 
-  test('skips accounts that fail to sign in and cools them down', async () => {
+  test('backs off accounts that fail to sign in', async () => {
     const attempts: string[] = [];
-    const pool = new QwenAccountPool(source(), async email => {
+    const { pool, status } = harness(async email => {
       attempts.push(email);
       if (email === 'a@example.com') throw new Error('bad password');
       return { token: 'token-b' };
@@ -77,39 +90,67 @@ describe('QwenAccountPool', () => {
 
     expect(await pool.token()).toBe('token-b');
     expect(await pool.token()).toBe('token-b');
-    expect(attempts).toEqual(['a@example.com', 'b@example.com']);
+    expect(attempts.filter(email => email === 'a@example.com')).toHaveLength(1);
+    expect(status()['qwen-a']).toBe('cooldown');
   });
 
-  test('throws with every sign-in error when no account works', async () => {
-    const pool = new QwenAccountPool(source(), async email => {
+  test('throws with every sign-in error when no account works, then reports cooldown', async () => {
+    const { pool } = harness(async email => {
       throw new Error(`denied ${email}`);
     });
-    await expect(pool.token()).rejects.toThrow('qwen-a: denied a@example.com; qwen-b: denied b@example.com');
+    await expect(pool.token()).rejects.toThrow(/qwen-\w: denied \S+; qwen-\w: denied/);
+    await expect(pool.token()).rejects.toThrow('cooling down');
   });
 
-  test('deduplicates concurrent sign-ins and supports invalidation', async () => {
+  test('deduplicates concurrent sign-ins', async () => {
     let logins = 0;
     let release!: (session: QwenSession) => void;
-    const pool = new QwenAccountPool(source(credentials.slice(0, 1)), () => {
+    const { pool } = harness(() => {
       logins++;
       return new Promise<QwenSession>(resolve => { release = resolve; });
-    });
+    }, credentials.slice(0, 1));
 
     const both = Promise.all([pool.token(), pool.token()]);
     release({ token: 'shared' });
     expect(await both).toEqual(['shared', 'shared']);
     expect(logins).toBe(1);
+  });
 
-    pool.invalidate('shared');
-    const next = pool.token();
-    release({ token: 'fresh' });
-    expect(await next).toBe('fresh');
+  test('maps upstream responses onto account health', async () => {
+    let logins = 0;
+    const { pool, clock, status } = harness(async () => ({ token: `t${++logins}` }), credentials.slice(0, 1));
+    const token = (await pool.token())!;
+
+    pool.report(token, new Response('', { status: 429, headers: { 'retry-after': '120' } }));
+    expect(status()).toEqual({ 'qwen-a': 'cooldown' });
+    clock.now += 120_000;
+
+    pool.report(token, new Response('', { status: 200 }));
+    expect(status()).toEqual({ 'qwen-a': 'healthy' });
+
+    pool.report(token, new Response('', { status: 401 }));
+    clock.now += 30_000;
+    expect(await pool.token()).toBe('t2');
+
+    pool.report('unknown-token', new Response('', { status: 500 }));
+    expect(status()).toEqual({ 'qwen-a': 'healthy' });
   });
 
   test('returns undefined without accounts and hides store errors from health', async () => {
-    expect(await new QwenAccountPool(source([]), unusedSignIn).token()).toBeUndefined();
-    const broken = new QwenAccountPool({ list: () => { throw new Error('ACCOUNTS_SECRET is not set'); } }, unusedSignIn);
+    expect(await harness(unusedSignIn, []).pool.token()).toBeUndefined();
+    const broken = new QwenAccountPool({ list: () => { throw new Error('ACCOUNTS_SECRET is not set'); } }, unusedSignIn, () => {
+      throw new Error('pool must not be opened');
+    });
     expect(broken.hasAccounts()).toBeFalse();
     await expect(broken.token()).rejects.toThrow('ACCOUNTS_SECRET');
+  });
+});
+
+describe('retryAfterMs', () => {
+  test('parses seconds and http dates with a default', () => {
+    expect(retryAfterMs('30', 0)).toBe(30_000);
+    expect(retryAfterMs(new Date(90_000).toUTCString(), 0)).toBe(90_000);
+    expect(retryAfterMs(null, 0)).toBe(60_000);
+    expect(retryAfterMs('soon', 0)).toBe(60_000);
   });
 });
