@@ -1,6 +1,6 @@
 {
     "name": "free-qwen-deepseek-api",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Unified OpenAI-compatible gateway for Qwen, DeepSeek Web and NVIDIA models",
     "author": "kravchenski",
     "license": "MIT",
