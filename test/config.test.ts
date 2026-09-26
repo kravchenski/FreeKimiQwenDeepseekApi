@@ -1,31 +1,28 @@
 import { describe, expect, test } from 'bun:test';
-import { parseEnv } from '../src/config.ts';
+import { loadConfig, parseEnv } from '../src/config.ts';
 
 describe('parseEnv', () => {
     test('applies defaults for missing and blank values', () => {
-        const env = parseEnv({ PORT: '', PAGE_POOL_SIZE: undefined });
-        expect(env.PORT).toBe(3264);
-        expect(env.PAGE_POOL_SIZE).toBe(3);
-        expect(env.LOG_LEVEL).toBe('info');
-        expect(env.CORS_ALLOWED_ORIGINS).toEqual([]);
-        expect(env.ALLOW_UNSCOPED_SESSION_CHAT_RESTORE).toBe(false);
+        expect(parseEnv({ UNIFIED_PORT: '', GATEWAY_API_KEY: '  ' })).toEqual({
+            UNIFIED_PORT: 3260,
+            HOST: '0.0.0.0',
+            SESSION_DIR: 'session',
+            GATEWAY_API_KEY: undefined,
+            AUTO_MODELS: undefined,
+        });
     });
 
     test('coerces provided values', () => {
-        const env = parseEnv({
-            PORT: '8080',
-            CORS_ALLOWED_ORIGINS: 'http://a.test, http://b.test',
-            ALLOW_UNSCOPED_SESSION_CHAT_RESTORE: 'yes',
-        });
-        expect(env.PORT).toBe(8080);
-        expect(env.CORS_ALLOWED_ORIGINS).toEqual(['http://a.test', 'http://b.test']);
-        expect(env.ALLOW_UNSCOPED_SESSION_CHAT_RESTORE).toBe(true);
+        const env = parseEnv({ UNIFIED_PORT: '8080', HOST: '127.0.0.1', GATEWAY_API_KEY: 'secret', AUTO_MODELS: 'auto-a,auto-b' });
+        expect(env).toMatchObject({ UNIFIED_PORT: 8080, HOST: '127.0.0.1', GATEWAY_API_KEY: 'secret', AUTO_MODELS: 'auto-a,auto-b' });
     });
 
     test('rejects invalid values', () => {
-        expect(() => parseEnv({ PORT: 'abc' })).toThrow('PORT');
-        expect(() => parseEnv({ PORT: '70000' })).toThrow('PORT');
-        expect(() => parseEnv({ QWEN_BASE_URL: 'not a url' })).toThrow('QWEN_BASE_URL');
-        expect(() => parseEnv({ LOG_LEVEL: 'verbose' })).toThrow('LOG_LEVEL');
+        expect(() => parseEnv({ UNIFIED_PORT: 'abc' })).toThrow('UNIFIED_PORT');
+        expect(() => parseEnv({ UNIFIED_PORT: '70000' })).toThrow('UNIFIED_PORT');
+    });
+
+    test('loads from the given environment at call time', () => {
+        expect(loadConfig({ UNIFIED_PORT: '4000' }).UNIFIED_PORT).toBe(4000);
     });
 });

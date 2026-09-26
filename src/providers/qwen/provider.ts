@@ -1,6 +1,5 @@
 import path from 'node:path';
 
-import { SESSION_DIR } from '../../config.ts';
 import { AccountPool } from '../../core/accounts/account-pool.ts';
 import { CredentialStore } from '../../core/accounts/credential-store.ts';
 import { openDatabase } from '../../core/store/database.ts';
@@ -24,7 +23,7 @@ export const QWEN_FALLBACK_MODELS = [
   'qwen-slides',
 ];
 
-export const QWEN_CREDENTIALS_FILE = path.resolve(SESSION_DIR, 'qwen', 'accounts.enc');
+export const QWEN_CREDENTIALS_FILE = path.resolve(process.env.SESSION_DIR || 'session', 'qwen', 'accounts.enc');
 
 export function qwenLogin(env: Record<string, string | undefined> = process.env) {
   return (email: string, password: string) => qwenBrowserSignIn(email, password, { headless: env.QWEN_BROWSER_HEADFUL !== '1' });

@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { bodyLimit } from 'hono/body-limit';
+import { loadConfig } from '../config.ts';
 import { serve } from 'bun';
 import crypto from 'crypto';
 
@@ -22,9 +23,10 @@ import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
 import { createQwenProvider } from '../providers/qwen/provider.ts';
 
 export const app = new Hono();
-const port = Number(process.env.UNIFIED_PORT || 3260);
-const host = process.env.HOST || '0.0.0.0';
-const apiKey = process.env.GATEWAY_API_KEY || undefined;
+const config = loadConfig();
+const port = config.UNIFIED_PORT;
+const host = config.HOST;
+const apiKey = config.GATEWAY_API_KEY;
 const maxBodyBytes = 25 * 1024 * 1024;
 
 app.use('*', async (c, next) => {
@@ -43,7 +45,7 @@ export const registry = new ProviderRegistry()
     .register(createDeepSeekProvider())
     .register(createQwenProvider());
 
-export const router = new SmartRouter(registry, parseAutoModels(process.env.AUTO_MODELS));
+export const router = new SmartRouter(registry, parseAutoModels(config.AUTO_MODELS));
 
 let database: Database | undefined;
 function db() {
