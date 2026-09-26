@@ -66,4 +66,14 @@ describe('CredentialStore', () => {
     writeFileSync(file, 'garbage');
     expect(() => new CredentialStore(file, SECRET).list()).toThrow('Unsupported');
   });
+
+  test('replaces browser sessions for the same account with a fresh id', () => {
+    const store = new CredentialStore(tempFile(), SECRET);
+    const first = store.addBrowserSession({ provider: 'qwen', email: 'A@example.com', token: 't1', expiresAt: 10 });
+    const second = store.addBrowserSession({ provider: 'qwen', email: 'a@example.com', token: 't2' });
+    expect(second.id).not.toBe(first.id);
+    expect(store.list('qwen')).toEqual([{ id: second.id, provider: 'qwen', email: 'a@example.com', password: '', method: 'browser', token: 't2' }]);
+    expect(() => store.addBrowserSession({ provider: 'qwen', email: ' ', token: 't' })).toThrow('required');
+  });
 });
+

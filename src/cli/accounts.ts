@@ -1,10 +1,12 @@
-import type { Credential } from '../core/accounts/credential-store.ts';
+import type { BrowserSession, Credential } from '../core/accounts/credential-store.ts';
+import type { CapturedSession } from '../browser/site-session.ts';
 import type { QwenSession } from '../providers/qwen/auth.ts';
 
 export interface AccountsCliDeps {
   store: {
     list(provider?: string): Credential[];
     add(input: Omit<Credential, 'id'>): Credential;
+    addBrowserSession?(input: BrowserSession): Credential;
     remove(id: string): boolean;
   };
   signIn: (email: string, password: string) => Promise<QwenSession>;
@@ -13,6 +15,7 @@ export interface AccountsCliDeps {
   log: (line: string) => void;
   openGoogleSignIn?: () => Promise<void>;
   listGoogleAccounts?: () => Promise<string[]>;
+  captureSession?: (provider: string) => Promise<CapturedSession>;
 }
 
 const PROVIDERS = new Set(['qwen']);
@@ -20,6 +23,7 @@ const PROVIDERS = new Set(['qwen']);
 export const ACCOUNTS_USAGE = `Usage: bun run account <command>
 
   add <provider> [--email <email>] [--no-verify]  Save an account (password is always prompted)
+  add <provider> --browser [--label <name>]       Sign in yourself in the browser; the session is captured
   list [provider]                                 List saved accounts
   remove <id>                                     Delete an account
   test <id>                                       Sign in with a saved account
@@ -52,6 +56,17 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
     const accounts = await deps.listGoogleAccounts();
     if (!accounts.length) deps.log('No Google accounts found in the browser profile.');
     for (const email of accounts) deps.log(`google\t${email}`);
+    return 0;
+  }
+
+  if (command === 'add' && args.includes('--browser')) {
+    const provider = requireProvider(target);
+    if (!deps.captureSession || !deps.store.addBrowserSession) throw new Error('Browser sign-in is not available');
+    deps.log('Sign in in the opened browser window. When the chat is open, close the window.');
+    const session = await deps.captureSession(provider);
+    const label = session.email ?? option(args, '--label') ?? await deps.ask('Account label (e.g. email): ');
+    const credential = deps.store.addBrowserSession({ provider, email: label, token: session.token, expiresAt: session.expiresAt });
+    deps.log(`Saved ${credential.id} (${credential.email}): ${describeExpiry(session)}`);
     return 0;
   }
 

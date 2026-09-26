@@ -9,6 +9,16 @@ export interface Credential {
   provider: string;
   email: string;
   password: string;
+  method?: 'password' | 'browser';
+  token?: string;
+  expiresAt?: number;
+}
+
+export interface BrowserSession {
+  provider: string;
+  email: string;
+  token: string;
+  expiresAt?: number;
 }
 
 export class CredentialStore {
@@ -31,6 +41,23 @@ export class CredentialStore {
     }
     const credential = { ...input, email, id: `${input.provider}-${crypto.randomBytes(4).toString('hex')}` };
     this.write([...credentials, credential]);
+    return credential;
+  }
+
+  addBrowserSession(input: BrowserSession) {
+    const email = input.email.trim().toLowerCase();
+    if (!email || !input.token) throw new Error('Label and token are required');
+    const remaining = this.read().filter(credential => !(credential.provider === input.provider && credential.email === email));
+    const credential: Credential = {
+      id: `${input.provider}-${crypto.randomBytes(4).toString('hex')}`,
+      provider: input.provider,
+      email,
+      password: '',
+      method: 'browser',
+      token: input.token,
+      ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
+    };
+    this.write([...remaining, credential]);
     return credential;
   }
 
