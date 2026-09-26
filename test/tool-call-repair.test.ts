@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { buildConversationScopeFromHistory } from '../src/api/routes.ts';
 import {
-    buildConversationScopeFromHistory,
     extractFirstToolCallObject,
     hasObviouslyBrokenEditArguments,
     recoverSimpleToolCalls,
@@ -15,7 +15,7 @@ import {
     repairEditArguments,
     repairToolCallJsonKeys,
     toolsToPrompt
-} from '../src/api/routes.ts';
+} from '../src/core/tools/tool-calls.ts';
 
 describe('tool call JSON repair', () => {
     test('repairs whitespace inserted into known argument keys', () => {

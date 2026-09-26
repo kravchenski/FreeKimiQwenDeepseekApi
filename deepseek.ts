@@ -3,7 +3,7 @@ import { serve } from 'bun';
 import crypto from 'crypto';
 
 import { deepSeekCompletion, isEmptyToolCallResponse, parseDeepSeekEvent } from './src/providers/deepseek/client.ts';
-import { conversationalShellText, parseToolCallJson, recoverBrokenBashToolCall, toolsToPrompt } from './src/api/routes.ts';
+import { conversationalShellText, parseToolCallJson, recoverBrokenBashToolCall, toolsToPrompt } from './src/core/tools/tool-calls.ts';
 import { hasValidDeepSeekAccounts } from './src/providers/deepseek/accounts.ts';
 import { runDeepSeekAccountMenu } from './src/providers/deepseek/auth.ts';
 

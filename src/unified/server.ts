@@ -5,7 +5,7 @@ import { serve } from 'bun';
 import crypto from 'crypto';
 
 import { isEmptyToolCallResponse } from '../providers/deepseek/client.ts';
-import { conversationalShellText, parseToolCallJson, recoverBrokenBashToolCall, toolsToPrompt } from '../api/routes.ts';
+import { conversationalShellText, parseToolCallJson, recoverBrokenBashToolCall, toolsToPrompt } from '../core/tools/tool-calls.ts';
 import { bearerToken, tokenMatches } from '../gateway/security.ts';
 import { chatResponseToResponses, responsesSseEvents, responsesToChatRequest } from '../gateway/responses.ts';
 import { anthropicError, anthropicSseEvents, anthropicToChatRequest, chatToAnthropicMessage, estimateInputTokens } from '../api/anthropic/messages.ts';
