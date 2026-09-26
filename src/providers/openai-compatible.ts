@@ -27,6 +27,7 @@ export interface OpenAICompatibleConfig {
   resolveApiKey?: () => Promise<string | undefined>;
   hasApiKey?: () => boolean;
   upstreamModels?: boolean;
+  modelFilter?: (model: string) => boolean;
   reportResult?: (apiKey: string, outcome: UpstreamOutcome) => void;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
@@ -91,7 +92,7 @@ export class OpenAICompatibleProvider implements Provider {
       });
       if (!response.ok) return this.config.models;
       const body = await response.json() as { data?: Array<{ id?: unknown }> };
-      const ids = (body.data ?? []).map(model => model.id).filter((id): id is string => typeof id === 'string' && this.supports(id));
+      const ids = (body.data ?? []).map(model => model.id).filter((id): id is string => typeof id === 'string' && this.supports(id) && (this.config.modelFilter?.(id) ?? true));
       return ids.length ? ids : this.config.models;
     } catch {
       return this.config.models;

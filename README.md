@@ -34,7 +34,7 @@ bun run start
 | **GLM** (ZenMux) | `glm-5.2-free`, `glm-4.7-flash-free` | `ZENMUX_API_KEY` |
 | **Sapiens** (ZenMux) | `sapiens-ai/agnes-2.0-flash` | `ZENMUX_API_KEY` |
 | **StepFun** (ZenMux) | `stepfun/step-3.7-flash-free` | `ZENMUX_API_KEY` |
-| **NVIDIA** | `deepseek-ai/deepseek-v4-pro`, `moonshotai/kimi-k2.6` | `NVIDIA_API_KEY` |
+| **NVIDIA** | `deepseek-ai/deepseek-v4.1-flash`, `moonshotai/kimi-k3`, `z-ai/glm-5.3` (list fetched from NVIDIA) | `NVIDIA_API_KEY` |
 
 All models are free. ZenMux and NVIDIA require API keys.
 

@@ -22,7 +22,7 @@
         "glm-4.7-flash-free": { "name": "GLM 4.7 Flash Free", "family": "glm", "tool_call": true, "cost": { "input": 0, "output": 0 } },
         "sapiens-ai/agnes-2.0-flash": { "name": "Sapiens Agnes 2.0 Flash", "family": "sapiens", "tool_call": true, "cost": { "input": 0, "output": 0 } },
         "stepfun/step-3.7-flash-free": { "name": "StepFun Step 3.7 Flash Free", "family": "stepfun", "tool_call": true, "cost": { "input": 0, "output": 0 } },
-        "deepseek-ai/deepseek-v4-pro": { "name": "DeepSeek V4 Pro (NVIDIA)", "family": "nvidia", "tool_call": true, "cost": { "input": 0, "output": 0 } },
+        "deepseek-ai/deepseek-v4.1-flash": { "name": "DeepSeek V4.1 Flash (NVIDIA)", "family": "nvidia", "tool_call": true, "cost": { "input": 0, "output": 0 } },
         "moonshotai/kimi-k2.6": { "name": "Kimi K2.6 (NVIDIA)", "family": "nvidia", "tool_call": true, "cost": { "input": 0, "output": 0 } }
       }
     }
