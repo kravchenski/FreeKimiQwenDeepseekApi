@@ -73,12 +73,10 @@ DeepSeek supports tool calls. Web providers (DeepSeek) work through browser (Pup
 ## Docker
 
 ```bash
-docker build -t freeqwenapi .
-docker run -d \
-  -p 3260:3260 \
-  -e NVIDIA_API_KEY=your_key \
-  freeqwenapi
+docker compose up -d
 ```
+
+Starts the unified API on `127.0.0.1:3260` using `.env` for keys and mounting `session/`, `data/` and `logs/`. Add accounts on the host (`bun run account ...`) before starting. The old per-provider services are available with `docker compose --profile legacy up -d`.
 
 ## Environment Variables
 
