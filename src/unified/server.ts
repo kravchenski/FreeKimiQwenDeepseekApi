@@ -10,6 +10,7 @@ import type { ProviderStream } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
 import { collectChunks } from '../core/streaming/sse.ts';
 import { toHttpError } from '../core/providers/errors.ts';
+import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
 import { createNvidiaProvider, createZenMuxProviders } from '../providers/catalog.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
 import { createQwenProvider } from '../providers/qwen/provider.ts';
@@ -37,10 +38,12 @@ export const registry = new ProviderRegistry()
     .register(createQwenProvider());
 for (const provider of createZenMuxProviders()) registry.register(provider);
 
+export const router = new SmartRouter(registry, parseAutoModels(process.env.AUTO_MODELS));
+
 let allModels: ModelEntry[] = [];
 
 async function refreshModelLists() {
-    allModels = await registry.listModels();
+    allModels = [{ id: AUTO_MODEL, ownedBy: 'gateway' }, ...await registry.listModels()];
 }
 
 function isCodebaseActionRequest(messages: Array<Record<string, any>>) {
@@ -112,7 +115,8 @@ function handleProviderStream(
     combinedTools: Array<Record<string, any>> | null,
     messages: Array<Record<string, any>>,
     first: ProviderStream,
-    retry: () => Promise<ProviderStream>
+    retry: () => Promise<ProviderStream>,
+    extraHeaders: Record<string, string> = {}
 ) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -164,7 +168,7 @@ function handleProviderStream(
     }
 
     return new Response(stream, {
-        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', ...extraHeaders }
     });
 }
 
@@ -199,8 +203,7 @@ app.post('/api/chat/completions', async (c) => {
             return c.json({ error: { message: 'messages must be a non-empty array' } }, 400);
         }
 
-        const provider = registry.resolve(model);
-        if (!provider) {
+        if (!router.knows(model)) {
             return c.json({ error: { message: `Unknown model: ${model}. Available: ${allModels.map(entry => entry.id).join(', ')}` } }, 400);
         }
 
@@ -216,11 +219,13 @@ app.post('/api/chat/completions', async (c) => {
         const created = Math.floor(Date.now() / 1000);
         const captureToolCalls = Array.isArray(combinedTools) && combinedTools.length > 0;
 
-        const open = () => provider.stream({ model, messages: upstreamMessages, conversationId });
-        const first = await open();
+        const first = await router.open(model, route => ({ model: route.model, messages: upstreamMessages, conversationId }));
+        const { provider, model: routedModel } = first.route;
+        const open = () => provider.stream({ model: routedModel, messages: upstreamMessages, conversationId });
+        const routeHeaders = { 'x-gateway-route': `${provider.id}/${routedModel}` };
 
         if (stream) {
-            return handleProviderStream(id, created, model, captureToolCalls, combinedTools, messages, first, open);
+            return handleProviderStream(id, created, routedModel, captureToolCalls, combinedTools, messages, first, open, routeHeaders);
         }
 
         let { content, reasoning } = await collectChunks(first.chunks);
@@ -231,8 +236,9 @@ app.post('/api/chat/completions', async (c) => {
             responseFields = retried.responseFields;
         }
         const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
+        c.header('x-gateway-route', routeHeaders['x-gateway-route']);
         return c.json({
-            id, object: 'chat.completion', created, model,
+            id, object: 'chat.completion', created, model: routedModel,
             choices: [{
                 index: 0,
                 message: toolCalls?.length

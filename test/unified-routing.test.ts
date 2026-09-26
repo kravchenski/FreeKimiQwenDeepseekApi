@@ -53,6 +53,7 @@ describe('unified server routing', () => {
     expect(response.status).toBe(200);
     expect(json.choices[0].message).toMatchObject({ content: 'Hi there', reasoning_content: 'think' });
     expect(json.x_fake_id).toBe('abc');
+    expect(response.headers.get('x-gateway-route')).toBe('fake/fake-model');
   });
 
   test('streams chunks as OpenAI SSE', async () => {
