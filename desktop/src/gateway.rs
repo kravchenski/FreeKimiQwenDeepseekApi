@@ -13,9 +13,10 @@ pub struct GatewayConfig {
 
 impl GatewayConfig {
     pub fn from_env() -> Self {
-        let root = std::env::var_os("FREEAPI_ROOT")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."));
+        let root = resolve_root(
+            std::env::var_os("FREEAPI_ROOT").map(PathBuf::from),
+            std::env::current_dir().ok(),
+        );
         let port = std::env::var("UNIFIED_PORT")
             .ok()
             .and_then(|value| value.parse().ok())
@@ -25,13 +26,21 @@ impl GatewayConfig {
             root,
             port,
             program,
-            args: vec!["run".into(), "src/unified/server.ts".into()],
+            args: vec!["run".into(), SERVER_ENTRY.into()],
         }
     }
 
     pub fn base_url(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)
     }
+}
+
+const SERVER_ENTRY: &str = "src/unified/server.ts";
+
+pub fn resolve_root(explicit: Option<PathBuf>, cwd: Option<PathBuf>) -> PathBuf {
+    explicit
+        .or_else(|| cwd.filter(|dir| dir.join(SERVER_ENTRY).is_file()))
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."))
 }
 
 pub struct Gateway {
@@ -135,6 +144,22 @@ mod tests {
         gateway.start().unwrap();
         thread::sleep(Duration::from_millis(300));
         assert!(!gateway.is_running());
+    }
+
+    #[test]
+    fn resolves_the_repository_root() {
+        let repo = std::env::temp_dir().join(format!("freeapi-root-test-{}", std::process::id()));
+        std::fs::create_dir_all(repo.join("src/unified")).unwrap();
+        std::fs::write(repo.join(SERVER_ENTRY), "").unwrap();
+        let elsewhere = std::env::temp_dir();
+
+        assert_eq!(resolve_root(Some("/explicit".into()), Some(repo.clone())), PathBuf::from("/explicit"));
+        assert_eq!(resolve_root(None, Some(repo.clone())), repo);
+        assert_eq!(
+            resolve_root(None, Some(elsewhere)),
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
+        );
+        std::fs::remove_dir_all(repo).unwrap();
     }
 
     #[test]
