@@ -8,7 +8,7 @@ export const DEFAULT_AUTO_MODELS = [
   'deepseek-default',
   'glm-5.2-free',
   'kimi-k2.7-code-free',
-  'deepseek-ai/deepseek-v4-pro',
+  'deepseek-ai/deepseek-v4.1-flash',
 ];
 
 const PROVIDER_COOLDOWN_MS = 30_000;
