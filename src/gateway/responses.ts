@@ -191,17 +191,33 @@ export function chatResponseToResponses(body: Record<string, any>, routes: Map<s
     };
 }
 
-export function writeResponsesSse(res: any, response: Record<string, any>) {
-    res.status(200);
-    res.setHeader('content-type', 'text/event-stream');
+export function responsesSseEvents(response: Record<string, any>) {
+    let sequence = 0;
+    const events: string[] = [];
     const send = (event: Record<string, any>) => {
-        res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+        events.push(`event: ${event.type}\ndata: ${JSON.stringify({ ...event, sequence_number: sequence++ })}\n\n`);
     };
     send({ type: 'response.created', response: { ...response, status: 'in_progress', output: [] } });
+    send({ type: 'response.in_progress', response: { ...response, status: 'in_progress', output: [] } });
     response.output.forEach((item: any, output_index: number) => {
-        send({ type: 'response.output_item.added', output_index, item });
+        if (item.type === 'message') {
+            send({ type: 'response.output_item.added', output_index, item: { ...item, status: 'in_progress', content: [] } });
+            item.content.forEach((part: any, content_index: number) => {
+                const base = { item_id: item.id, output_index, content_index };
+                send({ type: 'response.content_part.added', ...base, part: { ...part, text: '' } });
+                send({ type: 'response.output_text.delta', ...base, delta: part.text });
+                send({ type: 'response.output_text.done', ...base, text: part.text });
+                send({ type: 'response.content_part.done', ...base, part });
+            });
+        } else if (item.type === 'function_call') {
+            send({ type: 'response.output_item.added', output_index, item: { ...item, status: 'in_progress', arguments: '' } });
+            send({ type: 'response.function_call_arguments.delta', item_id: item.id, output_index, delta: item.arguments });
+            send({ type: 'response.function_call_arguments.done', item_id: item.id, output_index, arguments: item.arguments });
+        } else {
+            send({ type: 'response.output_item.added', output_index, item });
+        }
         send({ type: 'response.output_item.done', output_index, item });
     });
     send({ type: 'response.completed', response });
-    res.end();
+    return events;
 }

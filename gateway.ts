@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { serve } from 'bun';
 import { extractConversationId, mergeModelLists, targetForModel } from './src/gateway/routing.ts';
 import { bearerToken, isForwardableResponseHeader, tokenMatches } from './src/gateway/security.ts';
-import { chatResponseToResponses, responsesToChatRequest, writeResponsesSse } from './src/gateway/responses.ts';
+import { chatResponseToResponses, responsesSseEvents, responsesToChatRequest } from './src/gateway/responses.ts';
 
 const app = new Hono();
 const port = Number(process.env.GATEWAY_PORT || 3263);
@@ -79,7 +79,7 @@ app.post('/api/v1/responses', async (c) => {
             const encoder = new TextEncoder();
             const readable = new ReadableStream({
                 start(controller) {
-                    const chunks = writeResponsesSseChunks(converted);
+                    const chunks = responsesSseEvents(converted);
                     for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
                     controller.close();
                 }
@@ -92,13 +92,6 @@ app.post('/api/v1/responses', async (c) => {
         return c.json({ error: { message } }, error instanceof SyntaxError ? 400 : 502);
     }
 });
-
-function writeResponsesSseChunks(data: any): string[] {
-    const chunks: string[] = [];
-    chunks.push(`data: ${JSON.stringify(data)}\n\n`);
-    chunks.push('data: [DONE]\n\n');
-    return chunks;
-}
 
 app.all('/api/*', async (c) => {
     try {
