@@ -68,17 +68,31 @@ export class QwenAccountPool {
       this.pool.markSuccess(id);
       return;
     }
-    const reason = `upstream ${outcome.status ?? outcome.kind}`;
-    if (outcome.kind === 'auth') {
+    const failure = outcome as Extract<UpstreamOutcome, { ok: false }>;
+    const reason = `upstream ${failure.status ?? failure.kind}`;
+    if (failure.kind === 'auth' && this.accounts().find(account => account.id === id)?.method === 'browser') {
+      this.sessions.delete(id);
+      this.pool.markUnauthorized(id, `${reason}; run: bun run account add qwen --browser`);
+    } else if (failure.kind === 'auth') {
       this.sessions.delete(id);
       this.pool.markFailure(id, reason);
-    } else if (outcome.kind === 'rate_limit') {
-      this.pool.markRateLimited(id, this.now() + (outcome.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS) * 1000);
-    } else if (outcome.kind === 'quota_exhausted') {
-      this.pool.markQuotaExhausted(id, outcome.retryAfterSeconds === undefined ? undefined : this.now() + outcome.retryAfterSeconds * 1000);
-    } else if ((outcome.status ?? 500) >= 500) {
+    } else if (failure.kind === 'rate_limit') {
+      this.pool.markRateLimited(id, this.now() + (failure.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS) * 1000);
+    } else if (failure.kind === 'quota_exhausted') {
+      this.pool.markQuotaExhausted(id, failure.retryAfterSeconds === undefined ? undefined : this.now() + failure.retryAfterSeconds * 1000);
+    } else if ((failure.status ?? 500) >= 500) {
       this.pool.markFailure(id, reason);
     }
+  }
+
+  private browserSession(account: Credential): QwenSession {
+    if (!account.token) throw new Error('Browser session has no token');
+    if (account.expiresAt && account.expiresAt - EXPIRY_MARGIN_MS <= this.now()) {
+      throw new Error(`Browser session expired; run: bun run account add ${account.provider} --browser`);
+    }
+    const session = { token: account.token, expiresAt: account.expiresAt };
+    this.sessions.set(account.id, session);
+    return session;
   }
 
   private accountFor(token: string) {
@@ -97,6 +111,7 @@ export class QwenAccountPool {
   }
 
   private async session(account: Credential) {
+    if (account.method === 'browser') return this.browserSession(account);
     const cached = this.sessions.get(account.id);
     if (cached && (!cached.expiresAt || cached.expiresAt - EXPIRY_MARGIN_MS > this.now())) return cached;
     let pending = this.pending.get(account.id);

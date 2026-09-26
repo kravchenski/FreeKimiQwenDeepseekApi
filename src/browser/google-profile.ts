@@ -12,19 +12,23 @@ export function googleProfileDir(env: Record<string, string | undefined> = proce
   return path.resolve(env.SESSION_DIR || 'session', 'browser-profile');
 }
 
-export async function openGoogleSignIn(profileDir = googleProfileDir()) {
+export async function openProfileWindow(url: string, profileDir = googleProfileDir()) {
   mkdirSync(profileDir, { recursive: true, mode: 0o700 });
   const child = spawn(requireBrowserExecutable({ interactive: true }), [
     `--user-data-dir=${profileDir}`,
     '--password-store=basic',
     '--no-first-run',
     '--no-default-browser-check',
-    GOOGLE_SIGN_IN_URL,
+    url,
   ], { stdio: 'ignore' });
   await new Promise<void>((resolve, reject) => {
     child.once('error', reject);
     child.once('exit', () => resolve());
   });
+}
+
+export function openGoogleSignIn(profileDir = googleProfileDir()) {
+  return openProfileWindow(GOOGLE_SIGN_IN_URL, profileDir);
 }
 
 export function parseListAccounts(body: string) {

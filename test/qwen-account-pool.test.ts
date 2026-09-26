@@ -149,4 +149,18 @@ describe('QwenAccountPool', () => {
     expect(broken.hasAccounts()).toBeFalse();
     await expect(broken.token()).rejects.toThrow('ACCOUNTS_SECRET');
   });
+
+  test('uses captured browser sessions without signing in', async () => {
+    const browserAccount: Credential = { id: 'qwen-b1', provider: 'qwen', email: 'b@example.com', password: '', method: 'browser', token: 'captured', expiresAt: 5_000_000 };
+    const { pool, clock, status } = harness(unusedSignIn, [browserAccount]);
+
+    expect(await pool.token()).toBe('captured');
+    pool.report('captured', { ok: false, kind: 'auth', status: 401 });
+    expect(status()).toEqual({ 'qwen-b1': 'unauthorized' });
+    await expect(pool.token()).rejects.toThrow('cooling down');
+
+    const expired = harness(unusedSignIn, [{ ...browserAccount, expiresAt: clock.now }]);
+    await expect(expired.pool.token()).rejects.toThrow('bun run account add qwen --browser');
+  });
 });
+

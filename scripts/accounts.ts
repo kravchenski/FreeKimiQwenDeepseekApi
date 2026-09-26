@@ -5,6 +5,7 @@ import { CredentialStore } from '../src/core/accounts/credential-store.ts';
 import { QWEN_CREDENTIALS_FILE, qwenLogin } from '../src/providers/qwen/provider.ts';
 import { askHidden } from '../src/utils/hiddenPrompt.ts';
 import { listGoogleAccounts, openGoogleSignIn } from '../src/browser/google-profile.ts';
+import { captureSiteSession, QWEN_SITE } from '../src/browser/site-session.ts';
 import { prompt } from '../src/utils/prompt.ts';
 
 try {
@@ -16,6 +17,10 @@ try {
     log: line => console.log(line),
     openGoogleSignIn: () => openGoogleSignIn(),
     listGoogleAccounts: () => listGoogleAccounts(),
+    captureSession: provider => {
+      if (provider !== 'qwen') throw new Error(`Browser sign-in is not supported for ${provider}`);
+      return captureSiteSession(QWEN_SITE);
+    },
   });
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);

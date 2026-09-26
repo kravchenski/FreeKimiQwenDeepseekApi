@@ -93,5 +93,22 @@ describe('accounts CLI', () => {
     expect(await runAccountsCommand(['google', '--list'], deps)).toBe(0);
     expect(opened).toEqual(['open']);
   });
+
+  test('captures a browser session and labels it with the detected email or a prompt', async () => {
+    const { deps, lines } = harness();
+    const saved: unknown[] = [];
+    deps.store.addBrowserSession = input => {
+      saved.push(input);
+      return { id: 'qwen-9', provider: input.provider, email: input.email, password: '', method: 'browser', token: input.token };
+    };
+    deps.captureSession = async () => ({ token: 'tok', email: 'me@example.com', expiresAt: 0 });
+    expect(await runAccountsCommand(['add', 'qwen', '--browser'], deps)).toBe(0);
+    expect(saved).toEqual([{ provider: 'qwen', email: 'me@example.com', token: 'tok', expiresAt: 0 }]);
+    expect(lines.at(-1)).toStartWith('Saved qwen-9 (me@example.com)');
+
+    deps.captureSession = async () => ({ token: 'tok2' });
+    await runAccountsCommand(['add', 'qwen', '--browser'], deps);
+    expect(saved.at(-1)).toMatchObject({ email: 'typed@example.com', token: 'tok2' });
+  });
 });
 
