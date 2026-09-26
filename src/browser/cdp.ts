@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +10,14 @@ import { requireBrowserExecutable } from '../platform/browserExecutable.ts';
 
 export interface CdpBrowser {
   browser: Browser;
+  exited: Promise<unknown>;
   close(): Promise<void>;
+}
+
+export interface LaunchOptions {
+  headless?: boolean;
+  profileDir?: string;
+  startUrl?: string;
 }
 
 function freePort() {
@@ -35,23 +42,27 @@ async function waitForEndpoint(port: number, timeoutMs: number) {
   throw new Error('Chrome did not open the remote debugging port');
 }
 
-export async function launchCdpBrowser(options: { headless?: boolean } = {}): Promise<CdpBrowser> {
+export async function launchCdpBrowser(options: LaunchOptions = {}): Promise<CdpBrowser> {
   const executable = requireBrowserExecutable({ interactive: options.headless === false });
   const port = await freePort();
-  const profile = mkdtempSync(join(tmpdir(), 'freeapi-cdp-'));
+  const persistent = Boolean(options.profileDir);
+  if (options.profileDir) mkdirSync(options.profileDir, { recursive: true, mode: 0o700 });
+  const profile = options.profileDir ?? mkdtempSync(join(tmpdir(), 'freeapi-cdp-'));
   const child = spawn(executable, [
     `--remote-debugging-port=${port}`,
     '--remote-debugging-address=127.0.0.1',
     `--user-data-dir=${profile}`,
+    ...(persistent ? ['--password-store=basic'] : []),
     '--no-first-run',
     '--no-default-browser-check',
     ...(options.headless === false ? [] : ['--headless=new']),
-    'about:blank',
+    options.startUrl ?? 'about:blank',
   ], { stdio: 'ignore' });
   const exited = new Promise(resolve => child.once('exit', resolve));
   const cleanup = async () => {
     child.kill();
     await Promise.race([exited, Bun.sleep(5_000)]);
+    if (persistent) return;
     try {
       rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     } catch {}
@@ -61,6 +72,7 @@ export async function launchCdpBrowser(options: { headless?: boolean } = {}): Pr
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
     return {
       browser,
+      exited,
       async close() {
         await browser.close().catch(() => {});
         await cleanup();

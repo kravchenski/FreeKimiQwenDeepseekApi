@@ -11,6 +11,8 @@ export interface AccountsCliDeps {
   ask: (question: string) => Promise<string>;
   askHidden: (question: string) => Promise<string>;
   log: (line: string) => void;
+  openGoogleSignIn?: () => Promise<void>;
+  listGoogleAccounts?: () => Promise<string[]>;
 }
 
 const PROVIDERS = new Set(['qwen']);
@@ -21,6 +23,7 @@ export const ACCOUNTS_USAGE = `Usage: bun run account <command>
   list [provider]                                 List saved accounts
   remove <id>                                     Delete an account
   test <id>                                       Sign in with a saved account
+  google [--list]                                 Sign in to Google in the browser profile, then list its accounts
 
 Providers: ${[...PROVIDERS].join(', ')}`;
 
@@ -40,6 +43,17 @@ function describeExpiry(session: QwenSession) {
 
 export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) {
   const [command, target] = args;
+
+  if (command === 'google' && deps.listGoogleAccounts) {
+    if (!args.includes('--list') && deps.openGoogleSignIn) {
+      deps.log('Sign in to your Google accounts in the opened browser window, then close the window.');
+      await deps.openGoogleSignIn();
+    }
+    const accounts = await deps.listGoogleAccounts();
+    if (!accounts.length) deps.log('No Google accounts found in the browser profile.');
+    for (const email of accounts) deps.log(`google\t${email}`);
+    return 0;
+  }
 
   if (command === 'add') {
     const provider = requireProvider(target);
