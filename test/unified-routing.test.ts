@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 
 import type { ChatChunk, ChatRequest, Provider } from '../src/core/providers/provider.ts';
+import { ProviderError } from '../src/core/providers/errors.ts';
 
 type ServerModule = typeof import('../src/unified/server.ts');
 
@@ -96,5 +97,27 @@ describe('unified server routing', () => {
     expect(text).toContain('"content":"partial"');
     expect(text).toContain('connection reset');
     expect(text.trim().endsWith('data: [DONE]')).toBeTrue();
+  });
+
+  test('maps provider errors to http statuses with retry-after', async () => {
+    const throwing = (id: string, error: Error): Provider => ({
+      ...fakeProvider,
+      id,
+      supports: model => model === `${id}-model`,
+      async stream() {
+        throw error;
+      },
+    });
+    server.registry.register(throwing('limited', new ProviderError('slow down', 'rate_limit', 429, 30)));
+    server.registry.register(throwing('keyless', new ProviderError('ZENMUX_API_KEY is not set', 'unavailable')));
+
+    const limited = await chat({ model: 'limited-model' });
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('retry-after')).toBe('30');
+    expect(((await limited.json()) as any).error.type).toBe('rate_limit_exceeded');
+
+    const keyless = await chat({ model: 'keyless-model' });
+    expect(keyless.status).toBe(503);
+    expect(((await keyless.json()) as any).error.type).toBe('provider_unavailable');
   });
 });

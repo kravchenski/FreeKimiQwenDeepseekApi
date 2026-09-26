@@ -1,5 +1,6 @@
 import type { AccountPool } from '../../core/accounts/account-pool.ts';
 import type { Credential } from '../../core/accounts/credential-store.ts';
+import { ProviderError } from '../../core/providers/errors.ts';
 import type { QwenSession } from './auth.ts';
 
 interface CredentialSource {
@@ -62,8 +63,8 @@ export class QwenAccountPool {
         errors.push(`${id}: ${message}`);
       }
     }
-    if (errors.length) throw new Error(errors.join('; '));
-    if (accounts.length) throw new Error('All Qwen accounts are cooling down or unavailable');
+    if (errors.length) throw new ProviderError(errors.join('; '), 'unavailable');
+    if (accounts.length) throw new ProviderError('All Qwen accounts are cooling down or unavailable', 'unavailable');
     return undefined;
   }
 
