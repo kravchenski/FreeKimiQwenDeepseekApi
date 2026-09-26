@@ -1,12 +1,15 @@
+mod accounts;
 mod gateway;
 mod status;
 
 use std::time::Duration;
 
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Disableable, Root};
 use gpui_kit::*;
 
+use accounts::{AccountsCli, SavedAccount};
 use gateway::{check_health, Gateway, GatewayConfig};
 use status::{fetch_status, now_ms, read_api_key, relative_time, GatewayStatus};
 
@@ -25,11 +28,18 @@ struct Shell {
     status: Option<GatewayStatus>,
     status_error: Option<String>,
     error: Option<String>,
+    accounts: AccountsCli,
+    saved: Vec<SavedAccount>,
+    email: Entity<InputState>,
+    password: Entity<InputState>,
+    account_busy: bool,
+    account_message: Option<(bool, String)>,
 }
 
 impl Shell {
-    fn new(cx: &mut Context<Self>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let config = GatewayConfig::from_env();
+        let accounts = AccountsCli::new(config.root.clone(), config.program.clone());
         let base_url = config.base_url();
         let api_key = read_api_key(&config.root);
         cx.spawn(async move |this, cx| loop {
@@ -60,7 +70,21 @@ impl Shell {
             cx.background_executor().timer(POLL_INTERVAL).await;
         })
         .detach();
-        Self { gateway: Gateway::new(config), health: Health::Stopped, status: None, status_error: None, error: None }
+        let mut shell = Self {
+            gateway: Gateway::new(config),
+            health: Health::Stopped,
+            status: None,
+            status_error: None,
+            error: None,
+            accounts,
+            saved: Vec::new(),
+            email: cx.new(|cx| InputState::new(window, cx).placeholder("Qwen email")),
+            password: cx.new(|cx| InputState::new(window, cx).placeholder("Password").masked(true)),
+            account_busy: false,
+            account_message: None,
+        };
+        shell.refresh_accounts(cx);
+        shell
     }
 
     fn apply_health(&mut self, healthy: bool) {
@@ -81,6 +105,51 @@ impl Shell {
     fn stop(&mut self) {
         self.gateway.stop();
         self.health = Health::Stopped;
+    }
+
+    fn refresh_accounts(&mut self, cx: &mut Context<Self>) {
+        let cli = self.accounts.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { cli.list() }).await;
+            let _ = this.update(cx, |shell, cx| {
+                match result {
+                    Ok(saved) => shell.saved = saved,
+                    Err(error) => shell.account_message = Some((false, error)),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn run_account_command(&mut self, cx: &mut Context<Self>, command: impl FnOnce(AccountsCli) -> Result<String, String> + Send + 'static) {
+        let cli = self.accounts.clone();
+        self.account_busy = true;
+        self.account_message = None;
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { command(cli) }).await;
+            let _ = this.update(cx, |shell, cx| {
+                shell.account_busy = false;
+                shell.account_message = Some(match result {
+                    Ok(output) => (true, output.lines().last().unwrap_or("Done").to_string()),
+                    Err(error) => (false, error.lines().last().unwrap_or("Failed").to_string()),
+                });
+                shell.refresh_accounts(cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn add_account(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let email = self.email.read(cx).value().to_string();
+        let password = self.password.read(cx).value().to_string();
+        self.password.update(cx, |input, cx| input.set_value("", window, cx));
+        self.run_account_command(cx, move |cli| cli.add("qwen", &email, &password));
+    }
+
+    fn remove_account(&mut self, id: String, cx: &mut Context<Self>) {
+        self.run_account_command(cx, move |cli| cli.remove(&id));
     }
 }
 
@@ -137,6 +206,7 @@ impl Render for Shell {
             )
             .children(self.error.clone().map(|error| div().text_sm().text_color(rgb(RED)).child(error)))
             .children(self.status_error.clone().map(|error| div().text_sm().text_color(rgb(RED)).child(format!("Status unavailable: {error}"))))
+            .child(self.render_accounts(cx))
             .child(self.render_status())
     }
 }
@@ -167,6 +237,56 @@ fn account_color(status: &str) -> u32 {
 }
 
 impl Shell {
+    fn render_accounts(&self, cx: &mut Context<Self>) -> AnyElement {
+        let states = self.status.as_ref().map(|status| status.accounts.as_slice()).unwrap_or_default();
+        let saved = self.saved.iter().map(|account| {
+            let state = states.iter().find(|state| state.account_id == account.id && state.provider == account.provider);
+            let id = account.id.clone();
+            row()
+                .child(dot(state.map(|state| account_color(&state.status)).unwrap_or(MUTED)))
+                .child(account.email.clone())
+                .child(div().text_color(rgb(MUTED)).child(match state {
+                    Some(state) => format!("{} · {} · {} failures", account.provider, state.status, state.consecutive_failures),
+                    None => format!("{} · not used yet", account.provider),
+                }))
+                .child(
+                    Button::new(SharedString::from(format!("remove-{}", account.id)))
+                        .ghost()
+                        .label("Remove")
+                        .disabled(self.account_busy)
+                        .on_click(cx.listener(move |shell, _, _, cx| {
+                            shell.remove_account(id.clone(), cx);
+                            cx.notify();
+                        })),
+                )
+        });
+        section("Accounts")
+            .children(saved)
+            .children(self.saved.is_empty().then(|| row().text_color(rgb(MUTED)).child("No saved accounts")))
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .items_center()
+                    .child(div().w(px(220.)).child(Input::new(&self.email)))
+                    .child(div().w(px(180.)).child(Input::new(&self.password)))
+                    .child(
+                        Button::new("add-account")
+                            .primary()
+                            .label(if self.account_busy { "Signing in…" } else { "Add Qwen account" })
+                            .disabled(self.account_busy)
+                            .on_click(cx.listener(|shell, _, window, cx| {
+                                shell.add_account(window, cx);
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .children(self.account_message.clone().map(|(ok, message)| {
+                div().text_sm().text_color(rgb(if ok { GREEN } else { RED })).child(message)
+            }))
+            .into_any_element()
+    }
+
     fn render_status(&self) -> AnyElement {
         let Some(status) = &self.status else {
             return div()
@@ -181,15 +301,6 @@ impl Shell {
                 .child(dot(if provider.available { GREEN } else { RED }))
                 .child(provider.id.clone())
                 .children(provider.reason.clone().map(|reason| div().text_color(rgb(MUTED)).child(reason)))
-        });
-        let accounts = status.accounts.iter().map(|account| {
-            row()
-                .child(dot(account_color(&account.status)))
-                .child(account.account_id.clone())
-                .child(div().text_color(rgb(MUTED)).child(format!(
-                    "{} · {} · {} failures",
-                    account.provider, account.status, account.consecutive_failures
-                )))
         });
         let requests = status.requests.iter().take(20).map(|request| {
             row()
@@ -206,11 +317,6 @@ impl Shell {
             .flex_col()
             .gap_4()
             .child(section("Providers").children(providers))
-            .child(if status.accounts.is_empty() {
-                section("Accounts").child(row().text_color(rgb(MUTED)).child("No saved accounts"))
-            } else {
-                section("Accounts").children(accounts)
-            })
             .child(if status.requests.is_empty() {
                 section("Recent requests").child(row().text_color(rgb(MUTED)).child("No requests yet"))
             } else {
@@ -230,7 +336,7 @@ fn main() {
                 ..Default::default()
             };
             cx.open_window(options, |window, cx| {
-                let view = cx.new(Shell::new);
+                let view = cx.new(|cx| Shell::new(window, cx));
                 cx.new(|cx| Root::new(view, window, cx))
             })
             .expect("failed to open window");
