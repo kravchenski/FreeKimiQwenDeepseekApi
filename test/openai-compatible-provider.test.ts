@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createNvidiaProvider, createZenMuxProviders } from '../src/providers/catalog.ts';
+import { createNvidiaProvider, createZenMuxProviders, isNvidiaChatModel } from '../src/providers/catalog.ts';
 import { parseOpenAIEvent } from '../src/providers/openai-compatible.ts';
 import { collectChunks } from '../src/core/streaming/sse.ts';
 
@@ -87,4 +87,19 @@ describe('OpenAI-compatible providers', () => {
     expect(owner('sapiens-ai/agnes-2.0-flash')).toBe('sapiens');
     expect(owner('deepseek-default')).toBeUndefined();
   });
+
+  test('lists NVIDIA chat models from upstream and drops non-chat ones', async () => {
+    const { fetchFn } = recordingFetch(() => Response.json({ data: [
+      { id: 'deepseek-ai/deepseek-v4.1-flash' },
+      { id: 'nvidia/llama-3.2-nv-embedqa-1b-v1' },
+      { id: 'nvidia/nemotron-3.5-content-safety' },
+      { id: 'z-ai/glm-5.3' },
+      { id: 'meta/llama-4' },
+    ] }));
+    const nvidia = createNvidiaProvider({ env: { NVIDIA_API_KEY: 'n' }, fetch: fetchFn });
+    expect(await nvidia.listModels()).toEqual(['deepseek-ai/deepseek-v4.1-flash', 'z-ai/glm-5.3']);
+    expect(isNvidiaChatModel('nvidia/nemotron-3-super-120b-a12b')).toBeTrue();
+    expect(isNvidiaChatModel('nvidia/llama-3.1-nemotron-safety-guard-8b-v3')).toBeFalse();
+  });
 });
+
