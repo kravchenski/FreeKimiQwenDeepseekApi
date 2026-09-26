@@ -28,7 +28,8 @@ describe('cross-platform runtime', () => {
             runChecks: false,
             syncModels: false
         });
-        expect(parseStartupArgs(['--service=kimi', '--skip-sync']).service).toBe('kimi');
+        expect(parseStartupArgs(['--service=gateway', '--skip-sync']).service).toBe('gateway');
+        expect(() => parseStartupArgs(['--service=kimi'])).toThrow('kimi');
         expect(() => parseStartupArgs(['--service', 'unknown'])).toThrow();
     });
 });

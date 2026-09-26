@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createNvidiaProvider, createZenMuxProviders, isNvidiaChatModel } from '../src/providers/catalog.ts';
+import { createNvidiaProvider, isNvidiaChatModel } from '../src/providers/catalog.ts';
 import { parseOpenAIEvent } from '../src/providers/openai-compatible.ts';
 import { collectChunks } from '../src/core/streaming/sse.ts';
 
@@ -35,18 +35,17 @@ describe('parseOpenAIEvent', () => {
 });
 
 describe('OpenAI-compatible providers', () => {
-  test('maps kimi models to the moonshot upstream name and streams chunks', async () => {
+  test('streams chunks from NVIDIA with the api key', async () => {
     const { calls, fetchFn } = recordingFetch(() =>
       sseResponse([delta({ content: 'Hel' }), delta({ content: 'lo' }), 'data: [DONE]', delta({ content: 'ignored' })])
     );
-    const kimi = createZenMuxProviders({ env: { ZENMUX_API_KEY: 'k' }, fetch: fetchFn }).find(p => p.id === 'kimi')!;
+    const nvidia = createNvidiaProvider({ env: { NVIDIA_API_KEY: 'n' }, fetch: fetchFn });
 
-    const { chunks } = await kimi.stream({ model: 'kimi-k2.7-code-free', messages: [{ role: 'user', content: 'hi' }] });
+    const { chunks } = await nvidia.stream({ model: 'moonshotai/kimi-k3', messages: [{ role: 'user', content: 'hi' }] });
 
     expect(await collectChunks(chunks)).toEqual({ content: 'Hello', reasoning: '' });
-    expect(calls[0]!.url).toBe('https://zenmux.ai/api/v1/chat/completions');
-    expect((calls[0]!.init.headers as Record<string, string>).Authorization).toBe('Bearer k');
-    expect(JSON.parse(calls[0]!.init.body as string)).toMatchObject({ model: 'moonshotai/kimi-k2.7-code-free', stream: true });
+    expect(calls[0]!.url).toBe('https://integrate.api.nvidia.com/v1/chat/completions');
+    expect((calls[0]!.init.headers as Record<string, string>).Authorization).toBe('Bearer n');
   });
 
   test('nvidia sends sampling defaults but keeps the requested model', async () => {
@@ -65,27 +64,27 @@ describe('OpenAI-compatible providers', () => {
 
   test('throws before streaming when the upstream rejects the request', async () => {
     const { fetchFn } = recordingFetch(() => new Response('rate limited', { status: 429 }));
-    const glm = createZenMuxProviders({ env: { ZENMUX_API_KEY: 'k' }, fetch: fetchFn }).find(p => p.id === 'glm')!;
+    const nvidia = createNvidiaProvider({ env: { NVIDIA_API_KEY: 'n' }, fetch: fetchFn });
 
-    await expect(glm.stream({ model: 'glm-5.2-free', messages: [] })).rejects.toThrow('GLM (ZenMux) completion failed: 429');
+    await expect(nvidia.stream({ model: 'z-ai/glm-5.3', messages: [] })).rejects.toThrow('NVIDIA completion failed: 429');
   });
 
   test('reports unavailable and refuses to call upstream without an api key', async () => {
     const { calls, fetchFn } = recordingFetch(() => sseResponse([]));
-    const stepfun = createZenMuxProviders({ env: {}, fetch: fetchFn }).find(p => p.id === 'stepfun')!;
+    const nvidia = createNvidiaProvider({ env: {}, fetch: fetchFn });
 
-    expect(stepfun.health()).toEqual({ available: false, reason: 'ZENMUX_API_KEY is not set' });
-    await expect(stepfun.stream({ model: 'stepfun/step-3.7-flash-free', messages: [] })).rejects.toThrow('ZENMUX_API_KEY');
+    expect(nvidia.health()).toEqual({ available: false, reason: 'NVIDIA_API_KEY is not set' });
+    await expect(nvidia.stream({ model: 'moonshotai/kimi-k3', messages: [] })).rejects.toThrow('NVIDIA_API_KEY');
     expect(calls).toHaveLength(0);
   });
 
-  test('routes models by prefix', () => {
-    const providers = [createNvidiaProvider(), ...createZenMuxProviders()];
-    const owner = (model: string) => providers.find(p => p.supports(model))?.id;
-    expect(owner('moonshotai/kimi-k2.6')).toBe('nvidia');
-    expect(owner('kimi-k2.7-code-free')).toBe('kimi');
-    expect(owner('sapiens-ai/agnes-2.0-flash')).toBe('sapiens');
-    expect(owner('deepseek-default')).toBeUndefined();
+  test('routes NVIDIA model families by prefix', () => {
+    const nvidia = createNvidiaProvider();
+    expect(nvidia.supports('moonshotai/kimi-k3')).toBeTrue();
+    expect(nvidia.supports('z-ai/glm-5.3')).toBeTrue();
+    expect(nvidia.supports('deepseek-ai/deepseek-v4.1-flash')).toBeTrue();
+    expect(nvidia.supports('deepseek-default')).toBeFalse();
+    expect(nvidia.supports('kimi-k2.7-code-free')).toBeFalse();
   });
 
   test('lists NVIDIA chat models from upstream and drops non-chat ones', async () => {

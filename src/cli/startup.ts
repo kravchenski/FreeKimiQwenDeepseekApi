@@ -1,4 +1,4 @@
-export type Service = 'qwen' | 'deepseek' | 'kimi' | 'gateway';
+export type Service = 'qwen' | 'deepseek' | 'gateway';
 
 export type StartupOptions = {
     service: Service;
@@ -49,5 +49,5 @@ export function parseStartupArgs(args: string[]): StartupOptions {
 }
 
 function isService(value: unknown): value is Service {
-    return value === 'qwen' || value === 'deepseek' || value === 'kimi' || value === 'gateway';
+    return value === 'qwen' || value === 'deepseek' || value === 'gateway';
 }

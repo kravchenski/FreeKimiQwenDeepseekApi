@@ -11,15 +11,12 @@ services:
       - GATEWAY_API_KEY=${GATEWAY_API_KEY:-}
       - QWEN_URL=http://qwen-proxy:3264/api
       - DEEPSEEK_URL=http://deepseek-proxy:3265/api
-      - KIMI_URL=http://kimi-proxy:3266/api
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-3263}:3263"
     depends_on:
       qwen-proxy:
         condition: service_healthy
       deepseek-proxy:
-        condition: service_healthy
-      kimi-proxy:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:3263/ready');process.exit(r.ok?0:1)"]
@@ -82,32 +79,6 @@ services:
       - ALL
     healthcheck:
       test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:3265/health');process.exit(r.ok?0:1)"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
-  kimi-proxy:
-    build:
-      context: .
-      dockerfile: Dockerfile.light
-    image: ${FREEAI_KIMI_IMAGE:-kimi-web-proxy:latest}
-    command: ["bun", "run", "kimi.ts"]
-    environment:
-      - NODE_ENV=production
-      - KIMI_PORT=3266
-      - HOST=0.0.0.0
-      - SKIP_ACCOUNT_MENU=true
-    volumes:
-      - ./session:/app/session
-      - ./logs:/app/logs
-    restart: unless-stopped
-    init: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    healthcheck:
-      test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:3266/health');process.exit(r.ok?0:1)"]
       interval: 15s
       timeout: 5s
       retries: 5
