@@ -21,6 +21,9 @@ import type { Database } from 'bun:sqlite';
 import { createNvidiaProvider } from '../providers/catalog.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
 import { createQwenProvider } from '../providers/qwen/provider.ts';
+import { BrowserChatSession } from '../browser/browser-chat.ts';
+import { createBrowserChatProvider } from '../providers/browser-chat-provider.ts';
+import { parseZaiStream, ZAI_CHAT_SITE } from '../providers/glm/web.ts';
 
 export const app = new Hono();
 const config = loadConfig();
@@ -44,6 +47,18 @@ export const registry = new ProviderRegistry()
     .register(createNvidiaProvider())
     .register(createDeepSeekProvider())
     .register(createQwenProvider());
+
+let browserChat: BrowserChatSession | undefined;
+const browserChatSession = () => (browserChat ??= new BrowserChatSession());
+
+registry.register(createBrowserChatProvider({
+    id: 'glm-chat',
+    ownedBy: 'z-ai-web',
+    model: 'glm-chat',
+    site: ZAI_CHAT_SITE,
+    session: browserChatSession,
+    parse: parseZaiStream,
+}));
 
 export const router = new SmartRouter(registry, parseAutoModels(config.AUTO_MODELS));
 
@@ -384,7 +399,14 @@ app.post('/v1/messages/count_tokens', async (c) => {
 app.post('/v1/responses', handleResponses);
 app.post('/api/v1/responses', handleResponses);
 
+async function shutdown() {
+    await browserChat?.close();
+    process.exit(0);
+}
+
 export async function startUnifiedServer() {
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
     await refreshModelLists();
     const modelCount = allModels.length;
 
@@ -401,7 +423,7 @@ export async function startUnifiedServer() {
   Endpoint: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}
   Models:   ${modelCount} total (fetched from upstream APIs)
 
-  Providers: deepseek qwen nvidia
+  Providers: deepseek qwen glm-chat (browser) nvidia (fallback)
   NVIDIA models use NVIDIA API; set NVIDIA_API_KEY in .env.
   Qwen models use the Qwen API proxy (QWEN_API_BASE_URL); set QWEN_TOKEN or add accounts via bun run auth.
 
