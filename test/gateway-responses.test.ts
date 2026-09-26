@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
     chatResponseToResponses,
+    responsesSseEvents,
     flattenResponsesTools,
     responsesInputToMessages,
     responsesToChatRequest
@@ -79,3 +80,37 @@ describe('Responses API gateway bridge', () => {
         });
     });
 });
+
+describe('responsesSseEvents', () => {
+    test('emits typed events with text and function call deltas in order', () => {
+        const events = responsesSseEvents({
+            id: 'resp_1',
+            object: 'response',
+            status: 'completed',
+            output: [
+                { type: 'function_call', id: 'fc_1', call_id: 'c1', name: 'read', arguments: '{"path":"a"}', status: 'completed' },
+                { type: 'message', id: 'msg_1', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Hi', annotations: [] }] },
+            ],
+        }).map(chunk => JSON.parse(chunk.split('\ndata: ')[1]!));
+
+        expect(events.map(event => event.type)).toEqual([
+            'response.created',
+            'response.in_progress',
+            'response.output_item.added',
+            'response.function_call_arguments.delta',
+            'response.function_call_arguments.done',
+            'response.output_item.done',
+            'response.output_item.added',
+            'response.content_part.added',
+            'response.output_text.delta',
+            'response.output_text.done',
+            'response.content_part.done',
+            'response.output_item.done',
+            'response.completed',
+        ]);
+        expect(events.map(event => event.sequence_number)).toEqual(events.map((_, index) => index));
+        expect(events.find(event => event.type === 'response.output_text.delta')).toMatchObject({ item_id: 'msg_1', delta: 'Hi' });
+        expect(events[0].response).toMatchObject({ status: 'in_progress', output: [] });
+    });
+});
+

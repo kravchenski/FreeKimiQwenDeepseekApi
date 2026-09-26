@@ -121,4 +121,31 @@ describe('unified server routing', () => {
     expect(keyless.status).toBe(503);
     expect(((await keyless.json()) as any).error.type).toBe('provider_unavailable');
   });
+
+  test('serves the Responses API through the chat pipeline', async () => {
+    const responses = (body: Record<string, unknown>, authorization = `Bearer ${key}`) =>
+      server.app.fetch(new Request('http://local/v1/responses', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization },
+        body: JSON.stringify({ model: 'fake-model', input: 'hello', ...body }),
+      }));
+
+    replies.push([{ type: 'content', text: 'Hello from responses' }]);
+    const plain = await responses({});
+    const json = await plain.json() as any;
+    expect(plain.status).toBe(200);
+    expect(plain.headers.get('x-gateway-route')).toBe('fake/fake-model');
+    expect(json.object).toBe('response');
+    expect(json.output[0].content[0].text).toBe('Hello from responses');
+
+    replies.push([{ type: 'content', text: 'streamed' }]);
+    const streamed = await (await responses({ stream: true })).text();
+    expect(streamed.startsWith('event: response.created')).toBeTrue();
+    expect(streamed).toContain('"delta":"streamed"');
+    expect(streamed.trim().split('\n\n').at(-1)).toStartWith('event: response.completed');
+
+    expect((await responses({}, 'Bearer wrong')).status).toBe(401);
+    expect((await responses({ model: 'gpt-unknown' })).status).toBe(400);
+  });
 });
+

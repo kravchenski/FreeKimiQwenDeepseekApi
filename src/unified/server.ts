@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { bodyLimit } from 'hono/body-limit';
 import { serve } from 'bun';
 import crypto from 'crypto';
@@ -6,6 +7,7 @@ import crypto from 'crypto';
 import { isEmptyToolCallResponse } from '../providers/deepseek/client.ts';
 import { conversationalShellText, parseToolCallJson, recoverBrokenBashToolCall, toolsToPrompt } from '../api/routes.ts';
 import { bearerToken, tokenMatches } from '../gateway/security.ts';
+import { chatResponseToResponses, responsesSseEvents, responsesToChatRequest } from '../gateway/responses.ts';
 import type { ProviderStream } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
 import { collectChunks } from '../core/streaming/sse.ts';
@@ -278,6 +280,39 @@ app.post('/v1/chat/completions', async (c) => {
         body: c.req.raw.body
     }));
 });
+
+async function handleResponses(c: Context) {
+    let body: Record<string, any>;
+    try {
+        body = await c.req.json();
+    } catch {
+        return c.json({ error: { message: 'Invalid JSON body', type: 'invalid_request_error' } }, 400);
+    }
+    const { request, routes } = responsesToChatRequest(body);
+    const headers = new Headers({ 'content-type': 'application/json' });
+    const authorization = c.req.header('authorization');
+    if (authorization) headers.set('authorization', authorization);
+    const chat = await app.fetch(new Request(new URL('/api/chat/completions', c.req.url), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(request),
+    }));
+    const payload = await chat.json() as Record<string, any>;
+    const passthrough: Record<string, string> = {};
+    for (const name of ['x-gateway-route', 'retry-after']) {
+        const value = chat.headers.get(name);
+        if (value) passthrough[name] = value;
+    }
+    if (!chat.ok) return c.json(payload, chat.status as ContentfulStatusCode, passthrough);
+    const converted = chatResponseToResponses(payload, routes);
+    if (!body.stream) return c.json(converted, 200, passthrough);
+    return new Response(responsesSseEvents(converted).join(''), {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', ...passthrough },
+    });
+}
+
+app.post('/v1/responses', handleResponses);
+app.post('/api/v1/responses', handleResponses);
 
 export async function startUnifiedServer() {
     await refreshModelLists();
