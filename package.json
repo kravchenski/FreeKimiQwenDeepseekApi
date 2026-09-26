@@ -30,7 +30,7 @@
         "test": "bun test ./test",
         "audit": "bun audit --production",
         "analyze": "knip --reporter compact",
-        "check": "bun build deepseek.ts src/unified/server.ts src/web/server.ts --target=bun --external typescript --outdir=.build-check --entry-naming '[name].[hash].[ext]'",
+        "check": "bun build deepseek.ts src/unified/server.ts src/web/server.ts --target=bun --external typescript --external 'chromium-bidi/*' --outdir=.build-check --entry-naming '[name].[hash].[ext]'",
         "ci": "bun run check && bun run test",
         "check:no-js": "bun run scripts/check-no-js.ts",
         "example:stream": "bun run examples/openai-sdk/streaming.ts",
