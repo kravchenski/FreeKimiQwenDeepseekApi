@@ -1,5 +1,41 @@
 services:
+  unified:
+    build:
+      context: .
+      dockerfile: Dockerfile.light
+    image: ${FREEAI_UNIFIED_IMAGE:-free-ai-unified:latest}
+    command: ["bun", "run", "src/unified/server.ts"]
+    environment:
+      - NODE_ENV=production
+      - UNIFIED_PORT=3260
+      - HOST=0.0.0.0
+      - GATEWAY_API_KEY=${GATEWAY_API_KEY:-}
+      - ACCOUNTS_SECRET=${ACCOUNTS_SECRET:-}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - QWEN_TOKEN=${QWEN_TOKEN:-}
+      - QWEN_API_BASE_URL=${QWEN_API_BASE_URL:-}
+      - DEEPSEEK_TOKEN=${DEEPSEEK_TOKEN:-}
+      - AUTO_MODELS=${AUTO_MODELS:-}
+    ports:
+      - "127.0.0.1:${UNIFIED_PORT:-3260}:3260"
+    volumes:
+      - ./session:/app/session
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:3260/health');process.exit(r.ok?0:1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   gateway:
+    profiles: [legacy]
     build:
       context: .
       dockerfile: Dockerfile.light
@@ -31,9 +67,11 @@ services:
       - ALL
 
   qwen-proxy:
+    profiles: [legacy]
     build: .
     image: ${FREEAI_QWEN_IMAGE:-freeqwenapi:latest}
     container_name: qwen-proxy
+    command: ["bun", "run", "index.ts"]
     environment:
       - NODE_ENV=production
       - PORT=${PORT:-3264}
@@ -58,6 +96,7 @@ services:
       retries: 5
 
   deepseek-proxy:
+    profiles: [legacy]
     build:
       context: .
       dockerfile: Dockerfile.light
