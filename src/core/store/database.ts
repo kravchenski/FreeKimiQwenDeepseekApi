@@ -34,6 +34,22 @@ const MIGRATIONS = [
     error TEXT
   )`,
   'CREATE INDEX request_logs_created_at ON request_logs (created_at)',
+  `CREATE TABLE account_state_v2 (
+    account_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'healthy',
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    cooldown_until INTEGER,
+    quota_reset_at INTEGER,
+    last_used_at INTEGER,
+    last_success_at INTEGER,
+    last_error_at INTEGER,
+    last_error TEXT,
+    PRIMARY KEY (provider, account_id)
+  )`,
+  'INSERT INTO account_state_v2 SELECT * FROM account_state',
+  'DROP TABLE account_state',
+  'ALTER TABLE account_state_v2 RENAME TO account_state',
 ];
 
 export const DEFAULT_DATABASE_FILE = path.resolve(process.env.DATA_DIR || 'data', 'gateway.db');
