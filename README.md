@@ -79,6 +79,10 @@ docker compose up -d
 
 Starts the unified API on `127.0.0.1:3260` using `.env` for keys and mounting `session/`, `data/` and `logs/`. Add accounts on the host (`bun run account ...`) before starting. The old per-provider services are available with `docker compose --profile legacy up -d`.
 
+## Releases
+
+Versions follow [Semantic Versioning](https://semver.org) and are derived from [Conventional Commits](https://www.conventionalcommits.org) by [release-please](https://github.com/googleapis/release-please): `feat` → minor, `fix` / `perf` / `refactor` → patch, `!` or `BREAKING CHANGE` → major. Every push to `main` updates a release PR; merging it creates the `vX.Y.Z` tag, a GitHub Release listing the commits in that version, updates `CHANGELOG.md` and publishes `ghcr.io/<owner>/freeqwenapi:X.Y.Z`.
+
 ## Environment Variables
 
 | Variable | Default | Description |
