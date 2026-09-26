@@ -79,4 +79,19 @@ describe('accounts CLI', () => {
     expect(await runAccountsCommand(['explode'], deps)).toBe(1);
     expect(await runAccountsCommand([], deps)).toBe(0);
   });
+
+  test('opens the Google profile then lists its accounts', async () => {
+    const { deps, lines } = harness();
+    const opened: string[] = [];
+    deps.openGoogleSignIn = async () => { opened.push('open'); };
+    deps.listGoogleAccounts = async () => ['a@gmail.com', 'b@gmail.com'];
+
+    expect(await runAccountsCommand(['google'], deps)).toBe(0);
+    expect(opened).toEqual(['open']);
+    expect(lines.slice(-2)).toEqual(['google\ta@gmail.com', 'google\tb@gmail.com']);
+
+    expect(await runAccountsCommand(['google', '--list'], deps)).toBe(0);
+    expect(opened).toEqual(['open']);
+  });
 });
+
