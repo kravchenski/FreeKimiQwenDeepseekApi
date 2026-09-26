@@ -53,7 +53,7 @@ export function createQwenProvider(overrides: Overrides = {}, accounts = createQ
     capabilities: { reasoning: true, vision: true },
     resolveApiKey: async () => (await accounts.token()) ?? (await getAvailableToken())?.token,
     hasApiKey: () => accounts.hasAccounts() || hasValidTokens(),
-    reportResult: (apiKey, response) => accounts.report(apiKey, response),
+    reportResult: (apiKey, outcome) => accounts.report(apiKey, outcome),
     ...overrides,
   });
 }

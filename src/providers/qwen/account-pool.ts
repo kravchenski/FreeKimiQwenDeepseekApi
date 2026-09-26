@@ -1,6 +1,7 @@
 import type { AccountPool } from '../../core/accounts/account-pool.ts';
 import type { Credential } from '../../core/accounts/credential-store.ts';
 import { ProviderError } from '../../core/providers/errors.ts';
+import type { UpstreamOutcome } from '../openai-compatible.ts';
 import type { QwenSession } from './auth.ts';
 
 interface CredentialSource {
@@ -10,15 +11,7 @@ interface CredentialSource {
 type SignIn = (email: string, password: string) => Promise<QwenSession>;
 
 const EXPIRY_MARGIN_MS = 60_000;
-const DEFAULT_RETRY_AFTER_MS = 60_000;
-
-export function retryAfterMs(header: string | null, now: number) {
-  if (!header) return DEFAULT_RETRY_AFTER_MS;
-  const seconds = Number(header);
-  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
-  const date = Date.parse(header);
-  return Number.isNaN(date) ? DEFAULT_RETRY_AFTER_MS : Math.max(date - now, 0);
-}
+const DEFAULT_RETRY_AFTER_SECONDS = 60;
 
 export class QwenAccountPool {
   private credentials?: Credential[];
@@ -68,18 +61,23 @@ export class QwenAccountPool {
     return undefined;
   }
 
-  report(token: string, response: Response) {
+  report(token: string, outcome: UpstreamOutcome) {
     const id = this.accountFor(token);
     if (!id) return;
-    if (response.ok) {
+    if (outcome.ok) {
       this.pool.markSuccess(id);
-    } else if (response.status === 401 || response.status === 403) {
+      return;
+    }
+    const reason = `upstream ${outcome.status ?? outcome.kind}`;
+    if (outcome.kind === 'auth') {
       this.sessions.delete(id);
-      this.pool.markFailure(id, `upstream ${response.status}`);
-    } else if (response.status === 429) {
-      this.pool.markRateLimited(id, this.now() + retryAfterMs(response.headers.get('retry-after'), this.now()));
-    } else if (response.status >= 500) {
-      this.pool.markFailure(id, `upstream ${response.status}`);
+      this.pool.markFailure(id, reason);
+    } else if (outcome.kind === 'rate_limit') {
+      this.pool.markRateLimited(id, this.now() + (outcome.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS) * 1000);
+    } else if (outcome.kind === 'quota_exhausted') {
+      this.pool.markQuotaExhausted(id, outcome.retryAfterSeconds === undefined ? undefined : this.now() + outcome.retryAfterSeconds * 1000);
+    } else if ((outcome.status ?? 500) >= 500) {
+      this.pool.markFailure(id, reason);
     }
   }
 
