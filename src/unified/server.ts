@@ -9,6 +9,7 @@ import { bearerToken, tokenMatches } from '../gateway/security.ts';
 import type { ProviderStream } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
 import { collectChunks } from '../core/streaming/sse.ts';
+import { toHttpError } from '../core/providers/errors.ts';
 import { createNvidiaProvider, createZenMuxProviders } from '../providers/catalog.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
 import { createQwenProvider } from '../providers/qwen/provider.ts';
@@ -119,8 +120,8 @@ function handleProviderStream(
             try {
                 await writeStream(controller);
             } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message, type: 'upstream_error' } })}\n\n`));
+                const { message, type } = toHttpError(error);
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message, type } })}\n\n`));
                 controller.enqueue(encoder.encode('data: [DONE]\n\n'));
                 controller.close();
             }
@@ -243,8 +244,9 @@ app.post('/api/chat/completions', async (c) => {
             ...responseFields
         });
     } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return c.json({ error: { message, type: 'upstream_error' } }, 502);
+        const { status, type, message, retryAfterSeconds } = toHttpError(error);
+        if (retryAfterSeconds !== undefined) c.header('Retry-After', String(retryAfterSeconds));
+        return c.json({ error: { message, type } }, status);
     }
 });
 

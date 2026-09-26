@@ -4,6 +4,7 @@ import path from 'node:path';
 import { solveDeepSeekPow } from './pow.ts';
 import { getAvailableDeepSeekAccount, markDeepSeekAccountInvalid, type DeepSeekAccount } from './accounts.ts';
 import { PersistentStringMap } from '../../utils/persistentMap.ts';
+import { ProviderError, upstreamError } from '../../core/providers/errors.ts';
 
 const BASE_URL = process.env.DEEPSEEK_BASE_URL || 'https://chat.deepseek.com';
 const SESSION_MAP_FILE = process.env.DEEPSEEK_SESSION_MAP_FILE || path.join(process.cwd(), 'session', 'deepseek', 'chat-sessions.json');
@@ -48,7 +49,7 @@ function envAccount(): DeepSeekAccount | null {
 
 function getAccount() {
     const account = getAvailableDeepSeekAccount() || envAccount();
-    if (!account) throw new Error('Нет активных аккаунтов DeepSeek. Добавьте аккаунт через меню.');
+    if (!account) throw new ProviderError('No active DeepSeek accounts. Add one with bun run auth:deepseek.', 'unavailable');
     return account;
 }
 
@@ -81,7 +82,7 @@ async function createSession(account: DeepSeekAccount) {
         body: '{}'
     });
     if (response.status === 401 && account.id !== 'env') markDeepSeekAccountInvalid(account.id);
-    if (!response.ok) throw new Error(`DeepSeek session create failed: ${response.status} ${await response.text()}`);
+    if (!response.ok) throw await upstreamError('DeepSeek session create', response);
     const body = await response.json() as any;
     const id = body?.data?.biz_data?.chat_session?.id || body?.data?.biz_data?.id;
     if (!id) throw new Error('DeepSeek did not return a chat session id');
@@ -104,7 +105,7 @@ async function getPow(account: DeepSeekAccount, sessionId: string) {
         body: JSON.stringify({ target_path: '/api/v0/chat/completion' })
     });
     if (response.status === 401 && account.id !== 'env') markDeepSeekAccountInvalid(account.id);
-    if (!response.ok) throw new Error(`DeepSeek PoW challenge failed: ${response.status} ${await response.text()}`);
+    if (!response.ok) throw await upstreamError('DeepSeek PoW challenge', response);
     const body = await response.json() as any;
     const challenge = body?.data?.biz_data?.challenge;
     if (!challenge) throw new Error('DeepSeek did not return a PoW challenge');
@@ -154,7 +155,7 @@ export async function deepSeekCompletion(options: {
         })
     });
     if (response.status === 401 && account.id !== 'env') markDeepSeekAccountInvalid(account.id);
-    if (!response.ok) throw new Error(`DeepSeek completion failed: ${response.status} ${await response.text()}`);
+    if (!response.ok) throw await upstreamError('DeepSeek completion', response);
     return { response, sessionId, key, accountId: account.id };
 }
 

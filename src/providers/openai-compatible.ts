@@ -6,6 +6,7 @@ import type {
   ProviderContext,
   ProviderStream,
 } from '../core/providers/provider.ts';
+import { ProviderError, upstreamError } from '../core/providers/errors.ts';
 import { readLines } from '../core/streaming/sse.ts';
 
 export interface OpenAICompatibleConfig {
@@ -105,7 +106,7 @@ export class OpenAICompatibleProvider implements Provider {
 
   async stream(request: ChatRequest, context: ProviderContext = {}): Promise<ProviderStream> {
     const apiKey = await this.apiKey();
-    if (!apiKey) throw new Error(`${this.config.apiKeyEnv} is not set`);
+    if (!apiKey) throw new ProviderError(`${this.config.apiKeyEnv} is not set`, 'unavailable');
     const model = this.config.upstreamModel?.(request.model) ?? request.model;
     const response = await (this.config.fetch ?? fetch)(`${this.config.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -115,7 +116,7 @@ export class OpenAICompatibleProvider implements Provider {
     });
     this.config.reportResult?.(apiKey, response);
     if (!response.ok) {
-      throw new Error(`${this.config.label} completion failed: ${response.status} ${await response.text()}`);
+      throw await upstreamError(`${this.config.label} completion`, response);
     }
     return { chunks: openAIChunks(response.body) };
   }
