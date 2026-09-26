@@ -28,7 +28,7 @@ WORKDIR /app
 COPY --from=base /app/node_modules ./node_modules
 COPY package.json ./
 COPY src/ ./src/
-COPY index.ts deepseek.ts kimi.ts gateway.ts ./
+COPY index.ts deepseek.ts gateway.ts ./
 
 RUN install -d -o bun -g bun /app/session /app/logs /app/uploads \
  && chown -R bun:bun /app/session \

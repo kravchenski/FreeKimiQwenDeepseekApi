@@ -17,7 +17,7 @@ import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-r
 import { openDatabase, recordRequest, type RequestLog } from '../core/store/database.ts';
 import { gatewayStatus } from '../core/status.ts';
 import type { Database } from 'bun:sqlite';
-import { createNvidiaProvider, createZenMuxProviders } from '../providers/catalog.ts';
+import { createNvidiaProvider } from '../providers/catalog.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
 import { createQwenProvider } from '../providers/qwen/provider.ts';
 
@@ -42,7 +42,6 @@ export const registry = new ProviderRegistry()
     .register(createNvidiaProvider())
     .register(createDeepSeekProvider())
     .register(createQwenProvider());
-for (const provider of createZenMuxProviders()) registry.register(provider);
 
 export const router = new SmartRouter(registry, parseAutoModels(process.env.AUTO_MODELS));
 
@@ -400,8 +399,7 @@ export async function startUnifiedServer() {
   Endpoint: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}
   Models:   ${modelCount} total (fetched from upstream APIs)
 
-  Providers: deepseek qwen kimi glm sapiens stepfun nvidia
-  Kimi, GLM, Sapiens, and StepFun use ZenMux proxy; set ZENMUX_API_KEY in .env.
+  Providers: deepseek qwen nvidia
   NVIDIA models use NVIDIA API; set NVIDIA_API_KEY in .env.
   Qwen models use the Qwen API proxy (QWEN_API_BASE_URL); set QWEN_TOKEN or add accounts via bun run auth.
 

@@ -114,7 +114,7 @@ describe('unified server routing', () => {
       },
     });
     server.registry.register(throwing('limited', new ProviderError('slow down', 'rate_limit', 429, 30)));
-    server.registry.register(throwing('keyless', new ProviderError('ZENMUX_API_KEY is not set', 'unavailable')));
+    server.registry.register(throwing('keyless', new ProviderError('NVIDIA_API_KEY is not set', 'unavailable')));
 
     const limited = await chat({ model: 'limited-model' });
     expect(limited.status).toBe(429);

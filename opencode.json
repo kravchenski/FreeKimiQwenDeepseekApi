@@ -2,7 +2,7 @@
   "$schema": "https://opencode.ai/config.json",
   "plugin": ["opencode-clipboard-image"],
   "model": "freeqwen/deepseek-default",
-  "small_model": "freeqwen/glm-5.2-free",
+  "small_model": "freeqwen/deepseek-default",
   "disabled_providers": ["anthropic", "openai", "google", "azure", "aws", "github"],
   "provider": {
     "freeqwen": {
@@ -17,11 +17,8 @@
         "deepseek-default": { "name": "DeepSeek Default", "family": "deepseek", "tool_call": true, "cost": { "input": 0, "output": 0 } },
         "deepseek-expert": { "name": "DeepSeek Expert", "family": "deepseek", "tool_call": true, "cost": { "input": 0, "output": 0 } },
         "deepseek-search": { "name": "DeepSeek Search", "family": "deepseek", "tool_call": true, "cost": { "input": 0, "output": 0 } },
-        "kimi-k2.7-code-free": { "name": "Kimi K2.7 Code Free", "family": "kimi", "tool_call": true, "cost": { "input": 0, "output": 0 } },
-        "glm-5.2-free": { "name": "GLM 5.2 Free", "family": "glm", "tool_call": true, "cost": { "input": 0, "output": 0 } },
-        "glm-4.7-flash-free": { "name": "GLM 4.7 Flash Free", "family": "glm", "tool_call": true, "cost": { "input": 0, "output": 0 } },
-        "sapiens-ai/agnes-2.0-flash": { "name": "Sapiens Agnes 2.0 Flash", "family": "sapiens", "tool_call": true, "cost": { "input": 0, "output": 0 } },
-        "stepfun/step-3.7-flash-free": { "name": "StepFun Step 3.7 Flash Free", "family": "stepfun", "tool_call": true, "cost": { "input": 0, "output": 0 } },
+        "moonshotai/kimi-k3": { "name": "Kimi K3 (NVIDIA)", "family": "kimi", "tool_call": true, "cost": { "input": 0, "output": 0 } },
+        "z-ai/glm-5.3": { "name": "GLM 5.3 (NVIDIA)", "family": "glm", "tool_call": true, "cost": { "input": 0, "output": 0 } },
         "deepseek-ai/deepseek-v4.1-flash": { "name": "DeepSeek V4.1 Flash (NVIDIA)", "family": "nvidia", "tool_call": true, "cost": { "input": 0, "output": 0 } },
         "moonshotai/kimi-k2.6": { "name": "Kimi K2.6 (NVIDIA)", "family": "nvidia", "tool_call": true, "cost": { "input": 0, "output": 0 } }
       }

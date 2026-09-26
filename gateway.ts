@@ -12,8 +12,7 @@ const configuredUpstreamTimeout = Number(process.env.GATEWAY_UPSTREAM_TIMEOUT_MS
 const upstreamTimeout = Number.isFinite(configuredUpstreamTimeout) && configuredUpstreamTimeout > 0 ? configuredUpstreamTimeout : 180_000;
 const qwenUrl = process.env.QWEN_URL || 'http://qwen-proxy:3264/api';
 const deepSeekUrl = process.env.DEEPSEEK_URL || 'http://deepseek-proxy:3265/api';
-const kimiUrl = process.env.KIMI_URL || 'http://kimi-proxy:3266/api';
-const providerUrls = [qwenUrl, deepSeekUrl, kimiUrl];
+const providerUrls = [qwenUrl, deepSeekUrl];
 
 app.use('*', async (c, next) => {
     c.header('X-Content-Type-Options', 'nosniff');
@@ -64,7 +63,7 @@ app.get('/api/v1/models', async (c) => {
 app.post('/api/v1/responses', async (c) => {
     try {
         const body = await c.req.json();
-        const upstream = targetForModel(body.model, qwenUrl, deepSeekUrl, kimiUrl);
+        const upstream = targetForModel(body.model, qwenUrl, deepSeekUrl);
         const { request, routes } = responsesToChatRequest(body);
         const response = await fetch(`${upstream}/chat/completions`, {
             method: 'POST',
@@ -97,7 +96,7 @@ app.all('/api/*', async (c) => {
     try {
         const body = await c.req.arrayBuffer();
         const parsed = body.byteLength > 0 ? JSON.parse(new TextDecoder().decode(body)) : {};
-        const upstream = targetForModel(parsed.model, qwenUrl, deepSeekUrl, kimiUrl);
+        const upstream = targetForModel(parsed.model, qwenUrl, deepSeekUrl);
         const path = c.req.url.replace(/^.*\/api/, '');
         const sessionId = extractConversationId(c.req.raw.headers, parsed);
         const response = await fetch(`${upstream}${path}`, {

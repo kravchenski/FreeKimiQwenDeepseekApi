@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 - **`src/`**: Core modules including `api`, `browser`, `gateway`, `providers`, and `middleware`.
-- **Root `.ts` files**: Entry points for individual services (`index.ts`, `deepseek.ts`, `kimi.ts`, `gateway.ts`).
+- **Root `.ts` files**: Entry points for individual services (`index.ts`, `deepseek.ts`, `gateway.ts`).
 - **`src/unified/server.ts`**: Main OpenCode-compatible API server (port 3260).
 - **`test/`**: Unit and integration tests using Bun's test runner.
 - **`scripts/`**: Automation for auth, setup, and CI checks.
@@ -19,10 +19,8 @@
 - **Models**:
   - `deepseek-*` — DeepSeek Web (default, reasoner, expert, search)
   - `qwen-*` — Qwen Web (max-latest, plus, qwen3-max, coder-plus, omni-flash, turbo, qwq-32b и др.)
-  - `kimi-*` — Kimi via ZenMux
-  - `glm-*` — GLM via ZenMux (включая glm-4.6v-flash-free)
-  - `sapiens/*` — Sapiens Agnes 2.0 Flash via ZenMux
-  - `stepfun/*` — StepFun Step 3.7 Flash Free via ZenMux
+  - `moonshotai/*`, `z-ai/*`, `deepseek-ai/*`, `nvidia/*` — NVIDIA API (Kimi, GLM, DeepSeek, Nemotron)
+  - `auto` — first available model from `AUTO_MODELS`
 - **Configure OpenCode**:
   ```bash
   OPENCODE_API_URL=http://localhost:3260

@@ -6,9 +6,9 @@ export const AUTO_MODEL = 'auto';
 export const DEFAULT_AUTO_MODELS = [
   'qwen3.7-plus',
   'deepseek-default',
-  'glm-5.2-free',
-  'kimi-k2.7-code-free',
   'deepseek-ai/deepseek-v4.1-flash',
+  'moonshotai/kimi-k3',
+  'z-ai/glm-5.3',
 ];
 
 const PROVIDER_COOLDOWN_MS = 30_000;

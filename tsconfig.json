@@ -11,7 +11,6 @@
   "include": [
     "index.ts",
     "deepseek.ts",
-    "kimi.ts",
     "gateway.ts",
     "src/**/*.ts",
     "scripts/**/*.ts",
