@@ -52,7 +52,9 @@ const MIGRATIONS = [
   'ALTER TABLE account_state_v2 RENAME TO account_state',
 ];
 
-export const DEFAULT_DATABASE_FILE = path.resolve(process.env.DATA_DIR || 'data', 'gateway.db');
+export function defaultDatabaseFile() {
+  return path.resolve(process.env.DATA_DIR || 'data', 'gateway.db');
+}
 
 function migrate(db: Database) {
   const { user_version: current } = db.query('PRAGMA user_version').get() as { user_version: number };
@@ -63,7 +65,7 @@ function migrate(db: Database) {
   })();
 }
 
-export function openDatabase(file = DEFAULT_DATABASE_FILE) {
+export function openDatabase(file = defaultDatabaseFile()) {
   const inMemory = file === ':memory:';
   if (!inMemory) fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   const db = new Database(file, { create: true, strict: true });

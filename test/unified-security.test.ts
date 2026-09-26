@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { beforeAll, describe, expect, test } from 'bun:test';
 
 let app: { fetch: (request: Request) => Response | Promise<Response> };
@@ -6,6 +9,7 @@ let key = '';
 
 beforeAll(async () => {
     key = process.env.GATEWAY_API_KEY ||= 'test-key';
+  process.env.DATA_DIR ||= mkdtempSync(join(tmpdir(), 'gateway-test-'));
     ({ app } = await import('../src/unified/server.ts'));
 });
 
