@@ -159,12 +159,30 @@ export async function deepSeekCompletion(options: {
     return { response, sessionId, key, accountId: account.id };
 }
 
-export function parseDeepSeekEvent(line: string, state: {
+type DeepSeekParseState = {
     phase: 'content' | 'thinking';
     fragment?: string;
     contentSnapshot?: string;
     thinkingSnapshot?: string;
-}) {
+};
+
+function applyFragments(fragments: Array<Record<string, any>>, state: DeepSeekParseState) {
+    let content = '';
+    let reasoning = '';
+    for (const fragment of fragments) {
+        state.fragment = fragment?.type;
+        state.phase = fragment?.type === 'THINK' ? 'thinking' : 'content';
+        const text = typeof fragment?.content === 'string' ? fragment.content : '';
+        if (state.phase === 'thinking') reasoning += text;
+        else content += text;
+    }
+    state.thinkingSnapshot = `${state.thinkingSnapshot || ''}${reasoning}`;
+    state.contentSnapshot = `${state.contentSnapshot || ''}${content}`;
+    if (!content && !reasoning) return null;
+    return { ...(reasoning ? { reasoning } : {}), ...(content ? { content } : {}) };
+}
+
+export function parseDeepSeekEvent(line: string, state: DeepSeekParseState) {
     if (!line.startsWith('data:')) return null;
     const data = line.slice(5).trim();
     if (!data || data === '[DONE]') return { done: true };
@@ -172,6 +190,8 @@ export function parseDeepSeekEvent(line: string, state: {
     const path = event.p;
     const value = event.v;
     const snapshot = value?.response;
+    if (!path && Array.isArray(snapshot?.fragments)) return applyFragments(snapshot.fragments, state);
+    if (path === 'response/fragments' && Array.isArray(value)) return applyFragments(value, state);
     if (!path && snapshot && typeof snapshot === 'object') {
         const snapshotContent = typeof snapshot.content === 'string' ? snapshot.content : '';
         const snapshotThinking = typeof snapshot.thinking_content === 'string' ? snapshot.thinking_content : '';

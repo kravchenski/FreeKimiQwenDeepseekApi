@@ -74,3 +74,36 @@ describe('isDeepSeekUrl', () => {
         expect(isDeepSeekUrl('about:blank')).toBeFalse();
     });
 });
+
+describe('parseDeepSeekEvent fragments', () => {
+    const run = (events: unknown[]) => {
+        const state = { phase: 'content' as const };
+        let content = '';
+        let reasoning = '';
+        for (const event of events) {
+            const parsed = parseDeepSeekEvent(`data: ${JSON.stringify(event)}`, state as any);
+            content += parsed?.content ?? '';
+            reasoning += parsed?.reasoning ?? '';
+        }
+        return { content, reasoning };
+    };
+
+    test('keeps the first token delivered inside the snapshot fragments', () => {
+        expect(run([
+            { v: { response: { message_id: 4, fragments: [{ id: 2, type: 'RESPONSE', content: 'p' }] } } },
+            { p: 'response/fragments/-1/content', o: 'APPEND', v: 'ong' },
+            { p: 'response/status', o: 'SET', v: 'FINISHED' },
+        ])).toEqual({ content: 'pong', reasoning: '' });
+    });
+
+    test('separates thinking from the answer when a new fragment is appended', () => {
+        expect(run([
+            { v: { response: { fragments: [{ type: 'THINK', content: 'We' }] } } },
+            { p: 'response/fragments/-1/content', o: 'APPEND', v: ' need' },
+            { v: ' pong.' },
+            { p: 'response/fragments/-1/elapsed_secs', o: 'SET', v: 0.5 },
+            { p: 'response/fragments', o: 'APPEND', v: [{ id: 3, type: 'RESPONSE', content: 'p' }] },
+            { p: 'response/fragments/-1/content', o: 'APPEND', v: 'ong' },
+        ])).toEqual({ content: 'pong', reasoning: 'We need pong.' });
+    });
+});
