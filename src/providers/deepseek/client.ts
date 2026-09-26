@@ -42,7 +42,7 @@ export function getDeepSeekModels(): string[] {
 
 const sessions = new PersistentStringMap(SESSION_MAP_FILE);
 
-function envAccount(): DeepSeekAccount | null {
+export function envAccount(): DeepSeekAccount | null {
     const token = process.env.DEEPSEEK_TOKEN;
     return token ? { id: 'env', token, cookies: [] } : null;
 }
@@ -131,8 +131,9 @@ export async function deepSeekCompletion(options: {
     messages: Array<Record<string, any>>;
     model?: string;
     conversationId?: string;
+    account?: DeepSeekAccount;
 }) {
-    const account = getAccount();
+    const account = options.account ?? getAccount();
     const key = options.conversationId || conversationKey(options.messages);
     const sessionId = await getSession(account, key);
     const pow = await getPow(account, sessionId);
