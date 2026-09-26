@@ -48,3 +48,27 @@ describe('gateway database', () => {
     expect(() => openDatabase(file)).toThrow('newer than this build');
   });
 });
+
+describe('account_state migration', () => {
+  test('keys account state by provider and account id, keeping existing rows', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'db-')), 'gateway.db');
+    const legacy = new Database(file);
+    legacy.run(`CREATE TABLE account_state (account_id TEXT PRIMARY KEY, provider TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'healthy',
+      consecutive_failures INTEGER NOT NULL DEFAULT 0, cooldown_until INTEGER, quota_reset_at INTEGER, last_used_at INTEGER,
+      last_success_at INTEGER, last_error_at INTEGER, last_error TEXT)`);
+    legacy.run(`CREATE TABLE quota_events (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL, provider TEXT NOT NULL,
+      account_id TEXT, type TEXT NOT NULL, reset_at INTEGER)`);
+    legacy.run(`CREATE TABLE request_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL, provider TEXT NOT NULL,
+      model TEXT NOT NULL, account_id TEXT, status TEXT NOT NULL, latency_ms INTEGER, error TEXT)`);
+    legacy.run('CREATE INDEX request_logs_created_at ON request_logs (created_at)');
+    legacy.run("INSERT INTO account_state (account_id, provider, consecutive_failures) VALUES ('a', 'qwen', 2)");
+    legacy.run('PRAGMA user_version = 4');
+    legacy.close();
+
+    const db = openDatabase(file);
+    db.run("INSERT INTO account_state (account_id, provider) VALUES ('a', 'deepseek')");
+    expect(db.query('SELECT provider, consecutive_failures AS failures FROM account_state ORDER BY provider').all())
+      .toEqual([{ provider: 'deepseek', failures: 0 }, { provider: 'qwen', failures: 2 }]);
+    db.close();
+  });
+});
