@@ -14,6 +14,9 @@ import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts
 import { collectChunks } from '../core/streaming/sse.ts';
 import { toHttpError } from '../core/providers/errors.ts';
 import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
+import { openDatabase, recordRequest, type RequestLog } from '../core/store/database.ts';
+import { gatewayStatus } from '../core/status.ts';
+import type { Database } from 'bun:sqlite';
 import { createNvidiaProvider, createZenMuxProviders } from '../providers/catalog.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
 import { createQwenProvider } from '../providers/qwen/provider.ts';
@@ -42,6 +45,20 @@ export const registry = new ProviderRegistry()
 for (const provider of createZenMuxProviders()) registry.register(provider);
 
 export const router = new SmartRouter(registry, parseAutoModels(process.env.AUTO_MODELS));
+
+let database: Database | undefined;
+function db() {
+    database ??= openDatabase();
+    return database;
+}
+
+function logRequest(entry: RequestLog) {
+    try {
+        recordRequest(db(), entry);
+    } catch (error) {
+        console.error('Failed to record request log:', error instanceof Error ? error.message : error);
+    }
+}
 
 let allModels: ModelEntry[] = [];
 
@@ -175,6 +192,8 @@ function handleProviderStream(
     });
 }
 
+app.get('/v1/gateway/status', (c) => c.json(gatewayStatus(registry, db())));
+
 app.get('/health', (c) => {
     return c.json({ status: 'ok', service: 'unified' });
 });
@@ -222,8 +241,14 @@ app.post('/api/chat/completions', async (c) => {
         const created = Math.floor(Date.now() / 1000);
         const captureToolCalls = Array.isArray(combinedTools) && combinedTools.length > 0;
 
-        const first = await router.open(model, route => ({ model: route.model, messages: upstreamMessages, conversationId }));
+        const startedAt = Date.now();
+        const first = await router.open(model, route => ({ model: route.model, messages: upstreamMessages, conversationId }))
+            .catch(error => {
+                logRequest({ provider: registry.resolve(model)?.id ?? 'none', model, status: 'error', latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message.slice(0, 500) : String(error) });
+                throw error;
+            });
         const { provider, model: routedModel } = first.route;
+        logRequest({ provider: provider.id, model: routedModel, status: 'success', latencyMs: Date.now() - startedAt });
         const open = () => provider.stream({ model: routedModel, messages: upstreamMessages, conversationId });
         const routeHeaders = { 'x-gateway-route': `${provider.id}/${routedModel}` };
 

@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { beforeAll, describe, expect, test } from 'bun:test';
 
 import type { ChatChunk, ChatRequest, Provider } from '../src/core/providers/provider.ts';
@@ -32,6 +35,7 @@ let key = '';
 
 beforeAll(async () => {
   key = process.env.GATEWAY_API_KEY ||= 'test-key';
+  process.env.DATA_DIR ||= mkdtempSync(join(tmpdir(), 'gateway-test-'));
   server = await import('../src/unified/server.ts');
   server.registry.register(fakeProvider);
 });
@@ -180,6 +184,24 @@ describe('unified server routing', () => {
       body: JSON.stringify({ messages: [{ role: 'user', content: 'hello there' }] }),
     }));
     expect(((await count.json()) as any).input_tokens).toBeGreaterThan(0);
+  });
+
+  test('exposes gateway status with providers and logged requests', async () => {
+    replies.push([{ type: 'content', text: 'logged' }]);
+    await chat({});
+    await chat({ model: 'limited-model' });
+
+    const unauthorized = await server.app.fetch(new Request('http://local/v1/gateway/status'));
+    expect(unauthorized.status).toBe(401);
+
+    const response = await server.app.fetch(new Request('http://local/v1/gateway/status', { headers: { authorization: `Bearer ${key}` } }));
+    const status = await response.json() as any;
+    expect(response.status).toBe(200);
+    expect(status.providers).toContainEqual({ id: 'fake', ownedBy: 'fake-owner', available: true });
+    expect(Array.isArray(status.accounts)).toBeTrue();
+    expect(status.requests[0]).toMatchObject({ provider: 'limited', model: 'limited-model', status: 'error' });
+    expect(status.requests[1]).toMatchObject({ provider: 'fake', model: 'fake-model', status: 'success' });
+    expect(typeof status.requests[1].latencyMs).toBe('number');
   });
 });
 
