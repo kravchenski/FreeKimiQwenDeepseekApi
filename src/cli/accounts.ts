@@ -16,6 +16,7 @@ export interface AccountsCliDeps {
   openGoogleSignIn?: () => Promise<void>;
   listGoogleAccounts?: () => Promise<string[]>;
   captureSession?: (provider: string) => Promise<CapturedSession>;
+  openWindow?: (url: string) => Promise<void>;
 }
 
 const PROVIDERS = new Set(['qwen']);
@@ -28,6 +29,7 @@ export const ACCOUNTS_USAGE = `Usage: bun run account <command>
   remove <id>                                     Delete an account
   test <id>                                       Sign in with a saved account
   google [--list]                                 Sign in to Google in the browser profile, then list its accounts
+  open <https-url>                                Open a site in the browser profile to sign in manually
 
 Providers: ${[...PROVIDERS].join(', ')}`;
 
@@ -56,6 +58,19 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
     const accounts = await deps.listGoogleAccounts();
     if (!accounts.length) deps.log('No Google accounts found in the browser profile.');
     for (const email of accounts) deps.log(`google\t${email}`);
+    return 0;
+  }
+
+  if (command === 'open' && deps.openWindow) {
+    let url: URL;
+    try {
+      url = new URL(target ?? '');
+    } catch {
+      throw new Error(`Enter a full https URL, e.g. https://www.kimi.com\n\n${ACCOUNTS_USAGE}`);
+    }
+    if (url.protocol !== 'https:') throw new Error('Only https URLs can be opened');
+    deps.log(`Sign in on ${url.hostname} in the opened browser window, then close the window.`);
+    await deps.openWindow(url.href);
     return 0;
   }
 
