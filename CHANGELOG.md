@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.3.1...v1.4.0) (2026-09-27)
+
+
+### Features
+
+* **anthropic:** stream Messages token by token with thinking blocks ([e88b9a7](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/e88b9a7106bc235487512efd9aed7e9b01882388))
+* **anthropic:** stream Messages token by token with thinking blocks ([950f9d5](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/950f9d55e9d740a457bfbd8494b497297e3243f1))
+
+
+### Bug Fixes
+
+* **status:** log chat requests once on completion, including mid-stream failures ([5610d2f](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/5610d2f4762ef044ae70b4d7cfd98b5239efba29))
+
 ## [1.3.1](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.3.0...v1.3.1) (2026-09-27)
 
 
