@@ -50,6 +50,13 @@ const MIGRATIONS = [
   'INSERT INTO account_state_v2 SELECT * FROM account_state',
   'DROP TABLE account_state',
   'ALTER TABLE account_state_v2 RENAME TO account_state',
+  `CREATE TABLE conversation_routes (
+    conversation_id TEXT PRIMARY KEY,
+    requested_model TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
 ];
 
 export function defaultDatabaseFile() {

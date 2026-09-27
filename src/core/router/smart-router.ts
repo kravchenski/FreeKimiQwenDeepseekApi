@@ -51,13 +51,16 @@ export class SmartRouter {
     return model === AUTO_MODEL || Boolean(this.registry.resolve(model));
   }
 
-  routes(model: string): Route[] {
+  routes(model: string, preferredModel?: string): Route[] {
     if (model !== AUTO_MODEL) {
       const provider = this.registry.resolve(model);
       return provider ? [{ provider, model }] : [];
     }
     const now = this.now();
-    return this.autoModels.flatMap(candidate => {
+    const candidates = preferredModel && this.autoModels.includes(preferredModel)
+      ? [preferredModel, ...this.autoModels.filter(candidate => candidate !== preferredModel)]
+      : this.autoModels;
+    return candidates.flatMap(candidate => {
       const provider = this.registry.resolve(candidate);
       if (!provider || !provider.health().available) return [];
       if ((this.cooldownUntil.get(provider.id) ?? 0) > now) return [];
@@ -65,8 +68,8 @@ export class SmartRouter {
     });
   }
 
-  async open(model: string, build: (route: Route) => ChatRequest): Promise<RoutedStream> {
-    const routes = this.routes(model);
+  async open(model: string, build: (route: Route) => ChatRequest, preferredModel?: string): Promise<RoutedStream> {
+    const routes = this.routes(model, preferredModel);
     if (!routes.length) throw new ProviderError(`No available provider for model ${model}`, 'unavailable');
     const failures: string[] = [];
     for (const route of routes) {

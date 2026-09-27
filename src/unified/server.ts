@@ -18,6 +18,7 @@ import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts
 import { collectChunks } from '../core/streaming/sse.ts';
 import { toHttpError } from '../core/providers/errors.ts';
 import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
+import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
 import { openDatabase, recordRequest, type RequestLog } from '../core/store/database.ts';
 import { gatewayStatus } from '../core/status.ts';
 import type { Database } from 'bun:sqlite';
@@ -79,6 +80,17 @@ let database: Database | undefined;
 function db() {
     database ??= openDatabase();
     return database;
+}
+
+let affinityStore: SessionAffinity | undefined;
+function affinity() {
+    try {
+        affinityStore ??= new SessionAffinity(db());
+        return affinityStore;
+    } catch (error) {
+        console.error('Session affinity unavailable:', errorText(error));
+        return undefined;
+    }
 }
 
 function errorText(error: unknown) {
@@ -278,12 +290,16 @@ app.post('/api/chat/completions', async (c) => {
         const captureToolCalls = Array.isArray(combinedTools) && combinedTools.length > 0;
 
         const startedAt = Date.now();
-        const first = await router.open(model, route => ({ model: route.model, messages: upstreamMessages, conversationId }))
+        const sessionKey = model === AUTO_MODEL ? conversationId ?? conversationKey(messages) : undefined;
+        const sessions = sessionKey ? affinity() : undefined;
+        const pinned = sessionKey ? sessions?.get(sessionKey, AUTO_MODEL) : undefined;
+        const first = await router.open(model, route => ({ model: route.model, messages: upstreamMessages, conversationId }), pinned?.model)
             .catch(error => {
                 logRequest({ provider: registry.resolve(model)?.id ?? 'none', model, status: 'error', latencyMs: Date.now() - startedAt, error: errorText(error) });
                 throw error;
             });
         const { provider, model: routedModel } = first.route;
+        if (sessionKey) sessions?.set(sessionKey, AUTO_MODEL, { provider: provider.id, model: routedModel });
         const finish = (error?: unknown) => logRequest({
             provider: provider.id,
             model: routedModel,
