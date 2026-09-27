@@ -124,11 +124,11 @@ describe('tool call JSON repair', () => {
         const calls = recoverSimpleToolCalls(broken);
 
         expect(calls).toHaveLength(4);
-        expect(calls[0]).toEqual({
+        expect(calls![0]).toEqual({
             name: 'write',
             arguments: { path: '/tmp/trident.json', content: '{\n  "id": "trident"\n}\n' }
         });
-        expect(calls[3]).toEqual({
+        expect(calls![3]).toEqual({
             name: 'read',
             arguments: { path: '/tmp/arena.html' }
         });
@@ -147,7 +147,7 @@ describe('tool call JSON repair', () => {
     test('extracts the first tool call when prose and duplicate JSON surround it', () => {
         const content = 'Сначала изучу проект.\n{"tool_calls":[{"name":"ls","arguments":{"path":"."}}]}\n{"tool_calls":[{"name":"ls","arguments":{"path":"."}}]}';
 
-        expect(JSON.parse(extractFirstToolCallObject(content)).tool_calls).toHaveLength(1);
+        expect(JSON.parse(extractFirstToolCallObject(content)!).tool_calls).toHaveLength(1);
         expect(parseToolCallJson(content)?.[0].function.name).toBe('ls');
     });
 
@@ -232,10 +232,10 @@ describe('tool call JSON repair', () => {
 
         const calls = recoverProseStyleToolCalls(content);
         expect(calls).toHaveLength(1);
-        expect(calls?.[0].name).toBe('write');
-        expect(calls?.[0].arguments.path).toBe('heintai/arena.html');
-        expect(calls?.[0].arguments.content).toContain('<!DOCTYPE html>');
-        expect(calls?.[0].arguments.content).toContain('console.log("arena");');
+        expect(calls![0]!.name).toBe('write');
+        expect(calls![0]!.arguments.path).toBe('heintai/arena.html');
+        expect(calls![0]!.arguments.content).toContain('<!DOCTYPE html>');
+        expect(calls![0]!.arguments.content).toContain('console.log("arena");');
         expect(parseToolCallJson(content, [{ function: { name: 'write' } }])?.[0].function.name).toBe('write');
     });
 

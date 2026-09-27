@@ -326,7 +326,7 @@ app.post('/api/chat', async (c) => {
         }
         await s.writeSSE({ data: '[DONE]' });
       } catch (error) {
-        await s.writeSSE({ data: JSON.stringify({ error: error.message }) });
+        await s.writeSSE({ data: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }) });
       }
     });
   }
@@ -340,7 +340,7 @@ app.post('/api/chat', async (c) => {
     });
     return c.json(await res.json());
   } catch (error) {
-    return c.json({ error: error.message }, 500);
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
 });
 
@@ -349,7 +349,7 @@ app.get('/api/health', async (c) => {
     const r = await fetch(`${API_ENDPOINT.replace(/\/api\/?$/, '')}/health`);
     return c.json(await r.json());
   } catch (e) {
-    return c.json({ status: 'error', message: e.message }, 500);
+    return c.json({ status: 'error', message: e instanceof Error ? e.message : String(e) }, 500);
   }
 });
 

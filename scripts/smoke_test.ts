@@ -29,7 +29,7 @@ async function requestJson(path: string, options: RequestInit = {}) {
 async function main() {
   const status = await requestJson('/status');
   const models = await requestJson('/models');
-  const modelIds = models.data.map(model => model.id);
+  const modelIds = models.data.map((model: { id: string }) => model.id);
 
   console.log(`Аккаунтов в статусе: ${status.accounts?.length ?? 0}`);
   console.log(`Моделей: ${modelIds.length}`);
