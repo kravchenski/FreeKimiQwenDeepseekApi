@@ -37,8 +37,8 @@ export function buildAutoChain(candidates: ChainCandidate[], isAvailable: (model
   });
   const perFamily = new Map<number, number>();
   const fallback = idsOf('nvidia')
-    .map((id, order) => ({ id, order, family: family(id) }))
-    .sort((a, b) => a.family - b.family || a.order - b.order)
+    .map(id => ({ id, family: family(id) }))
+    .sort((a, b) => a.family - b.family || b.id.localeCompare(a.id, 'en', { numeric: true }))
     .filter(entry => {
       const count = perFamily.get(entry.family) ?? 0;
       perFamily.set(entry.family, count + 1);

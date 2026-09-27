@@ -23,7 +23,7 @@ const nvidia = [
 ].map(id => ({ id, provider: 'nvidia' }));
 
 describe('buildAutoChain', () => {
-  test('puts web chats first, then NVIDIA by family with at most two per family', () => {
+  test('puts web chats first, then the newest NVIDIA models by family with at most two per family', () => {
     expect(buildAutoChain([...nvidia, ...web])).toEqual([
       'qwen3.7-plus', 'deepseek-default', 'glm-chat', 'kimi-chat',
       'deepseek-ai/deepseek-v4.1-flash', 'deepseek-ai/deepseek-v4', 'moonshotai/kimi-k3', 'z-ai/glm-5.3',
