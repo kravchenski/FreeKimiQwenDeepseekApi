@@ -15,18 +15,20 @@
 - `bun run dev`: Starts unified API with watch mode.
 
 ## OpenCode API
-- **Endpoint**: `http://localhost:3260/v1` (no API key required)
+- **Endpoint**: `http://localhost:3260/v1` (bearer token only when `GATEWAY_API_KEY` is set)
 - **Models**:
-  - `deepseek-*` — DeepSeek Web (default, reasoner, expert, search)
-  - `qwen-*` — Qwen Web (max-latest, plus, qwen3-max, coder-plus, omni-flash, turbo, qwq-32b и др.)
-  - `moonshotai/*`, `z-ai/*`, `deepseek-ai/*`, `nvidia/*` — NVIDIA API (Kimi, GLM, DeepSeek, Nemotron)
-  - `auto` — first available model from `AUTO_MODELS`
+  - `auto` — first available model from `AUTO_MODELS` (Qwen → DeepSeek → GLM → Kimi → NVIDIA)
+  - `qwen*` — Qwen via the Qwen API proxy (`qwen3.7-plus`, `qwen3.8-max`, `qwen3-coder-plus`, …)
+  - `deepseek-*` — DeepSeek web (default, reasoner, expert, search)
+  - `glm-chat` — GLM through the signed-in chat.z.ai web chat (browser)
+  - `kimi-chat` — Kimi through the signed-in kimi.ai web chat (browser)
+  - `moonshotai/*`, `z-ai/*`, `deepseek-ai/*`, `nvidia/*` — NVIDIA API fallback
 - **Configure OpenCode**:
   ```bash
   OPENCODE_API_URL=http://localhost:3260
   OPENCODE_API_KEY=
   ```
-- Supports OpenAI-compatible streaming `/v1/chat/completions` and model listing `/v1/models`.
+- Supports OpenAI `/v1/chat/completions`, `/v1/responses`, Anthropic `/v1/messages` and model listing `/v1/models`.
 
 ## Coding Style & Naming Conventions
 - **Runtime**: Bun-first; avoid Node-specific APIs when Bun equivalents exist.

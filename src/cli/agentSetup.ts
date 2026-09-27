@@ -38,7 +38,22 @@ export type InstallResult = {
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3260/api';
 const DEFAULT_BRIDGE_URL = 'http://127.0.0.1:4000';
 const DEFAULT_API_KEY = 'dummy-key';
-const DEFAULT_MODEL = 'qwen3-coder-plus';
+const DEFAULT_MODEL = 'auto';
+const FALLBACK_MODELS = [
+    'auto',
+    'qwen3.7-plus',
+    'qwen3.8-max',
+    'qwen3-coder-plus',
+    'deepseek-default',
+    'deepseek-reasoner',
+    'deepseek-expert',
+    'deepseek-search',
+    'glm-chat',
+    'kimi-chat',
+    'deepseek-ai/deepseek-v4.1-flash',
+    'moonshotai/kimi-k3',
+    'z-ai/glm-5.3',
+];
 const CODEX_CONTEXT_WINDOW = 131072;
 const CODEX_AUTO_COMPACT_TOKEN_LIMIT = 98304;
 const CODEX_TOOL_OUTPUT_TOKEN_LIMIT = 16384;
@@ -109,17 +124,7 @@ export async function loadAvailableModelIds(baseUrl: string, apiKey?: string): P
         // The setup command must also work before the gateway is started.
     }
 
-    const qwen = (await readFile(new URL('../AvailableModels.txt', import.meta.url), 'utf8'))
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line && !line.startsWith('#'));
-    return [...new Set([
-        ...qwen,
-        'deepseek-default',
-        'deepseek-reasoner',
-        'deepseek-expert',
-        'deepseek-search',
-    ])];
+    return FALLBACK_MODELS;
 }
 
 export async function installAgentIntegrations(
