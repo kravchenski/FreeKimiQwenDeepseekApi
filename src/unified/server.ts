@@ -22,6 +22,7 @@ import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-r
 import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
 import { openDatabase, recordRequest, type RequestLog } from '../core/store/database.ts';
 import { gatewayStatus } from '../core/status.ts';
+import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
 import { createNvidiaProvider } from '../providers/catalog.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
@@ -37,6 +38,20 @@ const port = config.UNIFIED_PORT;
 const host = config.HOST;
 const apiKey = config.GATEWAY_API_KEY;
 const maxBodyBytes = 25 * 1024 * 1024;
+
+const requestIds = new WeakMap<Request, string>();
+
+app.use('*', async (c, next) => {
+    const requestId = requestIdFrom(c.req.header('x-request-id'));
+    requestIds.set(c.req.raw, requestId);
+    await next();
+    try {
+        c.res.headers.set('x-request-id', requestId);
+    } catch {
+        c.res = new Response(c.res.body, c.res);
+        c.res.headers.set('x-request-id', requestId);
+    }
+});
 
 app.use('*', async (c, next) => {
     if (c.req.path === '/health') return next();
@@ -100,7 +115,10 @@ function errorText(error: unknown) {
     return (error instanceof Error ? error.message : String(error)).slice(0, 500);
 }
 
+const metrics = new Metrics();
+
 function logRequest(entry: RequestLog) {
+    metrics.record(entry);
     try {
         recordRequest(db(), entry);
     } catch (error) {
@@ -244,6 +262,17 @@ function handleProviderStream(
 }
 
 app.get('/v1/gateway/status', (c) => c.json(gatewayStatus(registry, db())));
+
+app.get('/metrics', (c) => {
+    let accounts: Array<{ provider: string; status: string }> = [];
+    try {
+        accounts = gatewayStatus(registry, db()).accounts;
+    } catch (error) {
+        console.error('Metrics could not read account states:', errorText(error));
+    }
+    const providers = registry.list().map(provider => ({ id: provider.id, available: provider.health().available }));
+    return c.text(metrics.render({ providers, accounts }), 200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
+});
 
 app.get('/health', (c) => {
     return c.json({ status: 'ok', service: 'unified' });
@@ -424,6 +453,8 @@ async function handleResponses(c: Context) {
     const headers = new Headers({ 'content-type': 'application/json' });
     const authorization = c.req.header('authorization');
     if (authorization) headers.set('authorization', authorization);
+    const requestId = requestIds.get(c.req.raw);
+    if (requestId) headers.set('x-request-id', requestId);
     const streaming = Boolean(body.stream);
     const includeReasoning = Boolean(body.reasoning?.summary);
     const chat = await app.fetch(new Request(new URL('/api/chat/completions', c.req.url), {
@@ -458,6 +489,8 @@ async function handleMessages(c: Context) {
     const headers = new Headers({ 'content-type': 'application/json' });
     const authorization = c.req.header('authorization');
     if (authorization) headers.set('authorization', authorization);
+    const requestId = requestIds.get(c.req.raw);
+    if (requestId) headers.set('x-request-id', requestId);
     else if (c.req.header('x-api-key')) headers.set('authorization', `Bearer ${c.req.header('x-api-key')}`);
     const streaming = Boolean(body.stream);
     const includeThinking = body.thinking?.type === 'enabled';
