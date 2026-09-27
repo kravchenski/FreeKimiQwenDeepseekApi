@@ -12,7 +12,7 @@ try {
   process.exitCode = await runAccountsCommand(process.argv.slice(2), {
     store: new CredentialStore(QWEN_CREDENTIALS_FILE, process.env.ACCOUNTS_SECRET),
     signIn: qwenLogin(),
-    ask: question => prompt(question) as Promise<string>,
+    ask: question => prompt(question),
     askHidden,
     log: line => console.log(line),
     openGoogleSignIn: () => openGoogleSignIn(),

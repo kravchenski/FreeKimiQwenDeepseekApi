@@ -312,7 +312,7 @@ function mergePiConfig(current: Record<string, any>, options: AgentSetupOptions,
 }
 
 function mergeOpenCodeConfig(current: Record<string, any>, options: AgentSetupOptions, modelIds: string[]) {
-    const config = { ...current, $schema: current.$schema || 'https://opencode.ai/config.json' };
+    const config: Record<string, any> = { ...current, $schema: current.$schema || 'https://opencode.ai/config.json' };
     config.provider = { ...(current.provider || {}) };
     config.provider.freeai = {
         npm: '@ai-sdk/openai-compatible',

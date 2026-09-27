@@ -1,7 +1,7 @@
 const BASE_URL = process.env.QWEN_PROXY_BASE_URL || 'http://127.0.0.1:3260/api';
 const MODEL = process.env.QWEN_PROXY_SMOKE_MODEL || 'auto';
 
-async function requestJson(path, options = {}) {
+async function requestJson(path: string, options: RequestInit = {}) {
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
@@ -58,3 +58,5 @@ main().catch(error => {
   console.error(`Smoke-проверка не удалась: ${error.message}`);
   process.exit(1);
 });
+
+export {};

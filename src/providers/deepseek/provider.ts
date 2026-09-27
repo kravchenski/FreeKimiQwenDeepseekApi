@@ -41,7 +41,7 @@ async function* deepSeekChunks(body: ReadableStream<Uint8Array> | null): AsyncGe
     if (!event) continue;
     if (event.reasoning) yield { type: 'reasoning', text: event.reasoning };
     if (event.content) yield { type: 'content', text: event.content };
-    if (event.done) return;
+    if ('done' in event && event.done) return;
   }
 }
 

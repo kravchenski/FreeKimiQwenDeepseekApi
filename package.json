@@ -31,7 +31,8 @@
         "audit": "bun audit --production",
         "analyze": "knip --reporter compact",
         "check": "bun build deepseek.ts src/unified/server.ts src/web/server.ts --target=bun --external typescript --external 'chromium-bidi/*' --outdir=.build-check --entry-naming '[name].[hash].[ext]'",
-        "ci": "bun run check && bun run test",
+        "typecheck": "tsc --noEmit -p .",
+        "ci": "bun run check && bun run typecheck && bun run test",
         "check:no-js": "bun run scripts/check-no-js.ts",
         "example:stream": "bun run examples/openai-sdk/streaming.ts",
         "example:simple": "bun run examples/openai-sdk/simple.ts",
@@ -60,8 +61,10 @@
         "zod": "^4.6.5"
     },
     "devDependencies": {
+        "@types/bun": "^1.4.2",
         "form-data": "^4.0.2",
         "knip": "^6.16.1",
-        "openai": "^4.104.0"
+        "openai": "^4.104.0",
+        "typescript": "^7.0.2"
     }
 }

@@ -9,7 +9,7 @@ function compactJsonSchema(schema, depth = 0) {
     if (!schema || typeof schema !== 'object' || depth > 2) return schema;
     if (Array.isArray(schema)) return schema.slice(0, 20).map(item => compactJsonSchema(item, depth + 1));
 
-    const out = {};
+    const out: Record<string, any> = {};
     for (const key of ['type', 'enum', 'required', 'default']) {
         if (schema[key] !== undefined) out[key] = schema[key];
     }
@@ -256,7 +256,7 @@ export function recoverXmlStyleToolCall(text) {
     const outer = text.match(/<function=([A-Za-z0-9_-]+)>\s*([\s\S]*?)\s*<\/function>/i);
     if (outer) {
         const name = outer[1].toLowerCase();
-        const args = {};
+        const args: Record<string, string> = {};
         const paramRe = /<parameter=([A-Za-z0-9_-]+)>\s*([\s\S]*?)\s*<\/parameter>/gi;
         let paramMatch;
         while ((paramMatch = paramRe.exec(outer[2])) !== null) {
@@ -393,7 +393,7 @@ export function parseToolCallJson(content, tools = null) {
     if (typeof content !== 'string') return null;
     tools = normalizeToolDefinitions(tools);
     const allowedTools = Array.isArray(tools)
-        ? new Map(tools.map(tool => {
+        ? new Map<string, any>(tools.map((tool): [string, any] => {
             const fn = tool?.function || tool;
             const qualifiedName = fn?.qualified_name || (fn?.namespace ? `${fn.namespace}.${fn.name}` : fn?.name);
             return [qualifiedName, fn];
