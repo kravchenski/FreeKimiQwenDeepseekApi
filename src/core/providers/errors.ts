@@ -1,4 +1,4 @@
-export type ProviderErrorKind = 'rate_limit' | 'quota_exhausted' | 'auth' | 'unavailable' | 'upstream';
+export type ProviderErrorKind = 'rate_limit' | 'quota_exhausted' | 'auth' | 'unavailable' | 'upstream' | 'invalid_request';
 
 const MAX_DETAIL_LENGTH = 500;
 const QUOTA_PATTERN = /quota|insufficient|exceeded your|billing|balance|credit/i;
@@ -42,12 +42,13 @@ export async function upstreamError(action: string, response: Response) {
   );
 }
 
-const HTTP_MAPPING: Record<ProviderErrorKind, { status: 429 | 502 | 503; type: string }> = {
+const HTTP_MAPPING: Record<ProviderErrorKind, { status: 400 | 429 | 502 | 503; type: string }> = {
   rate_limit: { status: 429, type: 'rate_limit_exceeded' },
   quota_exhausted: { status: 429, type: 'insufficient_quota' },
   auth: { status: 502, type: 'upstream_auth_error' },
   unavailable: { status: 503, type: 'provider_unavailable' },
   upstream: { status: 502, type: 'upstream_error' },
+  invalid_request: { status: 400, type: 'invalid_request_error' },
 };
 
 export function toHttpError(error: unknown) {

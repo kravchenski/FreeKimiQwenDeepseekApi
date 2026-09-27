@@ -109,6 +109,24 @@ export class OpenAICompatibleProvider implements Provider {
       : { available: false, reason: `${this.config.apiKeyEnv} is not set` };
   }
 
+  async forward(path: string, init: { method?: string; body?: BodyInit; headers?: Record<string, string> } = {}) {
+    const apiKey = await this.apiKey();
+    if (!apiKey) throw new ProviderError(`${this.config.apiKeyEnv} is not set`, 'unavailable');
+    const response = await (this.config.fetch ?? fetch)(`${this.config.baseUrl}${path}`, {
+      method: init.method ?? 'POST',
+      headers: { ...init.headers, Authorization: `Bearer ${apiKey}` },
+      body: init.body,
+      signal: AbortSignal.timeout(180_000),
+    });
+    if (!response.ok) {
+      const error = await upstreamError(`${this.config.label} ${path}`, response);
+      this.config.reportResult?.(apiKey, { ok: false, kind: error.kind, status: error.status, retryAfterSeconds: error.retryAfterSeconds });
+      throw error;
+    }
+    this.config.reportResult?.(apiKey, { ok: true });
+    return response;
+  }
+
   async stream(request: ChatRequest, context: ProviderContext = {}): Promise<ProviderStream> {
     const apiKey = await this.apiKey();
     if (!apiKey) throw new ProviderError(`${this.config.apiKeyEnv} is not set`, 'unavailable');

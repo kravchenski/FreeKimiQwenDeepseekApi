@@ -12,11 +12,12 @@ import { chatResponseToResponses, responsesToChatRequest } from '../gateway/resp
 import { ResponsesStreamTranslator } from '../gateway/responses-stream.ts';
 import { anthropicError, anthropicToChatRequest, chatToAnthropicMessage, estimateInputTokens } from '../api/anthropic/messages.ts';
 import { AnthropicStreamTranslator } from '../api/anthropic/stream.ts';
+import { editImage, generateImage, type ImageUpstream } from '../api/images.ts';
 import { readLines } from '../core/streaming/sse.ts';
 import type { ProviderStream } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
 import { collectChunks } from '../core/streaming/sse.ts';
-import { toHttpError } from '../core/providers/errors.ts';
+import { ProviderError, toHttpError } from '../core/providers/errors.ts';
 import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
 import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
 import { openDatabase, recordRequest, type RequestLog } from '../core/store/database.ts';
@@ -48,10 +49,12 @@ app.use('*', bodyLimit({
     onError: (c) => c.json({ error: { message: 'Request body too large', type: 'invalid_request_error' } }, 413),
 }));
 
+const qwenProvider = createQwenProvider();
+
 export const registry = new ProviderRegistry()
     .register(createNvidiaProvider())
     .register(createDeepSeekProvider())
-    .register(createQwenProvider());
+    .register(qwenProvider);
 
 let browserChat: BrowserChatSession | undefined;
 const browserChatSession = () => (browserChat ??= new BrowserChatSession());
@@ -488,6 +491,38 @@ app.post('/v1/messages/count_tokens', async (c) => {
     if (!body) return c.json(anthropicError(400, 'Invalid JSON body'), 400);
     return c.json({ input_tokens: estimateInputTokens(body) });
 });
+
+let imageUpstream: ImageUpstream = qwenProvider;
+
+export function setImageUpstream(upstream: ImageUpstream) {
+    imageUpstream = upstream;
+}
+
+async function handleImages(c: Context, run: () => Promise<Record<string, unknown>>) {
+    const startedAt = Date.now();
+    try {
+        const result = await run();
+        logRequest({ provider: 'qwen', model: 'qwen-image', status: 'success', latencyMs: Date.now() - startedAt });
+        return c.json(result);
+    } catch (error) {
+        const { status, type, message, retryAfterSeconds } = toHttpError(error);
+        if (status !== 400) logRequest({ provider: 'qwen', model: 'qwen-image', status: 'error', latencyMs: Date.now() - startedAt, error: errorText(error) });
+        if (retryAfterSeconds !== undefined) c.header('Retry-After', String(retryAfterSeconds));
+        return c.json({ error: { message, type } }, status);
+    }
+}
+
+const imageGenerations = (c: Context) => handleImages(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== 'object') throw new ProviderError('Invalid JSON body', 'invalid_request');
+    return generateImage(imageUpstream, body as Record<string, unknown>);
+});
+const imageEdits = (c: Context) => handleImages(c, () => editImage(imageUpstream, c.req.raw));
+
+app.post('/v1/images/generations', imageGenerations);
+app.post('/api/v1/images/generations', imageGenerations);
+app.post('/v1/images/edits', imageEdits);
+app.post('/api/v1/images/edits', imageEdits);
 
 app.post('/v1/responses', handleResponses);
 app.post('/api/v1/responses', handleResponses);
