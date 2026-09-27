@@ -68,7 +68,7 @@ async function main() {
   const failed = results.filter(r => r.status !== 'OK' && r.status !== 'EMPTY').length;
 
   console.log(`\n  ─────────────────────────────────────`);
-  console.log(`  Всего: ${results.length}  |  OK: ${ok}  |  Пусто: ${empty}  |  Ошибок: ${failed}`);
+  console.log(`  Total: ${results.length}  |  OK: ${ok}  |  Empty: ${empty}  |  Failed: ${failed}`);
   console.log();
 }
 

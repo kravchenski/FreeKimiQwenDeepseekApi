@@ -12,9 +12,9 @@ const args = new Set(process.argv.slice(2));
 
 if (args.has('--list')) {
     const accounts = loadDeepSeekAccounts();
-    if (!accounts.length) console.log('Нет сохранённых аккаунтов DeepSeek.');
+    if (!accounts.length) console.log('No saved DeepSeek accounts.');
     accounts.forEach((account, index) =>
-        console.log(`${index + 1} | ${account.id} | ${account.invalid ? 'Недействителен' : 'OK'}`)
+        console.log(`${index + 1} | ${account.id} | ${account.invalid ? 'Invalid' : 'OK'}`)
     );
 } else if (args.has('--add')) {
     await addDeepSeekAccountInteractive();
