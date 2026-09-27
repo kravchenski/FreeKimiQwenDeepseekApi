@@ -1,11 +1,18 @@
 import crypto from 'node:crypto';
 
-function truncateForPrompt(value, maxLen = 240) {
+export interface ParsedToolCall {
+    id: string;
+    type: string;
+    function: { name: string; namespace?: string; arguments: string };
+    index: number;
+}
+
+function truncateForPrompt(value: unknown, maxLen = 240): string {
     const text = String(value || '');
     return text.length > maxLen ? text.slice(0, maxLen).trimEnd() + '…' : text;
 }
 
-function compactJsonSchema(schema, depth = 0) {
+function compactJsonSchema(schema: any, depth = 0): any {
     if (!schema || typeof schema !== 'object' || depth > 2) return schema;
     if (Array.isArray(schema)) return schema.slice(0, 20).map(item => compactJsonSchema(item, depth + 1));
 
@@ -26,12 +33,12 @@ function compactJsonSchema(schema, depth = 0) {
     return out;
 }
 
-export function normalizeToolDefinitions(tools) {
+export function normalizeToolDefinitions(tools: any): any {
     if (!Array.isArray(tools)) return tools;
     return tools.flatMap(tool => {
         if (tool?.type !== 'namespace' || !tool?.name || !Array.isArray(tool?.tools)) return [tool];
         return tool.tools
-            .map(inner => {
+            .map((inner: any) => {
                 const fn = inner?.function || inner;
                 if (!fn?.name) return null;
                 return {
@@ -49,7 +56,7 @@ export function normalizeToolDefinitions(tools) {
     });
 }
 
-export function toolsToPrompt(tools) {
+export function toolsToPrompt(tools: any) {
     tools = normalizeToolDefinitions(tools);
     if (!Array.isArray(tools) || tools.length === 0) return '';
 
@@ -59,7 +66,7 @@ export function toolsToPrompt(tools) {
         'web_search', 'web_extract', 'session_search', 'todo', 'clarify', 'delegate_task'
     ]);
 
-    const schemas = tools.map(tool => {
+    const schemas = tools.map((tool: any) => {
         const fn = tool?.function || tool;
         if (!fn?.name) return null;
         return {
@@ -68,7 +75,8 @@ export function toolsToPrompt(tools) {
             parameters: compactJsonSchema(fn.parameters || { type: 'object', properties: {} }),
             priority: priorityNames.has(fn.name) ? 0 : 1
         };
-    }).filter(Boolean).sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
+    }).filter((schema: any): schema is { name: string; description: string; parameters: any; priority: number } => Boolean(schema))
+        .sort((a: { priority: number; name: string }, b: { priority: number; name: string }) => a.priority - b.priority || a.name.localeCompare(b.name));
 
     if (schemas.length === 0) return '';
 
@@ -133,7 +141,7 @@ const TOOL_CALL_JSON_KEYS = [
     'command'
 ];
 
-export function repairToolCallJsonKeys(text) {
+export function repairToolCallJsonKeys(text: string) {
     let repaired = text;
     for (const key of TOOL_CALL_JSON_KEYS) {
         const splitKey = key.split('').join('\\s*');
@@ -142,7 +150,7 @@ export function repairToolCallJsonKeys(text) {
     return repaired;
 }
 
-export function extractFirstToolCallObject(text) {
+export function extractFirstToolCallObject(text: string) {
     const start = text.indexOf('{"tool_calls"');
     if (start < 0) return null;
     let depth = 0;
@@ -163,7 +171,7 @@ export function extractFirstToolCallObject(text) {
     return null;
 }
 
-export function hasObviouslyBrokenEditArguments(rawArgs) {
+export function hasObviouslyBrokenEditArguments(rawArgs: any) {
     let args;
     try {
         args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
@@ -172,7 +180,7 @@ export function hasObviouslyBrokenEditArguments(rawArgs) {
     }
     if (!args || !Array.isArray(args.edits)) return false;
 
-    return args.edits.some(edit => {
+    return args.edits.some((edit: any) => {
         const source = edit?.newText;
         if (typeof source !== 'string') return false;
         const hasInterpolationWithoutBackticks = source.includes('${') && !source.includes('`');
@@ -181,7 +189,7 @@ export function hasObviouslyBrokenEditArguments(rawArgs) {
     });
 }
 
-export function repairEditArguments(rawArgs) {
+export function repairEditArguments(rawArgs: any) {
     let args;
     try {
         args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : structuredClone(rawArgs);
@@ -208,7 +216,7 @@ export function repairEditArguments(rawArgs) {
     return args;
 }
 
-export function recoverSimpleToolCalls(text) {
+export function recoverSimpleToolCalls(text: string) {
     const normalized = repairToolCallJsonKeys(text);
     const starts = [...normalized.matchAll(/\{\s*"name"\s*:\s*"(write|read)"\s*,\s*"arguments"\s*:\s*\{/g)];
     if (starts.length === 0) return null;
@@ -244,7 +252,7 @@ export function recoverSimpleToolCalls(text) {
     return calls;
 }
 
-export function recoverBrokenBashToolCall(text) {
+export function recoverBrokenBashToolCall(text: string) {
     const normalized = repairToolCallJsonKeys(text);
     const match = normalized.match(/"name"\s*:\s*"(bash|terminal)"[\s\S]*?"command"\s*:\s*"([\s\S]*)"\s*\}\s*\}\s*\]\s*\}?$/);
     if (!match) return null;
@@ -252,7 +260,7 @@ export function recoverBrokenBashToolCall(text) {
     return { name: match[1], arguments: { command } };
 }
 
-export function recoverXmlStyleToolCall(text) {
+export function recoverXmlStyleToolCall(text: string) {
     const outer = text.match(/<function=([A-Za-z0-9_-]+)>\s*([\s\S]*?)\s*<\/function>/i);
     if (outer) {
         const name = outer[1].toLowerCase();
@@ -284,7 +292,7 @@ export function recoverXmlStyleToolCall(text) {
     return { name, arguments: { path: body } };
 }
 
-export function recoverChineseStyleToolCall(text) {
+export function recoverChineseStyleToolCall(text: string) {
     const marker = text.match(/\[调用\s+([A-Za-z0-9_-]+)\]\s*/);
     if (!marker || marker.index === undefined) return null;
     const jsonStart = marker.index + marker[0].length;
@@ -302,7 +310,7 @@ export function recoverChineseStyleToolCall(text) {
     return null;
 }
 
-export function recoverProseStyleToolCalls(text) {
+export function recoverProseStyleToolCalls(text: string) {
     const matches = [...text.matchAll(/^[ \t]*Tool call:\s*([A-Za-z0-9_-]+)\s*\((.*)\)[ \t]*$/gim)];
     if (matches.length === 0) return null;
 
@@ -348,7 +356,7 @@ export function recoverProseStyleToolCalls(text) {
     return calls.length > 0 ? calls : null;
 }
 
-export function recoverFencedShellToolCalls(text) {
+export function recoverFencedShellToolCalls(text: string) {
     const fencePattern = /```(?:bash|sh|shell|zsh)[ \t]*\r?\n([\s\S]*?)```/gi;
     const matches = [...text.matchAll(fencePattern)];
     if (matches.length === 0) return null;
@@ -366,7 +374,7 @@ export function recoverFencedShellToolCalls(text) {
     return calls.length > 0 ? calls : null;
 }
 
-export function conversationalShellText(name, rawArgs) {
+export function conversationalShellText(name: string, rawArgs: any) {
     if (name !== 'bash' && name !== 'terminal') return false;
     let args;
     try {
@@ -379,9 +387,9 @@ export function conversationalShellText(name, rawArgs) {
     return match ? match[1] : null;
 }
 
-function recoveredToolCalls(calls, allowedNames) {
-    if (!calls || calls.some(call => allowedNames && !allowedNames.has(call.name))) return null;
-    return calls.map((call, index) => ({
+function recoveredToolCalls(calls: Array<{ name: string; arguments: unknown } | null> | null, allowedNames: Set<string> | null): ParsedToolCall[] | null {
+    if (!calls || calls.some(call => !call || (allowedNames && !allowedNames.has(call.name)))) return null;
+    return (calls as Array<{ name: string; arguments: unknown }>).map((call, index) => ({
         id: `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
         type: 'function',
         function: { name: call.name, arguments: JSON.stringify(call.arguments) },
@@ -389,7 +397,7 @@ function recoveredToolCalls(calls, allowedNames) {
     }));
 }
 
-export function parseToolCallJson(content, tools = null) {
+export function parseToolCallJson(content: unknown, tools: any = null): ParsedToolCall[] | null {
     if (typeof content !== 'string') return null;
     tools = normalizeToolDefinitions(tools);
     const allowedTools = Array.isArray(tools)
@@ -414,7 +422,7 @@ export function parseToolCallJson(content, tools = null) {
         repairToolCallJsonKeys(text),
         firstToolCall,
         firstToolCall ? repairToolCallJsonKeys(firstToolCall) : null
-    ].filter(Boolean);
+    ].filter((attempt): attempt is string => Boolean(attempt));
     if (/^\s*\{\s*"tool_calls"\s*:\s*\[\s*\{/.test(text) && /\}\]\}\s*$/.test(text)) {
         parseAttempts.push(text.replace(/\}\]\}\s*$/, '}}]}'));
     }
@@ -431,7 +439,7 @@ export function parseToolCallJson(content, tools = null) {
     for (const candidate of parseAttempts) {
         try {
             const parsed = JSON.parse(candidate);
-            let calls = null;
+            let calls: any[] | null = null;
             if (Array.isArray(parsed.tool_calls)) {
                 calls = parsed.tool_calls;
             } else if (parsed.function_call || parsed.tool_call) {
@@ -440,7 +448,7 @@ export function parseToolCallJson(content, tools = null) {
                 calls = [parsed];
             }
             if (!calls || calls.length === 0) continue;
-            const mappedCalls = calls.map((call, index) => {
+            const mappedCalls = calls.map((call: any, index: number): ParsedToolCall | null => {
                 const name = call.name || call.tool || call.function?.name;
                 const rawArgs = call.arguments ?? call.args ?? call.input ?? call.function?.arguments ?? {};
                 const normalizedArgs = name === 'edit' ? repairEditArguments(rawArgs) : rawArgs;
@@ -458,7 +466,7 @@ export function parseToolCallJson(content, tools = null) {
                     },
                     index
                 };
-            }).filter(Boolean);
+            }).filter((call): call is ParsedToolCall => call !== null);
             if (mappedCalls.length !== calls.length) continue;
             return mappedCalls;
         } catch {
