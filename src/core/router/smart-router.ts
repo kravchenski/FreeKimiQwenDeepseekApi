@@ -1,19 +1,11 @@
-import { ProviderError } from '../providers/errors.ts';
+import { ProviderError, type ProviderErrorKind } from '../providers/errors.ts';
 import type { ChatChunk, ChatRequest, Provider, ProviderStream } from '../providers/provider.ts';
 import type { ProviderRegistry } from '../providers/registry.ts';
 
 export const AUTO_MODEL = 'auto';
-export const DEFAULT_AUTO_MODELS = [
-  'qwen3.7-plus',
-  'deepseek-default',
-  'glm-chat',
-  'kimi-chat',
-  'deepseek-ai/deepseek-v4.1-flash',
-  'moonshotai/kimi-k3',
-  'z-ai/glm-5.3',
-];
 
 const PROVIDER_COOLDOWN_MS = 30_000;
+const NOT_MODEL_FAULTS: ProviderErrorKind[] = ['rate_limit', 'quota_exhausted', 'auth', 'unavailable', 'invalid_request'];
 const MODEL_TIMEOUT_COOLDOWN_MS = 10 * 60_000;
 
 export interface SmartRouterOptions {
@@ -63,7 +55,7 @@ export class SmartRouter {
 
   constructor(
     private readonly registry: ProviderRegistry,
-    private autoModels: string[] = DEFAULT_AUTO_MODELS,
+    private autoModels: string[] = [],
     private readonly now: () => number = Date.now,
     private readonly options: SmartRouterOptions = {},
   ) {}
@@ -105,6 +97,7 @@ export class SmartRouter {
     const failures: string[] = [];
     for (const route of routes) {
       try {
+        const startedAt = this.now();
         const controller = new AbortController();
         const timeoutMs = routes.length > 1 ? this.options.firstChunkTimeoutMs : undefined;
         const pending = (async () => {
@@ -116,9 +109,11 @@ export class SmartRouter {
           pending.then(late => late.chunks.return(undefined), () => undefined);
         });
         this.cooldownUntil.delete(route.provider.id);
+        this.registry.stats.recordSuccess(route.model, this.now() - startedAt);
         return { ...stream, chunks, route };
       } catch (error) {
         const modelMissing = error instanceof ProviderError && error.kind === 'model_unavailable';
+        if (!(error instanceof ProviderError && NOT_MODEL_FAULTS.includes(error.kind))) this.registry.stats.recordFailure(route.model);
         if (modelMissing) this.registry.availability.markUnavailable(route.model, error.message);
         if (routes.length === 1) throw error;
         if (error instanceof FirstChunkTimeout) this.modelCooldownUntil.set(route.model, this.now() + MODEL_TIMEOUT_COOLDOWN_MS);
@@ -132,5 +127,5 @@ export class SmartRouter {
 
 export function parseAutoModels(value: string | undefined) {
   const models = (value ?? '').split(',').map(model => model.trim()).filter(Boolean);
-  return models.length ? models : DEFAULT_AUTO_MODELS;
+  return models;
 }

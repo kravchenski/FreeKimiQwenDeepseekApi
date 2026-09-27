@@ -1,4 +1,5 @@
 import { ModelAvailability } from '../models/availability.ts';
+import { ModelStats } from '../models/stats.ts';
 import type { Provider } from './provider.ts';
 
 export interface ModelEntry {
@@ -9,7 +10,7 @@ export interface ModelEntry {
 export class ProviderRegistry {
   private readonly providers: Provider[] = [];
 
-  constructor(readonly availability = new ModelAvailability()) {}
+  constructor(readonly availability = new ModelAvailability(), readonly stats = new ModelStats()) {}
 
   register(provider: Provider) {
     if (this.providers.some(existing => existing.id === provider.id)) {

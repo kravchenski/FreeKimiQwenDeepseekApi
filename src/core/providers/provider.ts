@@ -33,6 +33,7 @@ export interface ProviderContext {
 export interface Provider {
   readonly id: string;
   readonly ownedBy: string;
+  readonly fallback?: boolean;
   supports(model: string): boolean;
   listModels(): Promise<string[]>;
   capabilities(model: string): ModelCapabilities;

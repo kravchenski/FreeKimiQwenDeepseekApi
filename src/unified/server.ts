@@ -21,7 +21,7 @@ import { ProviderError, toHttpError } from '../core/providers/errors.ts';
 import { buildAutoChain } from '../core/router/auto-chain.ts';
 import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
 import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
-import { openDatabase, recordRequest, type RequestLog } from '../core/store/database.ts';
+import { loadModelStats, openDatabase, recordRequest, saveModelStat, type RequestLog } from '../core/store/database.ts';
 import { gatewayStatus } from '../core/status.ts';
 import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
@@ -140,12 +140,28 @@ function rebuildAutoChain() {
     if (config.AUTO_MODELS) return;
     const candidates = allModels.flatMap(entry => {
         const provider = registry.resolve(entry.id);
-        return provider ? [{ id: entry.id, provider: provider.id }] : [];
+        return provider ? [{ id: entry.id, provider: provider.id, fallback: provider.fallback ?? false }] : [];
     });
-    router.setAutoModels(buildAutoChain(candidates, model => registry.availability.isAvailable(model)));
+    router.setAutoModels(buildAutoChain(candidates, registry.stats, model => registry.availability.isAvailable(model)));
+}
+
+function loadModelStatistics() {
+    try {
+        registry.stats.load(loadModelStats(db()));
+    } catch (error) {
+        console.error('Model statistics unavailable:', errorText(error));
+    }
 }
 
 registry.availability.onChange(rebuildAutoChain);
+registry.stats.onChange(stat => {
+    try {
+        saveModelStat(db(), stat);
+    } catch (error) {
+        console.error('Failed to save model statistics:', errorText(error));
+    }
+    rebuildAutoChain();
+});
 
 function visibleModels() {
     return allModels.filter(entry => registry.availability.isAvailable(entry.id));
@@ -287,7 +303,7 @@ function handleProviderStream(
     });
 }
 
-app.get('/v1/gateway/status', (c) => c.json({ ...gatewayStatus(registry, db()), autoModels: router.autoChain() }));
+app.get('/v1/gateway/status', (c) => c.json({ ...gatewayStatus(registry, db()), autoModels: router.autoChain(), modelStats: registry.stats.list() }));
 
 app.get('/metrics', (c) => {
     let accounts: Array<{ provider: string; status: string }> = [];
@@ -595,6 +611,7 @@ async function shutdown() {
 export async function startUnifiedServer() {
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
+    loadModelStatistics();
     await refreshModelLists();
     scheduleModelRefresh();
     const modelCount = allModels.length;
