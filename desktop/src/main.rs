@@ -148,6 +148,14 @@ impl Shell {
         self.run_account_command(cx, move |cli| cli.add("qwen", &email, &password));
     }
 
+    fn open_web_chat(&mut self, url: &'static str, cx: &mut Context<Self>) {
+        self.run_account_command(cx, move |cli| cli.open_site(url));
+    }
+
+    fn capture_qwen(&mut self, cx: &mut Context<Self>) {
+        self.run_account_command(cx, |cli| cli.capture_qwen());
+    }
+
     fn remove_account(&mut self, id: String, cx: &mut Context<Self>) {
         self.run_account_command(cx, move |cli| cli.remove(&id));
     }
@@ -206,6 +214,7 @@ impl Render for Shell {
             )
             .children(self.error.clone().map(|error| div().text_sm().text_color(rgb(RED)).child(error)))
             .children(self.status_error.clone().map(|error| div().text_sm().text_color(rgb(RED)).child(format!("Status unavailable: {error}"))))
+            .child(self.render_web_chats(cx))
             .child(self.render_accounts(cx))
             .child(self.render_status())
     }
@@ -237,6 +246,50 @@ fn account_color(status: &str) -> u32 {
 }
 
 impl Shell {
+    fn render_web_chats(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let blocked = self.account_busy || self.gateway.is_running();
+        let sites: [(&'static str, &'static str, &'static str); 2] = [
+            ("kimi-chat", "Kimi", "https://www.kimi.ai/"),
+            ("glm-chat", "Z.ai (GLM)", "https://chat.z.ai/"),
+        ];
+        let rows = sites.into_iter().map(|(id, label, url)| {
+            row()
+                .child(div().w(px(120.)).child(label))
+                .child(div().w(px(90.)).text_color(rgb(MUTED)).child(id))
+                .child(
+                    Button::new(SharedString::from(format!("sign-in-{id}")))
+                        .ghost()
+                        .label("Sign in")
+                        .disabled(blocked)
+                        .on_click(cx.listener(move |shell, _, _, cx| {
+                            shell.open_web_chat(url, cx);
+                            cx.notify();
+                        })),
+                )
+        });
+        section("Web chats")
+            .children(rows)
+            .child(
+                row()
+                    .child(div().w(px(120.)).child("Qwen"))
+                    .child(div().w(px(90.)).text_color(rgb(MUTED)).child("qwen*"))
+                    .child(
+                        Button::new("capture-qwen")
+                            .ghost()
+                            .label("Sign in and capture")
+                            .disabled(blocked)
+                            .on_click(cx.listener(|shell, _, _, cx| {
+                                shell.capture_qwen(cx);
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .children(self.gateway.is_running().then(|| {
+                row().text_color(rgb(MUTED)).child("Stop the gateway to sign in: the browser profile is in use while it runs.")
+            }))
+            .into_any_element()
+    }
+
     fn render_accounts(&self, cx: &mut Context<Self>) -> AnyElement {
         let states = self.status.as_ref().map(|status| status.accounts.as_slice()).unwrap_or_default();
         let saved = self.saved.iter().map(|account| {

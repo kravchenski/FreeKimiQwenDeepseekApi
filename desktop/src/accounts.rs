@@ -81,6 +81,17 @@ impl AccountsCli {
         self.run(&["add", provider, "--email", email.trim()], Some(&format!("{password}\n")))
     }
 
+    pub fn open_site(&self, url: &str) -> Result<String, String> {
+        if !url.starts_with("https://") {
+            return Err("Only https sites can be opened".into());
+        }
+        self.run(&["open", url], None)
+    }
+
+    pub fn capture_qwen(&self) -> Result<String, String> {
+        self.run(&["add", "qwen", "--browser", "--label", "qwen-browser"], None)
+    }
+
     pub fn remove(&self, id: &str) -> Result<String, String> {
         self.run(&["remove", id], None)
     }
@@ -98,6 +109,25 @@ mod tests {
             provider: "qwen".into(),
             email: "a@example.com".into(),
         }]);
+    }
+
+    #[test]
+    fn refuses_to_open_non_https_sites() {
+        let cli = AccountsCli::new(std::env::temp_dir(), "freeapi-missing-binary".into());
+        assert_eq!(cli.open_site("http://chat.z.ai"), Err("Only https sites can be opened".into()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn passes_web_chat_commands_to_the_cli() {
+        let root = std::env::temp_dir().join(format!("freeapi-web-chat-test-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let script = root.join("echo.sh");
+        std::fs::write(&script, "echo \"args:$*\"\n").unwrap();
+        let cli = AccountsCli { root: root.clone(), program: "sh".into(), prefix: vec![script.to_string_lossy().into()] };
+        assert_eq!(cli.open_site("https://www.kimi.ai").unwrap(), "args:open https://www.kimi.ai");
+        assert_eq!(cli.capture_qwen().unwrap(), "args:add qwen --browser --label qwen-browser");
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
