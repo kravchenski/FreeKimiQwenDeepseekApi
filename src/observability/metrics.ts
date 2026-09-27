@@ -8,6 +8,7 @@ export interface RequestSample {
 export interface GaugeSnapshot {
   providers: Array<{ id: string; available: boolean }>;
   accounts: Array<{ provider: string; status: string }>;
+  unavailableModels?: Array<{ model: string }>;
 }
 
 function label(value: string) {
@@ -50,6 +51,11 @@ export class Metrics {
       accounts.set(key, (accounts.get(key) ?? 0) + 1);
     }
     for (const [key, count] of accounts) lines.push(`gateway_accounts${key} ${count}`);
+    lines.push(
+      '# HELP gateway_model_unavailable Models that failed as missing upstream and are hidden for a while.',
+      '# TYPE gateway_model_unavailable gauge',
+      ...(gauges.unavailableModels ?? []).map(entry => `gateway_model_unavailable${labels({ model: entry.model })} 1`),
+    );
     return `${lines.join('\n')}\n`;
   }
 }
