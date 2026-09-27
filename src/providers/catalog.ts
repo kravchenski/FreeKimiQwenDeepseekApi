@@ -21,6 +21,7 @@ export function createNvidiaProvider(overrides: Overrides = {}) {
     models: ['deepseek-ai/deepseek-v4.1-flash', 'moonshotai/kimi-k3', 'moonshotai/kimi-k2.6', 'z-ai/glm-5.3'],
     upstreamModels: true,
     acceptListedModels: true,
+    fallback: true,
     modelFilter: isNvidiaChatModel,
     extraBody: { temperature: 1, top_p: 0.95, max_tokens: 8192 },
     capabilities: { reasoning: true },

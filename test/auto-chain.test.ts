@@ -2,48 +2,71 @@ import { describe, expect, test } from 'bun:test';
 
 import type { ChatChunk, Provider } from '../src/core/providers/provider.ts';
 import { ProviderRegistry } from '../src/core/providers/registry.ts';
+import { ModelStats, rankModels } from '../src/core/models/stats.ts';
 import { buildAutoChain } from '../src/core/router/auto-chain.ts';
 import { SmartRouter } from '../src/core/router/smart-router.ts';
 import { collectChunks } from '../src/core/streaming/sse.ts';
 
-const web = [
-  { id: 'qwen-web-dev', provider: 'qwen' },
-  { id: 'qwen3.6-plus', provider: 'qwen' },
-  { id: 'qwen3.7-plus', provider: 'qwen' },
-  { id: 'deepseek-reasoner', provider: 'deepseek' },
-  { id: 'deepseek-default', provider: 'deepseek' },
-  { id: 'glm-chat', provider: 'glm-chat' },
-  { id: 'kimi-chat', provider: 'kimi-chat' },
-];
+const web = (provider: string, ids: string[]) => ids.map(id => ({ id, provider, fallback: false }));
+const nvidia = (ids: string[]) => ids.map(id => ({ id, provider: 'nvidia', fallback: true }));
 
-const nvidia = [
-  'google/gemma-4', 'meta/llama-4-maverick', 'mistralai/mistral-large-3', 'nvidia/nemotron-3-super-120b-a12b',
-  'nvidia/llama-3.1-nemotron-70b', 'nvidia/cosmos', 'z-ai/glm-5.3', 'deepseek-ai/deepseek-v4.1-flash',
-  'deepseek-ai/deepseek-v4', 'deepseek-ai/deepseek-r2', 'moonshotai/kimi-k3', 'qwen/qwen3-coder-480b',
-].map(id => ({ id, provider: 'nvidia' }));
+function measured(entries: Record<string, number | 'fail'>) {
+  const stats = new ModelStats(() => 0);
+  for (const [model, latency] of Object.entries(entries)) {
+    if (latency === 'fail') stats.recordFailure(model);
+    else stats.recordSuccess(model, latency);
+  }
+  return stats;
+}
 
 describe('buildAutoChain', () => {
-  test('puts web chats first, then the newest NVIDIA models by family with at most two per family', () => {
-    expect(buildAutoChain([...nvidia, ...web])).toEqual([
-      'qwen3.7-plus', 'deepseek-default', 'glm-chat', 'kimi-chat',
-      'deepseek-ai/deepseek-v4.1-flash', 'deepseek-ai/deepseek-v4', 'moonshotai/kimi-k3', 'z-ai/glm-5.3',
-      'qwen/qwen3-coder-480b', 'nvidia/nemotron-3-super-120b-a12b', 'nvidia/llama-3.1-nemotron-70b', 'meta/llama-4-maverick',
-    ]);
+  test('without measurements keeps one default model per web provider, then fallback models in listed order', () => {
+    const chain = buildAutoChain([
+      ...nvidia(['n1', 'n2']),
+      ...web('qwen', ['qwen-a', 'qwen-b']),
+      ...web('deepseek', ['ds-default', 'ds-reasoner']),
+      ...web('glm-chat', ['glm-chat']),
+    ], new ModelStats());
+    expect(chain).toEqual(['qwen-a', 'ds-default', 'glm-chat', 'n1', 'n2']);
   });
 
-  test('skips unavailable models and missing providers', () => {
-    const chain = buildAutoChain(
-      [{ id: 'qwen3.6-plus', provider: 'qwen' }, ...nvidia],
-      model => model !== 'deepseek-ai/deepseek-v4.1-flash',
-    );
-    expect(chain[0]).toBe('qwen3.6-plus');
-    expect(chain).not.toContain('deepseek-ai/deepseek-v4.1-flash');
-    expect(chain).not.toContain('glm-chat');
-    expect(chain[1]).toBe('deepseek-ai/deepseek-v4');
+  test('orders by measured first-chunk latency, then unmeasured, then failing models', () => {
+    const stats = measured({ n1: 'fail', n2: 900, n4: 200, 'glm-chat': 27_000, 'ds-default': 1_000, 'qwen-b': 500 });
+    const chain = buildAutoChain([
+      ...nvidia(['n1', 'n2', 'n3', 'n4']),
+      ...web('qwen', ['qwen-a', 'qwen-b']),
+      ...web('deepseek', ['ds-default']),
+      ...web('glm-chat', ['glm-chat']),
+    ], stats);
+    expect(chain).toEqual(['qwen-b', 'ds-default', 'glm-chat', 'n4', 'n2', 'n3', 'n1']);
+  });
+
+  test('skips unavailable models and caps fallback models', () => {
+    const ids = Array.from({ length: 12 }, (_, index) => `n${index}`);
+    const chain = buildAutoChain(nvidia(ids), new ModelStats(), model => model !== 'n0');
+    expect(chain).toEqual(ids.slice(1, 9));
   });
 
   test('returns an empty chain when nothing is listed', () => {
-    expect(buildAutoChain([])).toEqual([]);
+    expect(buildAutoChain([], new ModelStats())).toEqual([]);
+  });
+});
+
+describe('ModelStats', () => {
+  test('smooths latency and remembers the last outcome', () => {
+    const stats = new ModelStats(() => 5);
+    const seen: string[] = [];
+    stats.onChange(stat => seen.push(`${stat.model}:${stat.lastOutcome}`));
+    stats.recordSuccess('m', 1_000);
+    stats.recordSuccess('m', 2_000);
+    expect(stats.get('m')).toEqual({ model: 'm', successes: 2, failures: 0, latencyMs: 1_300, lastOutcome: 'success', updatedAt: 5 });
+    stats.recordFailure('m');
+    expect(stats.get('m')).toMatchObject({ successes: 2, failures: 1, latencyMs: 1_300, lastOutcome: 'failure' });
+    expect(seen).toEqual(['m:success', 'm:success', 'm:failure']);
+  });
+
+  test('ranks models without touching unknown ones', () => {
+    expect(rankModels(['a', 'b', 'c'], measured({ c: 10, a: 'fail' }))).toEqual(['c', 'b', 'a']);
   });
 });
 
@@ -74,6 +97,8 @@ describe('SmartRouter auto chain', () => {
     expect((await collectChunks(opened.chunks)).content).toBe('fast');
     expect(router.routes('auto').map(route => route.model)).toEqual(['fast']);
     expect(calls).toEqual(['slow', 'fast']);
+    expect(registry.stats.get('slow')?.lastOutcome).toBe('failure');
+    expect(registry.stats.get('fast')).toMatchObject({ successes: 1, lastOutcome: 'success' });
   });
 
   test('does not time out an explicit single-model request', async () => {

@@ -2,6 +2,8 @@ import { Database } from 'bun:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { ModelStat } from '../models/stats.ts';
+
 const MIGRATIONS = [
   `CREATE TABLE account_state (
     account_id TEXT PRIMARY KEY,
@@ -57,6 +59,14 @@ const MIGRATIONS = [
     model TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE model_stats (
+    model TEXT PRIMARY KEY,
+    successes INTEGER NOT NULL,
+    failures INTEGER NOT NULL,
+    latency_ms INTEGER,
+    last_outcome TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
 ];
 
 export function defaultDatabaseFile() {
@@ -110,4 +120,24 @@ export function recordRequest(db: Database, log: RequestLog, now = Date.now()) {
 export function recentRequests(db: Database, limit = 50) {
   return db.query(`SELECT created_at AS createdAt, provider, model, account_id AS accountId, status,
     latency_ms AS latencyMs, error FROM request_logs ORDER BY id DESC LIMIT $limit`).all({ limit });
+}
+
+export function loadModelStats(db: Database): ModelStat[] {
+  return (db.query(`SELECT model, successes, failures, latency_ms AS latencyMs, last_outcome AS lastOutcome,
+    updated_at AS updatedAt FROM model_stats`).all() as Array<ModelStat & { latencyMs: number | null }>)
+    .map(({ latencyMs, ...stat }) => latencyMs === null ? stat : { ...stat, latencyMs });
+}
+
+export function saveModelStat(db: Database, stat: ModelStat) {
+  db.query(`INSERT INTO model_stats (model, successes, failures, latency_ms, last_outcome, updated_at)
+    VALUES ($model, $successes, $failures, $latencyMs, $lastOutcome, $updatedAt)
+    ON CONFLICT (model) DO UPDATE SET successes = excluded.successes, failures = excluded.failures,
+      latency_ms = excluded.latency_ms, last_outcome = excluded.last_outcome, updated_at = excluded.updated_at`).run({
+    model: stat.model,
+    successes: stat.successes,
+    failures: stat.failures,
+    latencyMs: stat.latencyMs ?? null,
+    lastOutcome: stat.lastOutcome,
+    updatedAt: stat.updatedAt,
+  });
 }

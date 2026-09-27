@@ -4,7 +4,7 @@ import { mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { openDatabase, recentRequests, recordRequest } from '../src/core/store/database.ts';
+import { loadModelStats, openDatabase, recentRequests, recordRequest, saveModelStat } from '../src/core/store/database.ts';
 
 describe('gateway database', () => {
   test('creates the schema once and reopens without re-running migrations', () => {
@@ -15,7 +15,7 @@ describe('gateway database', () => {
 
     const reopened = openDatabase(file);
     const tables = reopened.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
-    expect(tables).toEqual([{ name: 'account_state' }, { name: 'conversation_routes' }, { name: 'quota_events' }, { name: 'request_logs' }]);
+    expect(tables).toEqual([{ name: 'account_state' }, { name: 'conversation_routes' }, { name: 'model_stats' }, { name: 'quota_events' }, { name: 'request_logs' }]);
     expect(recentRequests(reopened)).toHaveLength(1);
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600);
     reopened.close();
@@ -70,5 +70,16 @@ describe('account_state migration', () => {
     expect(db.query('SELECT provider, consecutive_failures AS failures FROM account_state ORDER BY provider').all())
       .toEqual([{ provider: 'deepseek', failures: 0 }, { provider: 'qwen', failures: 2 }]);
     db.close();
+  });
+
+  test('saves and reloads model statistics', () => {
+    const db = openDatabase(':memory:');
+    saveModelStat(db, { model: 'a', successes: 1, failures: 0, latencyMs: 300, lastOutcome: 'success', updatedAt: 1 });
+    saveModelStat(db, { model: 'b', successes: 0, failures: 1, lastOutcome: 'failure', updatedAt: 2 });
+    saveModelStat(db, { model: 'a', successes: 2, failures: 0, latencyMs: 250, lastOutcome: 'success', updatedAt: 3 });
+    expect(loadModelStats(db).sort((x, y) => x.model.localeCompare(y.model))).toEqual([
+      { model: 'a', successes: 2, failures: 0, latencyMs: 250, lastOutcome: 'success', updatedAt: 3 },
+      { model: 'b', successes: 0, failures: 1, lastOutcome: 'failure', updatedAt: 2 },
+    ]);
   });
 });

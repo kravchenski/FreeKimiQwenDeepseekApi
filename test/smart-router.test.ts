@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { ProviderError } from '../src/core/providers/errors.ts';
 import type { ChatChunk, Provider } from '../src/core/providers/provider.ts';
 import { ProviderRegistry } from '../src/core/providers/registry.ts';
-import { DEFAULT_AUTO_MODELS, parseAutoModels, SmartRouter } from '../src/core/router/smart-router.ts';
+import { parseAutoModels, SmartRouter } from '../src/core/router/smart-router.ts';
 import { collectChunks } from '../src/core/streaming/sse.ts';
 
 type Behavior = 'ok' | 'fail-open' | 'fail-first-chunk' | 'fail-mid-stream' | 'empty';
@@ -112,7 +112,7 @@ describe('SmartRouter', () => {
 describe('parseAutoModels', () => {
   test('parses a comma list and falls back to defaults', () => {
     expect(parseAutoModels(' qwen3.8-max, glm-5.2-free ,')).toEqual(['qwen3.8-max', 'glm-5.2-free']);
-    expect(parseAutoModels('')).toEqual(DEFAULT_AUTO_MODELS);
-    expect(parseAutoModels(undefined)).toEqual(DEFAULT_AUTO_MODELS);
+    expect(parseAutoModels('')).toEqual([]);
+    expect(parseAutoModels(undefined)).toEqual([]);
   });
 });

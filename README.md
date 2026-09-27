@@ -29,7 +29,7 @@ bun run start
 
 | Provider | Models | Key |
 |----------|--------|-----|
-| **Auto** | `auto` — web chats (Qwen → DeepSeek → GLM → Kimi), then discovered NVIDIA models; override with `AUTO_MODELS` | — |
+| **Auto** | `auto` — web chats first, then discovered NVIDIA models, each ordered by measured response time; override with `AUTO_MODELS` | — |
 | **Qwen** | `qwen3.7-plus`, `qwen3.8-max`, `qwen3-coder-plus`, … (list fetched from the Qwen API proxy) | `bun run account add qwen --browser` or `QWEN_TOKEN` |
 | **DeepSeek** | `deepseek-default`, `deepseek-reasoner`, `deepseek-expert`, `deepseek-search` | `bun run auth:deepseek` |
 | **GLM / Kimi web chat** | `glm-chat` (chat.z.ai), `kimi-chat` (kimi.ai) — sent through your signed-in browser | `bun run account open <url>` |
@@ -37,7 +37,7 @@ bun run start
 
 All models are free. NVIDIA is the fallback and requires an API key.
 
-To see which models actually answer for your keys and accounts, run `bun run models:probe` while the gateway is running (`--provider all` includes web chats, `--help` for options).
+To see which models actually answer for your keys and accounts, run `bun run models:probe` while the gateway is running (`--provider all` includes web chats, `--help` for options). The gateway remembers every measurement in `data/gateway.db`, so a probe run also reorders `auto` with the fastest working models first.
 
 ```bash
 curl http://localhost:3260/v1/models

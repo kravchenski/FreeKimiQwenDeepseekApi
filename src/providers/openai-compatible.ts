@@ -27,6 +27,7 @@ export interface OpenAICompatibleConfig {
   resolveApiKey?: () => Promise<string | undefined>;
   hasApiKey?: () => boolean;
   upstreamModels?: boolean;
+  fallback?: boolean;
   acceptListedModels?: boolean;
   modelFilter?: (model: string) => boolean;
   reportResult?: (apiKey: string, outcome: UpstreamOutcome) => void;
@@ -64,11 +65,13 @@ async function* openAIChunks(body: ReadableStream<Uint8Array> | null) {
 export class OpenAICompatibleProvider implements Provider {
   readonly id: string;
   readonly ownedBy: string;
+  readonly fallback: boolean;
   private listed?: Set<string>;
 
   constructor(private readonly config: OpenAICompatibleConfig) {
     this.id = config.id;
     this.ownedBy = config.ownedBy;
+    this.fallback = config.fallback ?? false;
   }
 
   private get envApiKey() {
