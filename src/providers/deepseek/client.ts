@@ -5,6 +5,9 @@ import { solveDeepSeekPow } from './pow.ts';
 import { getAvailableDeepSeekAccount, markDeepSeekAccountInvalid, type DeepSeekAccount } from './accounts.ts';
 import { PersistentStringMap } from '../../utils/persistentMap.ts';
 import { ProviderError, upstreamError } from '../../core/providers/errors.ts';
+import { messagesToPrompt } from '../../core/providers/prompt.ts';
+
+export { messagesToPrompt };
 
 const BASE_URL = process.env.DEEPSEEK_BASE_URL || 'https://chat.deepseek.com';
 const SESSION_MAP_FILE = process.env.DEEPSEEK_SESSION_MAP_FILE || path.join(process.cwd(), 'session', 'deepseek', 'chat-sessions.json');
@@ -110,17 +113,6 @@ async function getPow(account: DeepSeekAccount, sessionId: string) {
     const challenge = body?.data?.biz_data?.challenge;
     if (!challenge) throw new Error('DeepSeek did not return a PoW challenge');
     return solveDeepSeekPow(challenge);
-}
-
-export function messagesToPrompt(messages: Array<Record<string, any>>) {
-    return messages.map(message => {
-        const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content ?? '');
-        if (message.role === 'tool') return `Tool result (${message.name || message.tool_call_id || 'tool'}): ${content}`;
-        if (message.role === 'assistant' && message.tool_calls) {
-            return `Assistant tool calls: ${JSON.stringify(message.tool_calls)}\n${content}`;
-        }
-        return `${message.role || 'user'}: ${content}`;
-    }).join('\n\n');
 }
 
 export function isEmptyToolCallResponse(content: string) {
