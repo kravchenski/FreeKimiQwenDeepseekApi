@@ -132,6 +132,17 @@ async function refreshModelLists() {
     allModels = [{ id: AUTO_MODEL, ownedBy: 'gateway' }, ...await registry.listModels()];
 }
 
+function visibleModels() {
+    return allModels.filter(entry => registry.availability.isAvailable(entry.id));
+}
+
+function scheduleModelRefresh() {
+    if (!config.MODEL_REFRESH_MINUTES) return;
+    setInterval(() => {
+        refreshModelLists().catch(error => console.error('Model list refresh failed:', errorText(error)));
+    }, config.MODEL_REFRESH_MINUTES * 60_000).unref();
+}
+
 function isCodebaseActionRequest(messages: Array<Record<string, any>>) {
     const lastUser = [...messages].reverse().find(message => message?.role === 'user');
     const text = typeof lastUser?.content === 'string' ? lastUser.content.toLowerCase() : '';
@@ -271,7 +282,8 @@ app.get('/metrics', (c) => {
         console.error('Metrics could not read account states:', errorText(error));
     }
     const providers = registry.list().map(provider => ({ id: provider.id, available: provider.health().available }));
-    return c.text(metrics.render({ providers, accounts }), 200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
+    const unavailableModels = registry.availability.list();
+    return c.text(metrics.render({ providers, accounts, unavailableModels }), 200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
 });
 
 app.get('/health', (c) => {
@@ -281,14 +293,14 @@ app.get('/health', (c) => {
 app.get('/api/models', (c) => {
     return c.json({
         object: 'list',
-        data: allModels.map(({ id, ownedBy }) => ({ id, object: 'model', created: 0, owned_by: ownedBy }))
+        data: visibleModels().map(({ id, ownedBy }) => ({ id, object: 'model', created: 0, owned_by: ownedBy }))
     });
 });
 
 app.get('/api/v1/models', (c) => {
     return c.json({
         object: 'list',
-        data: allModels.map(({ id, ownedBy }) => ({ id, object: 'model', created: 0, owned_by: ownedBy }))
+        data: visibleModels().map(({ id, ownedBy }) => ({ id, object: 'model', created: 0, owned_by: ownedBy }))
     });
 });
 
@@ -306,7 +318,7 @@ app.post('/api/chat/completions', async (c) => {
         }
 
         if (!router.knows(model)) {
-            return c.json({ error: { message: `Unknown model: ${model}. Available: ${allModels.map(entry => entry.id).join(', ')}` } }, 400);
+            return c.json({ error: { message: `Unknown model: ${model}. Available: ${visibleModels().map(entry => entry.id).join(', ')}` } }, 400);
         }
 
         const conversationId = body.conversation_id || body.chat_id || c.req.header('x-conversation-id') || undefined;
@@ -393,7 +405,7 @@ app.post('/api/v1/chat/completions', async (c) => {
 app.get('/v1/models', (c) => {
     return c.json({
         object: 'list',
-        data: allModels.map(({ id, ownedBy }) => ({ id, object: 'model', created: 0, owned_by: ownedBy }))
+        data: visibleModels().map(({ id, ownedBy }) => ({ id, object: 'model', created: 0, owned_by: ownedBy }))
     });
 });
 
@@ -569,6 +581,7 @@ export async function startUnifiedServer() {
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
     await refreshModelLists();
+    scheduleModelRefresh();
     const modelCount = allModels.length;
 
     serve({

@@ -9,6 +9,7 @@ describe('parseEnv', () => {
             SESSION_DIR: 'session',
             GATEWAY_API_KEY: undefined,
             AUTO_MODELS: undefined,
+            MODEL_REFRESH_MINUTES: 360,
         });
     });
 
@@ -20,6 +21,7 @@ describe('parseEnv', () => {
     test('rejects invalid values', () => {
         expect(() => parseEnv({ UNIFIED_PORT: 'abc' })).toThrow('UNIFIED_PORT');
         expect(() => parseEnv({ UNIFIED_PORT: '70000' })).toThrow('UNIFIED_PORT');
+        expect(() => parseEnv({ MODEL_REFRESH_MINUTES: '-1' })).toThrow('MODEL_REFRESH_MINUTES');
     });
 
     test('loads from the given environment at call time', () => {

@@ -1,3 +1,4 @@
+import { ModelAvailability } from '../models/availability.ts';
 import type { Provider } from './provider.ts';
 
 export interface ModelEntry {
@@ -7,6 +8,8 @@ export interface ModelEntry {
 
 export class ProviderRegistry {
   private readonly providers: Provider[] = [];
+
+  constructor(readonly availability = new ModelAvailability()) {}
 
   register(provider: Provider) {
     if (this.providers.some(existing => existing.id === provider.id)) {
@@ -30,6 +33,6 @@ export class ProviderRegistry {
       result.status === 'fulfilled'
         ? result.value.map(id => ({ id, ownedBy: this.providers[index]!.ownedBy }))
         : []
-    );
+    ).filter(entry => this.availability.isAvailable(entry.id));
   }
 }

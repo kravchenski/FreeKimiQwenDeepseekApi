@@ -11,5 +11,5 @@ export function gatewayStatus(registry: ProviderRegistry, db: Database, now = Da
     last_success_at AS lastSuccessAt, last_error_at AS lastErrorAt, last_error AS lastError
     FROM account_state ORDER BY provider, account_id`).all() as AccountState[])
     .map(state => ({ ...state, status: effectiveStatus(state, now) }));
-  return { providers, accounts, requests: recentRequests(db, 50) };
+  return { providers, accounts, unavailableModels: registry.availability.list(), requests: recentRequests(db, 50) };
 }

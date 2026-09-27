@@ -27,6 +27,7 @@ export interface OpenAICompatibleConfig {
   resolveApiKey?: () => Promise<string | undefined>;
   hasApiKey?: () => boolean;
   upstreamModels?: boolean;
+  acceptListedModels?: boolean;
   modelFilter?: (model: string) => boolean;
   reportResult?: (apiKey: string, outcome: UpstreamOutcome) => void;
   env?: Record<string, string | undefined>;
@@ -63,6 +64,7 @@ async function* openAIChunks(body: ReadableStream<Uint8Array> | null) {
 export class OpenAICompatibleProvider implements Provider {
   readonly id: string;
   readonly ownedBy: string;
+  private listed?: Set<string>;
 
   constructor(private readonly config: OpenAICompatibleConfig) {
     this.id = config.id;
@@ -78,7 +80,12 @@ export class OpenAICompatibleProvider implements Provider {
   }
 
   supports(model: string) {
-    return this.config.prefixes.some(prefix => model.startsWith(prefix));
+    return Boolean(this.listed?.has(model)) || this.config.prefixes.some(prefix => model.startsWith(prefix));
+  }
+
+  private accepts(model: string) {
+    const known = this.config.acceptListedModels || this.config.prefixes.some(prefix => model.startsWith(prefix));
+    return known && (this.config.modelFilter?.(model) ?? true);
   }
 
   async listModels() {
@@ -92,8 +99,10 @@ export class OpenAICompatibleProvider implements Provider {
       });
       if (!response.ok) return this.config.models;
       const body = await response.json() as { data?: Array<{ id?: unknown }> };
-      const ids = (body.data ?? []).map(model => model.id).filter((id): id is string => typeof id === 'string' && this.supports(id) && (this.config.modelFilter?.(id) ?? true));
-      return ids.length ? ids : this.config.models;
+      const ids = (body.data ?? []).map(model => model.id).filter((id): id is string => typeof id === 'string' && this.accepts(id));
+      if (!ids.length) return this.config.models;
+      if (this.config.acceptListedModels) this.listed = new Set(ids);
+      return ids;
     } catch {
       return this.config.models;
     }

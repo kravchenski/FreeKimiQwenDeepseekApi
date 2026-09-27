@@ -63,6 +63,7 @@ export class SmartRouter {
     return candidates.flatMap(candidate => {
       const provider = this.registry.resolve(candidate);
       if (!provider || !provider.health().available) return [];
+      if (!this.registry.availability.isAvailable(candidate)) return [];
       if ((this.cooldownUntil.get(provider.id) ?? 0) > now) return [];
       return [{ provider, model: candidate }];
     });
@@ -79,8 +80,10 @@ export class SmartRouter {
         this.cooldownUntil.delete(route.provider.id);
         return { ...stream, chunks, route };
       } catch (error) {
+        const modelMissing = error instanceof ProviderError && error.kind === 'model_unavailable';
+        if (modelMissing) this.registry.availability.markUnavailable(route.model, error.message);
         if (routes.length === 1) throw error;
-        this.cooldownUntil.set(route.provider.id, this.now() + PROVIDER_COOLDOWN_MS);
+        if (!modelMissing) this.cooldownUntil.set(route.provider.id, this.now() + PROVIDER_COOLDOWN_MS);
         failures.push(`${route.model}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }

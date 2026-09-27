@@ -96,7 +96,7 @@ describe('OpenAI-compatible providers', () => {
       { id: 'meta/llama-4' },
     ] }));
     const nvidia = createNvidiaProvider({ env: { NVIDIA_API_KEY: 'n' }, fetch: fetchFn });
-    expect(await nvidia.listModels()).toEqual(['deepseek-ai/deepseek-v4.1-flash', 'z-ai/glm-5.3']);
+    expect(await nvidia.listModels()).toEqual(['deepseek-ai/deepseek-v4.1-flash', 'z-ai/glm-5.3', 'meta/llama-4']);
     expect(isNvidiaChatModel('nvidia/nemotron-3-super-120b-a12b')).toBeTrue();
     expect(isNvidiaChatModel('nvidia/llama-3.1-nemotron-safety-guard-8b-v3')).toBeFalse();
   });
