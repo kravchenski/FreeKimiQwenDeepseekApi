@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.7.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.6.0...v1.7.0) (2026-09-27)
+
+
+### Features
+
+* **desktop:** sign in to Kimi, Z.ai and Qwen web chats from the app ([f9bf4c9](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/f9bf4c98f0d46c369a95ab7bbd43b7e7456b7a30))
+* **desktop:** sign in to Kimi, Z.ai and Qwen web chats from the app ([a7731bf](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/a7731bf634dcdb8c19ed730091f55d764ed3942d))
+* **images:** add image generation and edits through the Qwen API ([03e36ff](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/03e36ffa63daee8a052ceded6fbeb6a63d96b12f))
+
 ## [1.6.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.5.0...v1.6.0) (2026-09-27)
 
 
