@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.2.0...v1.3.0) (2026-09-27)
+
+
+### Features
+
+* **glm:** serve glm-chat through the signed-in Z.ai web chat ([7bd5f2a](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/7bd5f2a08f4ffbb01a2aa8a79e3999e2059dafd6))
+* **kimi:** serve kimi-chat through the signed-in Kimi web chat ([9df8d75](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/9df8d7543def411079e68e38956a39f4f65ee97c))
+
 ## [1.2.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.1.0...v1.2.0) (2026-09-27)
 
 
