@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.7.0...v1.8.0) (2026-09-27)
+
+
+### Features
+
+* **observability:** add request ids and Prometheus metrics ([4f83108](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/4f8310846a78c593f4cfffce11c4158957939f1f))
+* **observability:** add request ids and Prometheus metrics ([257d2a0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/257d2a00ac977a032b53115232e32f577825eeda))
+
 ## [1.7.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.6.0...v1.7.0) (2026-09-27)
 
 
