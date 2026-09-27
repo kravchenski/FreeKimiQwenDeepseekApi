@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.1.0...v1.2.0) (2026-09-27)
+
+
+### Features
+
+* **browser:** send chat prompts through the signed-in browser and stream replies ([970a002](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/970a0024e595c13a20169f51c7dbac4494b56e9b))
+* **browser:** send chat prompts through the signed-in browser and stream replies ([bb6c9c6](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/bb6c9c69ac6ac7bb5336754ab6e373e402cf1522))
+* **cli:** open sites in the browser profile for manual sign-in ([091fee2](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/091fee22dcd41f65c072ae04df780c2686230b89))
+* **cli:** open sites in the browser profile for manual sign-in ([c54995e](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/c54995e2984384a727ea3c41cdc71ff0ed7f91c2))
+
 ## [1.1.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.0.0...v1.1.0) (2026-09-26)
 
 
