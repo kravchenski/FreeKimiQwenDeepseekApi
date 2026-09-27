@@ -1,0 +1,90 @@
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { BrowserChatSession, type ChatSite } from '../src/browser/browser-chat.ts';
+import { findBrowserExecutable } from '../src/platform/browserExecutable.ts';
+
+const chatPage = `<!doctype html><textarea id="box"></textarea><div id="out"></div>
+<script>
+document.getElementById('box').addEventListener('keydown', async event => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  const response = await fetch('/api/stream', { method: 'POST', body: event.target.value });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    document.getElementById('out').textContent += decoder.decode(value);
+  }
+});
+</script>`;
+
+const verifyPage = '<!doctype html><textarea></textarea><p>Please complete security verification</p>';
+
+let server: ReturnType<typeof Bun.serve>;
+let origin = '';
+
+beforeAll(() => {
+  server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      const url = new URL(request.url);
+      if (url.pathname === '/api/stream') {
+        const prompt = await request.text();
+        const parts = ['data: first\n\n', `data: echo ${prompt}\n\n`, 'data: [DONE]\n\n'];
+        return new Response(new ReadableStream({
+          async start(controller) {
+            for (const part of parts) {
+              controller.enqueue(new TextEncoder().encode(part));
+              await Bun.sleep(50);
+            }
+            controller.close();
+          },
+        }), { headers: { 'content-type': 'text/event-stream' } });
+      }
+      const html = url.pathname === '/verify' ? verifyPage : chatPage;
+      return new Response(html, { headers: { 'content-type': 'text/html' } });
+    },
+  });
+  origin = `http://127.0.0.1:${server.port}`;
+});
+
+afterAll(() => server?.stop(true));
+
+async function collect(stream: AsyncIterable<Uint8Array>) {
+  let text = '';
+  for await (const chunk of stream) text += new TextDecoder().decode(chunk);
+  return text;
+}
+
+function site(path = '/'): ChatSite {
+  return { id: 'fake', url: `${origin}${path}`, inputSelector: 'textarea', responseUrl: /\/api\/stream/, verificationText: /security verification/i };
+}
+
+describe.skipIf(process.env.RUN_BROWSER_TESTS !== '1' || !findBrowserExecutable())('browser chat session', () => {
+  test('types the prompt, lets the page send it and streams the response', async () => {
+    const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });
+    try {
+      const text = await collect(await session.send(site(), 'hello there'));
+      expect(text).toBe('data: first\n\ndata: echo hello there\n\ndata: [DONE]\n\n');
+
+      const [a, b] = await Promise.all([session.send(site(), 'one').then(collect), session.send(site(), 'two').then(collect)]);
+      expect(a).toContain('echo one');
+      expect(b).toContain('echo two');
+    } finally {
+      await session.close();
+    }
+  }, 90_000);
+
+  test('reports a security verification instead of waiting for it', async () => {
+    const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true, firstChunkTimeoutMs: 10_000 });
+    try {
+      await expect(session.send(site('/verify'), 'hi').then(collect)).rejects.toThrow('security verification');
+    } finally {
+      await session.close();
+    }
+  }, 90_000);
+});
