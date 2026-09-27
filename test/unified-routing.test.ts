@@ -274,5 +274,26 @@ describe('unified server routing', () => {
     expect((await post({ prompt: '' })).status).toBe(400);
     expect((await post({ prompt: 'a fox' }, 'Bearer wrong')).status).toBe(401);
   });
+
+  test('adds request ids, forwards them to subrequests and exposes Prometheus metrics', async () => {
+    replies.push([{ type: 'content', text: 'metrics' }]);
+    const response = await server.app.fetch(new Request('http://local/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'x-request-id': 'trace-42' },
+      body: JSON.stringify({ model: 'fake-model', max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] }),
+    }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-request-id')).toBe('trace-42');
+
+    const generated = await server.app.fetch(new Request('http://local/health'));
+    expect(generated.headers.get('x-request-id')).toMatch(/^[0-9a-f-]{36}$/);
+
+    expect((await server.app.fetch(new Request('http://local/metrics'))).status).toBe(401);
+    const metrics = await server.app.fetch(new Request('http://local/metrics', { headers: { authorization: `Bearer ${key}` } }));
+    const text = await metrics.text();
+    expect(metrics.headers.get('content-type')).toContain('text/plain');
+    expect(text).toMatch(/gateway_requests_total\{provider="fake",model="fake-model",status="success"\} \d+/);
+    expect(text).toContain('gateway_provider_available{provider="fake"} 1');
+  });
 });
 
