@@ -228,5 +228,32 @@ describe('unified server routing', () => {
     expect(entries[0]).toMatchObject({ status: 'error', model: 'dropping-model' });
     expect(entries[0].error).toContain('socket closed mid-answer');
   });
+
+  test('streams Anthropic messages incrementally with thinking blocks when enabled', async () => {
+    replies.push([
+      { type: 'reasoning', text: 'plan ' },
+      { type: 'content', text: 'Hel' },
+      { type: 'content', text: 'lo' },
+    ]);
+    const response = await server.app.fetch(new Request('http://local/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key },
+      body: JSON.stringify({
+        model: 'fake-model',
+        max_tokens: 100,
+        stream: true,
+        thinking: { type: 'enabled', budget_tokens: 1024 },
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    }));
+    const events = (await response.text()).trim().split('\n\n').map(item => JSON.parse(item.split('\ndata: ')[1]!));
+    const deltas = events.filter(item => item.type === 'content_block_delta').map(item => item.delta);
+    expect(deltas).toEqual([
+      { type: 'thinking_delta', thinking: 'plan ' },
+      { type: 'text_delta', text: 'Hel' },
+      { type: 'text_delta', text: 'lo' },
+    ]);
+    expect(events.at(-1).type).toBe('message_stop');
+  });
 });
 
