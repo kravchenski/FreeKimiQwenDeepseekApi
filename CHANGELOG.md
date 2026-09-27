@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.1](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.8.0...v1.8.1) (2026-09-27)
+
+
+### Documentation
+
+* **examples:** translate examples and guides to English and point them at the unified API ([fd46449](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/fd4644910c7dec52c233154ab97c26adbf965541))
+* **examples:** translate examples and guides to English and point them at the unified API ([aa116fe](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/aa116fe2ff2310da7aadc53b119f0c41039f073e))
+
+
+### Chores
+
+* **i18n:** translate user-facing messages in code and scripts to English ([d0598d2](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/d0598d2d9c9e94f87d2b9e619aaac7da5cb34e1b))
+
 ## [1.8.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.7.0...v1.8.0) (2026-09-27)
 
 
