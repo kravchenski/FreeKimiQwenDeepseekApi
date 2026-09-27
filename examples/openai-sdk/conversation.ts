@@ -1,60 +1,15 @@
+import type OpenAI from 'openai';
 
-import OpenAI from 'openai';
+import { client, MODEL } from './client.ts';
 
-const openai = new OpenAI({
-    baseURL: 'http://localhost:3264/api',
-    apiKey: 'dummy-key',
-});
+const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    { role: 'user', content: 'My name is Alex. Remember it.' },
+];
 
-async function conversationExample() {
-    try {
-        console.log('Начинаем диалог с Qwen AI...\n');
+const first = await client.chat.completions.create({ model: MODEL, messages });
+const firstReply = first.choices[0]?.message.content ?? '';
+console.log('Assistant:', firstReply);
 
-        console.log('Пользователь: Привет! Расскажи о квантовой физике простыми словами.');
-
-        let completion = await openai.chat.completions.create({
-            messages: [
-                { role: 'user', content: 'Привет! Расскажи о квантовой физике простыми словами.' }
-            ],
-            model: 'qwen-max-latest',
-        });
-
-        const assistantResponse1 = completion.choices[0].message.content;
-        console.log('\nQwen:', assistantResponse1);
-
-        console.log('\nПользователь: А как это связано с теорией относительности?');
-
-        completion = await openai.chat.completions.create({
-            messages: [
-                { role: 'user', content: 'Привет! Расскажи о квантовой физике простыми словами.' },
-                { role: 'assistant', content: assistantResponse1 },
-                { role: 'user', content: 'А как это связано с теорией относительности?' }
-            ],
-            model: 'qwen-max-latest',
-        });
-
-        const assistantResponse2 = completion.choices[0].message.content;
-        console.log('\nQwen:', assistantResponse2);
-
-        console.log('\nПользователь: Спасибо! Кто из ученых внес наибольший вклад в развитие этих теорий?');
-
-        completion = await openai.chat.completions.create({
-            messages: [
-                { role: 'user', content: 'Привет! Расскажи о квантовой физике простыми словами.' },
-                { role: 'assistant', content: assistantResponse1 },
-                { role: 'user', content: 'А как это связано с теорией относительности?' },
-                { role: 'assistant', content: assistantResponse2 },
-                { role: 'user', content: 'Спасибо! Кто из ученых внес наибольший вклад в развитие этих теорий?' }
-            ],
-            model: 'qwen-max-latest',
-        });
-
-        console.log('\nQwen:', completion.choices[0].message.content);
-        console.log('\nДиалог успешно завершен.');
-
-    } catch (error) {
-        console.error('Ошибка при выполнении диалога:', error);
-    }
-}
-
-conversationExample();
+messages.push({ role: 'assistant', content: firstReply }, { role: 'user', content: 'What is my name?' });
+const second = await client.chat.completions.create({ model: MODEL, messages });
+console.log('Assistant:', second.choices[0]?.message.content);

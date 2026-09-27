@@ -1,4 +1,4 @@
-# LiteLLM bridge for Codex / Claude Code -> FreeKimiQwenDeepseekApi -> Qwen / DeepSeek / Kimi
+# LiteLLM bridge for Codex / Claude Code -> FreeQwenApi unified server
 # Generate a complete current model list with `bun run setup:agents`.
 # Start: uvx --from "litellm[proxy]" litellm --config examples/litellm/freeai_litellm.yaml --host 127.0.0.1 --port 4000
 
@@ -6,19 +6,19 @@ model_list:
   - model_name: qwen3-coder-plus
     litellm_params:
       model: openai/chat_completions/qwen3-coder-plus
-      api_base: http://127.0.0.1:3263/api
+      api_base: http://127.0.0.1:3260/api
       api_key: dummy-key
 
   - model_name: deepseek-default
     litellm_params:
       model: openai/chat_completions/deepseek-default
-      api_base: http://127.0.0.1:3263/api
+      api_base: http://127.0.0.1:3260/api
       api_key: dummy-key
 
   - model_name: deepseek-reasoner
     litellm_params:
       model: openai/chat_completions/deepseek-reasoner
-      api_base: http://127.0.0.1:3263/api
+      api_base: http://127.0.0.1:3260/api
       api_key: dummy-key
 
 general_settings:

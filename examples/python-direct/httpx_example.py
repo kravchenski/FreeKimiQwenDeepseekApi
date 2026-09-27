@@ -1,13 +1,15 @@
+import os
+
 import httpx
 
-url = "http://localhost:3264/api/chat/completions"
-payload = {
-    "model": "qwen-max-latest",
-    "messages": [{"role": "user", "content": "Привет! Напиши 1 полезный совет по Python."}],
-}
+base_url = os.environ.get("FREEAPI_BASE_URL", "http://localhost:3260/v1")
+headers = {"Authorization": f"Bearer {os.environ['GATEWAY_API_KEY']}"} if os.environ.get("GATEWAY_API_KEY") else {}
 
-resp = httpx.post(url, json=payload, timeout=120)
-resp.raise_for_status()
-
-data = resp.json()
-print(data["choices"][0]["message"]["content"])
+response = httpx.post(
+    f"{base_url}/chat/completions",
+    headers=headers,
+    json={"model": os.environ.get("FREEAPI_MODEL", "auto"), "messages": [{"role": "user", "content": "Hello! Tell me about yourself."}]},
+    timeout=120,
+)
+response.raise_for_status()
+print(response.json()["choices"][0]["message"]["content"])

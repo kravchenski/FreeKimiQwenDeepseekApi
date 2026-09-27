@@ -46,9 +46,9 @@ async function extractToken(page: Page, capturedToken?: string | null) {
 
 export async function addDeepSeekAccountInteractive(replaceId?: string) {
     console.log('\n======================================================');
-    console.log(replaceId ? `Повторный вход DeepSeek: ${replaceId}` : 'Добавление нового аккаунта DeepSeek');
-    console.log('Зарегистрируйтесь или войдите на chat.deepseek.com.');
-    console.log('После появления интерфейса чата вернитесь в консоль и нажмите Enter.');
+    console.log(replaceId ? `Signing in again to DeepSeek: ${replaceId}` : 'Adding a new DeepSeek account');
+    console.log('Sign up or sign in at chat.deepseek.com.');
+    console.log('When the chat interface appears, come back to this terminal and press Enter.');
     console.log('======================================================');
 
     const cdp = await launchCdpBrowser({ headless: false, profileDir, startUrl: signInUrl });
@@ -68,21 +68,21 @@ export async function addDeepSeekAccountInteractive(replaceId?: string) {
         if (!isDeepSeekUrl(page.url())) {
             await page.goto(signInUrl, { waitUntil: 'domcontentloaded', timeout: 120_000 });
         }
-        await prompt('После регистрации/входа и появления чата нажмите Enter...');
+        await prompt('Press Enter after signing in and the chat has opened...');
         await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 120_000 }).catch(() => {});
         await new Promise(resolve => setTimeout(resolve, 3000));
         const token = await extractToken(page, capturedToken);
         const cookies = await context.cookies();
         const sessionCookie = cookies.find(cookie => cookie.name === 'ds_session_id');
         if (!sessionCookie) {
-            throw new Error('DeepSeek login не подтверждён: cookie ds_session_id не найден');
+            throw new Error('DeepSeek sign-in not confirmed: ds_session_id cookie not found');
         }
         if (!token) {
-            throw new Error('DeepSeek login подтверждён, но Bearer token не найден. Обновите страницу чата и повторите.');
+            throw new Error('DeepSeek sign-in confirmed, but no bearer token was found. Reload the chat page and try again.');
         }
         const id = replaceId || `deepseek_${Date.now()}`;
         addDeepSeekAccount({ id, token, cookies, invalid: false, resetAt: null });
-        console.log(`Аккаунт DeepSeek ${id} сохранён.`);
+        console.log(`DeepSeek account ${id} saved.`);
         return id;
     } finally {
         await cdp.close();
@@ -90,10 +90,10 @@ export async function addDeepSeekAccountInteractive(replaceId?: string) {
 }
 
 function printAccounts(accounts: DeepSeekAccount[]) {
-    console.log('\nСписок аккаунтов DeepSeek:');
-    if (!accounts.length) console.log('  (пусто)');
+    console.log('\nDeepSeek accounts:');
+    if (!accounts.length) console.log('  (none)');
     accounts.forEach((account, index) => {
-        const status = account.invalid ? '❌ Недействителен' : '✅ OK';
+        const status = account.invalid ? '❌ Invalid' : '✅ OK';
         console.log(`${String(index + 1).padStart(2, ' ')} | ${account.id} | ${status}`);
     });
 }
@@ -107,14 +107,14 @@ async function pickAccount(question: string) {
 }
 
 export async function reloginDeepSeekAccountInteractive() {
-    const account = await pickAccount('Номер аккаунта для повторного входа: ');
+    const account = await pickAccount('Account number to sign in again: ');
     if (account) await addDeepSeekAccountInteractive(account.id);
 }
 
 export async function removeDeepSeekAccountInteractive() {
-    const account = await pickAccount('Номер аккаунта для удаления: ');
+    const account = await pickAccount('Account number to remove: ');
     if (!account) return;
-    const confirmation = await prompt(`Удалить ${account.id}? (y/N): `);
+    const confirmation = await prompt(`Remove ${account.id}? (y/N): `);
     if (confirmation.toLowerCase() === 'y') removeDeepSeekAccount(account.id);
 }
 
@@ -122,19 +122,19 @@ export async function runDeepSeekAccountMenu() {
     while (true) {
         const accounts = loadDeepSeekAccounts();
         printAccounts(accounts);
-        console.log('\n=== Меню DeepSeek ===');
-        console.log('1 - Зарегистрировать или добавить новый аккаунт');
-        console.log('2 - Перелогинить аккаунт');
-        console.log('3 - Запустить прокси (по умолчанию)');
-        console.log('4 - Удалить аккаунт');
-        let choice = await prompt('Ваш выбор (Enter = 3): ');
+        console.log('\n=== DeepSeek menu ===');
+        console.log('1 - Sign up or add a new account');
+        console.log('2 - Sign in to an account again');
+        console.log('3 - Start the proxy (default)');
+        console.log('4 - Remove an account');
+        let choice = await prompt('Your choice (Enter = 3): ');
         if (!choice) choice = '3';
         if (choice === '1') await addDeepSeekAccountInteractive();
         else if (choice === '2') await reloginDeepSeekAccountInteractive();
         else if (choice === '4') await removeDeepSeekAccountInteractive();
         else if (choice === '3') {
             if (accounts.some(account => !account.invalid)) return;
-            console.log('Нужен хотя бы один валидный аккаунт DeepSeek.');
+            console.log('At least one valid DeepSeek account is required.');
         }
     }
 }

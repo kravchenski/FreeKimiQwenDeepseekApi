@@ -1,4 +1,4 @@
-# Зависимости Node.js
+# Node.js dependencies
 node_modules/
 package-lock.json
 yarn.lock
@@ -6,7 +6,7 @@ yarn.lock
 .bun-tmp/
 .build-check/
 
-# Данные сессии и кэш
+# Session data and cache
 session/
 session/tokens.json
 session/accounts/**/token.txt
@@ -20,7 +20,7 @@ user-data-dir/
 .cache/
 
 
-# Служебные файлы
+# Build and tooling files
 .DS_Store
 .env
 .env.*
@@ -30,14 +30,14 @@ user-data-dir/
 .env.test.local
 .env.production.local
 
-# Логи
+# Logs
 logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Файлы Python
+# Python files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -46,13 +46,13 @@ venv/
 .env/
 .venv/
 
-# Файлы редакторов
+# Editor files
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# Загрузки
+# Uploads
 uploads/
 
 Authorization.txt

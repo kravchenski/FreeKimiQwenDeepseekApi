@@ -164,7 +164,7 @@ async function start() {
     console.log(`\n=====================================================\n   FREE DEEPSEEK WEB API\n   Browser-backed proxy for https://chat.deepseek.com/\n=====================================================\n`);
     const skipMenu = enabled(process.env.SKIP_ACCOUNT_MENU) || enabled(process.env.NON_INTERACTIVE);
     if (skipMenu) {
-        if (!hasValidDeepSeekAccounts() && !process.env.DEEPSEEK_TOKEN) throw new Error('Нет активных аккаунтов DeepSeek.');
+        if (!hasValidDeepSeekAccounts() && !process.env.DEEPSEEK_TOKEN) throw new Error('No active DeepSeek accounts.');
     } else {
         await runDeepSeekAccountMenu();
     }

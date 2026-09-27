@@ -1,36 +1,21 @@
+const BASE_URL = process.env.FREEAPI_BASE_URL ?? 'http://localhost:3260/v1';
 
-async function directApiRequest() {
-    try {
-        console.log('Отправка прямого запроса к API Qwen...\n');
+const response = await fetch(`${BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.GATEWAY_API_KEY ? { Authorization: `Bearer ${process.env.GATEWAY_API_KEY}` } : {}),
+    },
+    body: JSON.stringify({
+        model: process.env.FREEAPI_MODEL ?? 'auto',
+        messages: [{ role: 'user', content: 'Explain in simple words what artificial intelligence is.' }],
+    }),
+});
 
-        const response = await fetch('http://localhost:3264/api/chat', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                message: 'Объясни простыми словами, что такое искусственный интеллект',
-                model: 'qwen-max-latest'
-            })
-        });
+if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
 
-        if (!response.ok) {
-            throw new Error(`HTTP ошибка! Статус: ${response.status}`);
-        }
+const result = await response.json();
+console.log(result.choices[0].message.content);
+console.log('\nServed by:', response.headers.get('x-gateway-route'));
 
-        const result = await response.json();
-
-        console.log('Ответ от API:\n');
-        console.log(result.choices[0].message.content);
-        console.log('\nЗапрос успешно выполнен.');
-
-        console.log('\nИнформация о запросе:');
-        console.log(`ID чата: ${result.chatId}`);
-        console.log(`Модель: ${result.model}`);
-
-    } catch (error) {
-        console.error('Ошибка при выполнении запроса:', error);
-    }
-}
-
-directApiRequest();
+export {};
