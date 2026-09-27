@@ -29,11 +29,13 @@ bun run start
 
 | Provider | Models | Key |
 |----------|--------|-----|
-| **DeepSeek** | `deepseek-default`, `deepseek-expert`, `deepseek-search` | Browser auth |
+| **Auto** | `auto` — first available model from `AUTO_MODELS` (Qwen → DeepSeek → GLM → Kimi → NVIDIA) | — |
+| **Qwen** | `qwen3.7-plus`, `qwen3.8-max`, `qwen3-coder-plus`, … (list fetched from the Qwen API proxy) | `bun run account add qwen --browser` or `QWEN_TOKEN` |
+| **DeepSeek** | `deepseek-default`, `deepseek-reasoner`, `deepseek-expert`, `deepseek-search` | `bun run auth:deepseek` |
 | **GLM / Kimi web chat** | `glm-chat` (chat.z.ai), `kimi-chat` (kimi.ai) — sent through your signed-in browser | `bun run account open <url>` |
 | **NVIDIA** | `deepseek-ai/deepseek-v4.1-flash`, `moonshotai/kimi-k3`, `z-ai/glm-5.3` (list fetched from NVIDIA) | `NVIDIA_API_KEY` |
 
-All models are free. NVIDIA requires an API key.
+All models are free. NVIDIA is the fallback and requires an API key.
 
 ```bash
 curl http://localhost:3260/v1/models
