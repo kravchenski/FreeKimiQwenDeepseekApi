@@ -45,28 +45,46 @@ async function withSitePage<T>(
     if (!context) throw new Error('Browser profile has no default context');
     const page = await context.newPage();
     await page.goto(site.origin, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await settle(page);
     return await task(page, context);
   } finally {
     await cdp.close();
   }
 }
 
+const NAVIGATION_ERROR = /Execution context was destroyed|navigation|Target page, context or browser has been closed/i;
+
+async function settle(page: Page) {
+  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+}
+
+export async function retryAfterNavigation<R>(page: Page, action: () => Promise<R>, attempts = 5): Promise<R> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await action();
+    } catch (error) {
+      if (attempt >= attempts || !(error instanceof Error) || !NAVIGATION_ERROR.test(error.message)) throw error;
+      await settle(page);
+    }
+  }
+}
+
 export function clearSiteSession(site: SiteSpec, options: CaptureOptions = {}) {
   return withSitePage(site, options, async (page, context) => {
     await context.clearCookies({ domain: site.cookieDomain });
-    await page.evaluate(() => {
+    await retryAfterNavigation(page, () => page.evaluate(() => {
       localStorage.clear();
       sessionStorage.clear();
-    });
+    }));
   });
 }
 
 export function readSiteSession(site: SiteSpec, options: CaptureOptions = {}): Promise<CapturedSession | null> {
   return withSitePage(site, options, async page => {
-    const token = await page.evaluate(key => localStorage.getItem(key), site.tokenKey);
+    const token = await retryAfterNavigation(page, () => page.evaluate(key => localStorage.getItem(key), site.tokenKey));
     if (!token) return null;
     const email = site.userInfoPath
-      ? await page.evaluate(async ({ path, token }) => {
+      ? await retryAfterNavigation(page, () => page.evaluate(async ({ path, token }) => {
         try {
           const response = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
           const body = await response.json();
@@ -74,7 +92,7 @@ export function readSiteSession(site: SiteSpec, options: CaptureOptions = {}): P
         } catch {
           return undefined;
         }
-      }, { path: site.userInfoPath, token })
+      }, { path: site.userInfoPath, token }))
       : undefined;
     return { token, email, expiresAt: jwtExpiry(token) };
   });

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { launchCdpBrowser } from '../src/browser/cdp.ts';
-import { captureSiteSession, readSiteSession, type SiteSpec } from '../src/browser/site-session.ts';
+import { captureSiteSession, readSiteSession, retryAfterNavigation, type SiteSpec } from '../src/browser/site-session.ts';
 import { findBrowserExecutable } from '../src/platform/browserExecutable.ts';
 
 let server: ReturnType<typeof Bun.serve>;
@@ -20,7 +20,10 @@ beforeAll(() => {
           ? Response.json({ email: 'me@example.com' })
           : new Response('unauthorized', { status: 401 });
       }
-      return new Response('<!doctype html><title>site</title>', { headers: { 'content-type': 'text/html' } });
+      if (url.pathname === '/') {
+        return new Response('<!doctype html><title>site</title><script>setTimeout(() => location.replace("/home"), 30)</script>', { headers: { 'content-type': 'text/html' } });
+      }
+      return new Response('<!doctype html><title>home</title>', { headers: { 'content-type': 'text/html' } });
     },
   });
   const origin = `http://127.0.0.1:${server.port}`;
@@ -51,3 +54,29 @@ describe.skipIf(process.env.RUN_BROWSER_TESTS !== '1' || !findBrowserExecutable(
     await expect(captureSiteSession(site, { profileDir, openWindow: async () => {} })).rejects.toThrow('No fake session found');
   }, 90_000);
 });
+
+describe('retryAfterNavigation', () => {
+  const page = { waitForLoadState: async () => {} } as never;
+
+  test('retries when a navigation destroys the execution context', async () => {
+    let calls = 0;
+    const result = await retryAfterNavigation(page, async () => {
+      calls += 1;
+      if (calls < 3) throw new Error('page.evaluate: Execution context was destroyed, most likely because of a navigation');
+      return 'token';
+    });
+    expect(result).toBe('token');
+    expect(calls).toBe(3);
+  });
+
+  test('rethrows other errors and gives up after the attempt limit', async () => {
+    await expect(retryAfterNavigation(page, async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+    let calls = 0;
+    await expect(retryAfterNavigation(page, async () => {
+      calls += 1;
+      throw new Error('Execution context was destroyed');
+    }, 2)).rejects.toThrow('destroyed');
+    expect(calls).toBe(2);
+  });
+});
+
