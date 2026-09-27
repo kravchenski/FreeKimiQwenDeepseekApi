@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.9.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.8.2...v1.9.0) (2026-09-27)
+
+
+### Features
+
+* **cli:** add a model probe that lists which models answer ([94aac13](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/94aac1311b85a183869e1b0ef2d5ee653f1d441d))
+* **cli:** add a model probe that lists which models answer ([0a130ea](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/0a130ea3c0de066eb76c4954cc81312259a2d789))
+* **models:** discover every upstream NVIDIA model and hide models missing for the account ([b81cd40](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/b81cd40a92b881ab3ada92d740848b86b97335d0))
+* **models:** discover every upstream NVIDIA model and hide models that are missing for the account ([06803b6](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/06803b67231dd4d6682b45bca298b30eaf1f679c))
+* **router:** build the auto chain from discovered models and skip routes that do not answer ([682198d](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/682198da55985f4cb78ac04fb64573d4e7ededce))
+* **router:** build the auto chain from discovered models and skip routes that do not answer ([38eab0b](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/38eab0b0aca6cdeee4b5956bdb007d677199e55c))
+* **router:** order the auto chain by measured response time instead of fixed preferences ([b16506f](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/b16506f03a6d8fe0fa6093f5ae853ee84b06059d))
+* **router:** order the auto chain by measured response time instead of fixed preferences ([d8a43d6](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/d8a43d66b46201f952699a8970da7f2689800940))
+* **router:** prefer the newest models of each NVIDIA family in the auto chain ([67b1628](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/67b162880afd3ae9a439d16acb7dd43b96fec533))
+
 ## [1.8.2](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.8.1...v1.8.2) (2026-09-27)
 
 
