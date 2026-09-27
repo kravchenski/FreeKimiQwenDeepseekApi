@@ -1,13 +1,7 @@
-from openai import OpenAI
+from client import MODEL, client
 
-client = OpenAI(
-    base_url="http://localhost:3264/api",
-    api_key="free-qwen-api",
+response = client.chat.completions.create(
+    model=MODEL,
+    messages=[{"role": "user", "content": "Explain in simple words what artificial intelligence is."}],
 )
-
-resp = client.chat.completions.create(
-    model="qwen-max-latest",
-    messages=[{"role": "user", "content": "Привет! Напиши короткое приветствие."}],
-)
-
-print(resp.choices[0].message.content)
+print(response.choices[0].message.content)

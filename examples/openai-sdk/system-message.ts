@@ -1,36 +1,11 @@
+import { client, MODEL } from './client.ts';
 
-import OpenAI from 'openai';
-
-const openai = new OpenAI({
-    baseURL: 'http://localhost:3264/api',
-    apiKey: 'dummy-key',
+const completion = await client.chat.completions.create({
+    model: MODEL,
+    messages: [
+        { role: 'system', content: 'You are a concise assistant. Answer in at most two sentences.' },
+        { role: 'user', content: 'Why is the sky blue?' },
+    ],
 });
 
-async function systemMessageExample() {
-    try {
-        console.log('Отправка запроса с системным сообщением к Qwen AI...\n');
-
-        const completion = await openai.chat.completions.create({
-            messages: [
-                {
-                    role: 'system',
-                    content: 'Ты опытный астроном, который специализируется на планетах Солнечной системы. Отвечай научно точно, но понятным языком.'
-                },
-                {
-                    role: 'user',
-                    content: 'Расскажи мне о Марсе и его особенностях'
-                }
-            ],
-            model: 'qwen-max-latest',
-        });
-
-        console.log('Ответ от Qwen:\n');
-        console.log(completion.choices[0].message.content);
-        console.log('\nЗапрос с системным сообщением успешно выполнен.');
-
-    } catch (error) {
-        console.error('Ошибка при выполнении запроса:', error);
-    }
-}
-
-systemMessageExample();
+console.log(completion.choices[0]?.message.content);

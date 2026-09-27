@@ -1,19 +1,10 @@
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://localhost:3264/api",
-    api_key="free-qwen-api",
-)
+from client import MODEL, client
 
 stream = client.chat.completions.create(
-    model="qwen-max-latest",
-    messages=[{"role": "user", "content": "Напиши мини-историю про робота."}],
+    model=MODEL,
     stream=True,
+    messages=[{"role": "user", "content": "Write a short story about space in five sentences."}],
 )
-
 for chunk in stream:
-    delta = chunk.choices[0].delta
-    if delta and delta.content:
-        print(delta.content, end="", flush=True)
-
+    print(chunk.choices[0].delta.content or "", end="", flush=True)
 print()

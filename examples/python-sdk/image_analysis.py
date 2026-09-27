@@ -1,23 +1,17 @@
-from openai import OpenAI
+import os
 
-IMAGE_URL = "https://cdn.qwenlm.ai/your-image-url-here"
+from client import client
 
-client = OpenAI(
-    base_url="http://localhost:3264/api",
-    api_key="free-qwen-api",
+IMAGE_URL = "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"
+
+response = client.chat.completions.create(
+    model=os.environ.get("FREEAPI_MODEL", "qwen3.7-plus"),
+    messages=[{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Describe this image in detail."},
+            {"type": "image_url", "image_url": {"url": IMAGE_URL}},
+        ],
+    }],
 )
-
-resp = client.chat.completions.create(
-    model="qwen3-vl-plus",
-    messages=[
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "Что изображено на картинке?"},
-                {"type": "image_url", "image_url": {"url": IMAGE_URL}},
-            ],
-        }
-    ],
-)
-
-print(resp.choices[0].message.content)
+print(response.choices[0].message.content)

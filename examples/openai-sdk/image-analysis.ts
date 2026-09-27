@@ -1,43 +1,16 @@
+import { client } from './client.ts';
 
-import OpenAI from 'openai';
+const IMAGE_URL = 'https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png';
 
-const openai = new OpenAI({
-    baseURL: 'http://localhost:3264/api',
-    apiKey: 'dummy-key',
+const completion = await client.chat.completions.create({
+    model: process.env.FREEAPI_MODEL ?? 'qwen3.7-plus',
+    messages: [{
+        role: 'user',
+        content: [
+            { type: 'text', text: 'Describe this image in detail.' },
+            { type: 'image_url', image_url: { url: IMAGE_URL } },
+        ],
+    }],
 });
 
-const IMAGE_URL = "https://cdn.qwenlm.ai/bf6238a3-4578-49d6-b4a9-516e8a5eb27b/c88bc915-6ae7-4057-9bf9-1185c9141a0a_image.png?key=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyZXNvdXJjZV91c2VyX2lkIjoiYmY2MjM4YTMtNDU3OC00OWQ2LWI0YTktNTE2ZThhNWViMjdiIiwicmVzb3VyY2VfaWQiOiJjODhiYzkxNS02YWU3LTQwNTctOWJmOS0xMTg1YzkxNDFhMGEiLCJyZXNvdXJjZV9jaGF0X2lkIjpudWxsfQ.qPvHr4fq23IgzxmxOyFJuFcVL0AJlpGgPlWB8BHkrlo";
-
-async function analyzeImage() {
-    try {
-        console.log('Отправка запроса с изображением к Qwen AI...\n');
-
-        const completion = await openai.chat.completions.create({
-            messages: [
-                {
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'text',
-                            text: 'Опиши подробно, что изображено на этой картинке'
-                        },
-                        {
-                            type: 'image',
-                            image: IMAGE_URL
-                        }
-                    ]
-                }
-            ],
-            model: 'qwen3-235b-a22b',
-        });
-
-        console.log('Ответ от Qwen:\n');
-        console.log(completion.choices[0].message.content);
-        console.log('\nАнализ изображения успешно выполнен.');
-
-    } catch (error) {
-        console.error('Ошибка при выполнении запроса с изображением (Убедитесь, что размер изображения не превышает 10MB):', error);
-    }
-}
-
-analyzeImage();
+console.log(completion.choices[0]?.message.content);

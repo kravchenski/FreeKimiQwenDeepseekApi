@@ -1,34 +1,35 @@
-# Примеры FreeQwenApi
+# FreeQwenApi examples
 
-Здесь собраны готовые примеры для OpenAI-совместимого API FreeQwenApi:
-TypeScript, Python и LiteLLM.
+Ready-to-run examples for the OpenAI-compatible unified API in TypeScript, Python and LiteLLM.
 
-## Установка и запуск
+## Setup
 
 ```bash
 bun install
-docker compose up -d
+bun run start
 ```
 
-По умолчанию TypeScript-примеры обращаются напрямую к Qwen по адресу
-`http://127.0.0.1:3264/api`. Для работы через единый gateway используйте
-`http://127.0.0.1:3263/api`.
+All examples call `http://localhost:3260/v1` with the `auto` model. Override with environment variables:
 
-## Быстрый выбор
+- `FREEAPI_BASE_URL` — API base URL
+- `FREEAPI_MODEL` — model id (see `GET /v1/models`)
+- `GATEWAY_API_KEY` — bearer token, when the gateway is protected
 
-| Задача | Команда |
+## TypeScript
+
+| Task | Command |
 | --- | --- |
-| Простой запрос через OpenAI SDK | `bun run example:simple` |
-| Потоковый ответ | `bun run example:stream` |
-| Системное сообщение | `bun run example:system` |
-| Диалог с контекстом | `bun run example:conversation` |
-| Анализ изображения | `bun run example:image` |
-| Проверка OpenAI-совместимости | `bun run example:compatibility` |
-| Прямой запрос через `fetch` | `bun run example:direct` |
-| Прямой запрос через Axios | `bun run example:axios` |
+| Simple request with the OpenAI SDK | `bun run example:simple` |
+| Streaming reply | `bun run example:stream` |
+| System message | `bun run example:system` |
+| Conversation with context | `bun run example:conversation` |
+| Image analysis | `bun run example:image` |
+| Models, chat and Responses API | `bun run example:compatibility` |
+| Plain `fetch` request | `bun run example:direct` |
+| `ofetch` with a conversation id | `bun run example:ofetch` |
+| Streaming timing test | `bun run example:streaming-test` |
 
-Исходники TypeScript находятся в [`openai-sdk/`](openai-sdk/) и
-[`direct-api/`](direct-api/).
+Sources live in [`openai-sdk/`](openai-sdk/) and [`direct-api/`](direct-api/).
 
 ## Python
 
@@ -36,11 +37,12 @@ docker compose up -d
 
 ```bash
 pip install openai
-python examples/python-sdk/simple.py
-python examples/python-sdk/streaming.py
+cd examples/python-sdk
+python simple.py
+python streaming.py
 ```
 
-### Прямые запросы через HTTPX
+### Plain HTTPX
 
 ```bash
 pip install httpx
@@ -48,18 +50,15 @@ python examples/python-direct/httpx_example.py
 python examples/python-direct/httpx_streaming.py
 ```
 
-## Агенты и мосты
+## Agents and bridges
 
-Готовые конфигурации находятся в:
+- [`litellm/`](litellm/) — LiteLLM bridge config for Codex and Claude Code
 
-- [`litellm/`](litellm/) — мост для Codex и Claude Code.
-
-Автоматическая настройка поддерживаемых агентов:
+Configure supported agents automatically:
 
 ```bash
 bun run setup:agents -- --dry-run
 bun run setup:agents
 ```
 
-Полная документация находится в [главном README](../README.md) и
-[`docs/AGENT_INTEGRATIONS.md`](../docs/AGENT_INTEGRATIONS.md).
+See the [main README](../README.md) and [`docs/AGENT_INTEGRATIONS.md`](../docs/AGENT_INTEGRATIONS.md).
