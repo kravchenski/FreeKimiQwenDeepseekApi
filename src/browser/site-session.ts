@@ -83,7 +83,8 @@ export function readSiteSession(site: SiteSpec, options: CaptureOptions = {}): P
   return withSitePage(site, options, async page => {
     const token = await retryAfterNavigation(page, () => page.evaluate(key => localStorage.getItem(key), site.tokenKey));
     if (!token) return null;
-    const email = site.userInfoPath
+    const userInfoPath = site.userInfoPath;
+    const email = userInfoPath
       ? await retryAfterNavigation(page, () => page.evaluate(async ({ path, token }) => {
         try {
           const response = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
@@ -92,7 +93,7 @@ export function readSiteSession(site: SiteSpec, options: CaptureOptions = {}): P
         } catch {
           return undefined;
         }
-      }, { path: site.userInfoPath, token }))
+      }, { path: userInfoPath, token }))
       : undefined;
     return { token, email, expiresAt: jwtExpiry(token) };
   });
