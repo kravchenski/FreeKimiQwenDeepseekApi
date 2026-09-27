@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.4.0...v1.5.0) (2026-09-27)
+
+
+### Features
+
+* **responses:** stream the Responses API token by token with reasoning summaries ([c9e9462](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/c9e946281a0b94a541619b92c0cddffd5e463e4c))
+
 ## [1.4.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.3.1...v1.4.0) (2026-09-27)
 
 
