@@ -72,9 +72,12 @@ function parseArguments(value: unknown) {
   }
 }
 
-export function chatToAnthropicMessage(chat: Record<string, any>, requestedModel: string) {
+export function chatToAnthropicMessage(chat: Record<string, any>, requestedModel: string, includeThinking = false) {
   const message = chat?.choices?.[0]?.message ?? {};
   const content: Block[] = [];
+  if (includeThinking && typeof message.reasoning_content === 'string' && message.reasoning_content) {
+    content.push({ type: 'thinking', thinking: message.reasoning_content, signature: '' });
+  }
   if (typeof message.content === 'string' && message.content) content.push({ type: 'text', text: message.content });
   for (const call of message.tool_calls ?? []) {
     content.push({ type: 'tool_use', id: call.id, name: call.function?.name, input: parseArguments(call.function?.arguments) });
@@ -89,25 +92,6 @@ export function chatToAnthropicMessage(chat: Record<string, any>, requestedModel
     stop_sequence: null,
     usage: { input_tokens: chat.usage?.prompt_tokens ?? 0, output_tokens: chat.usage?.completion_tokens ?? 0 },
   };
-}
-
-export function anthropicSseEvents(message: ReturnType<typeof chatToAnthropicMessage>) {
-  const events: string[] = [];
-  const send = (type: string, data: Record<string, unknown>) => events.push(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
-  send('message_start', { message: { ...message, content: [], stop_reason: null, usage: { ...message.usage, output_tokens: 0 } } });
-  message.content.forEach((block, index) => {
-    if (block.type === 'text') {
-      send('content_block_start', { index, content_block: { type: 'text', text: '' } });
-      send('content_block_delta', { index, delta: { type: 'text_delta', text: block.text } });
-    } else {
-      send('content_block_start', { index, content_block: { ...block, input: {} } });
-      send('content_block_delta', { index, delta: { type: 'input_json_delta', partial_json: JSON.stringify(block.input) } });
-    }
-    send('content_block_stop', { index });
-  });
-  send('message_delta', { delta: { stop_reason: message.stop_reason, stop_sequence: null }, usage: { output_tokens: message.usage.output_tokens } });
-  send('message_stop', {});
-  return events;
 }
 
 const ERROR_TYPES: Record<number, string> = {

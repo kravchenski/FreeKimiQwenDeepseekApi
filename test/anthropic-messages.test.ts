@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   anthropicError,
-  anthropicSseEvents,
   anthropicToChatRequest,
   chatToAnthropicMessage,
   estimateInputTokens,
@@ -60,27 +59,18 @@ describe('chatToAnthropicMessage', () => {
     expect(chatToAnthropicMessage({ choices: [{ message: { content: 'hi' } }] }, 'm').stop_reason).toBe('end_turn');
   });
 
+  test('includes reasoning as a thinking block only when requested', () => {
+    const chat = { choices: [{ message: { content: 'pong', reasoning_content: 'thinking hard' } }] };
+    expect(chatToAnthropicMessage(chat, 'm').content).toEqual([{ type: 'text', text: 'pong' }]);
+    expect(chatToAnthropicMessage(chat, 'm', true).content).toEqual([
+      { type: 'thinking', thinking: 'thinking hard', signature: '' },
+      { type: 'text', text: 'pong' },
+    ]);
+  });
+
   test('keeps malformed tool arguments instead of throwing', () => {
     const message = chatToAnthropicMessage({ choices: [{ message: { tool_calls: [{ id: 'c', function: { name: 'x', arguments: '{bad' } }] } }] }, 'm');
     expect(message.content[0]).toMatchObject({ input: { raw: '{bad' } });
-  });
-});
-
-describe('anthropicSseEvents', () => {
-  test('emits the Messages streaming event sequence', () => {
-    const message = chatToAnthropicMessage({
-      choices: [{ message: { content: 'Hi', tool_calls: [{ id: 'c1', function: { name: 'read', arguments: '{"p":1}' } }] } }],
-    }, 'claude-sonnet-5');
-    const events = anthropicSseEvents(message).map(chunk => JSON.parse(chunk.split('\ndata: ')[1]!));
-    expect(events.map(event => event.type)).toEqual([
-      'message_start',
-      'content_block_start', 'content_block_delta', 'content_block_stop',
-      'content_block_start', 'content_block_delta', 'content_block_stop',
-      'message_delta', 'message_stop',
-    ]);
-    expect(events[2].delta).toEqual({ type: 'text_delta', text: 'Hi' });
-    expect(events[5].delta).toEqual({ type: 'input_json_delta', partial_json: '{"p":1}' });
-    expect(events[7].delta.stop_reason).toBe('tool_use');
   });
 });
 
