@@ -18,6 +18,7 @@ import type { ProviderStream } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
 import { collectChunks } from '../core/streaming/sse.ts';
 import { ProviderError, toHttpError } from '../core/providers/errors.ts';
+import { buildAutoChain } from '../core/router/auto-chain.ts';
 import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
 import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
 import { openDatabase, recordRequest, type RequestLog } from '../core/store/database.ts';
@@ -92,7 +93,9 @@ registry.register(createBrowserChatProvider({
     parse: parseKimiStream,
 }));
 
-export const router = new SmartRouter(registry, parseAutoModels(config.AUTO_MODELS));
+export const router = new SmartRouter(registry, parseAutoModels(config.AUTO_MODELS), Date.now, {
+    firstChunkTimeoutMs: config.AUTO_FIRST_CHUNK_TIMEOUT_MS,
+});
 
 let database: Database | undefined;
 function db() {
@@ -130,7 +133,19 @@ let allModels: ModelEntry[] = [];
 
 async function refreshModelLists() {
     allModels = [{ id: AUTO_MODEL, ownedBy: 'gateway' }, ...await registry.listModels()];
+    rebuildAutoChain();
 }
+
+function rebuildAutoChain() {
+    if (config.AUTO_MODELS) return;
+    const candidates = allModels.flatMap(entry => {
+        const provider = registry.resolve(entry.id);
+        return provider ? [{ id: entry.id, provider: provider.id }] : [];
+    });
+    router.setAutoModels(buildAutoChain(candidates, model => registry.availability.isAvailable(model)));
+}
+
+registry.availability.onChange(rebuildAutoChain);
 
 function visibleModels() {
     return allModels.filter(entry => registry.availability.isAvailable(entry.id));
@@ -272,7 +287,7 @@ function handleProviderStream(
     });
 }
 
-app.get('/v1/gateway/status', (c) => c.json(gatewayStatus(registry, db())));
+app.get('/v1/gateway/status', (c) => c.json({ ...gatewayStatus(registry, db()), autoModels: router.autoChain() }));
 
 app.get('/metrics', (c) => {
     let accounts: Array<{ provider: string; status: string }> = [];

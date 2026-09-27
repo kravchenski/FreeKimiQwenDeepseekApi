@@ -9,6 +9,7 @@ describe('parseEnv', () => {
             SESSION_DIR: 'session',
             GATEWAY_API_KEY: undefined,
             AUTO_MODELS: undefined,
+            AUTO_FIRST_CHUNK_TIMEOUT_MS: 60_000,
             MODEL_REFRESH_MINUTES: 360,
         });
     });
