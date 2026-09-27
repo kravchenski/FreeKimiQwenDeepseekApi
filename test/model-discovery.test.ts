@@ -37,6 +37,7 @@ describe('model availability', () => {
     expect(classifyStatus(404, 'Function "abc": Not found for account \'xyz\'')).toBe('model_unavailable');
     expect(classifyStatus(410, 'Gone')).toBe('model_unavailable');
     expect(classifyStatus(404, 'The model `x` does not exist')).toBe('model_unavailable');
+    expect(classifyStatus(404, '404 page not found')).toBe('model_unavailable');
     expect(classifyStatus(404, 'route missing')).toBe('upstream');
     const http = toHttpError(new ProviderError('gone', 'model_unavailable', 410));
     expect(http.status).toBe(404);

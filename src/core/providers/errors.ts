@@ -2,7 +2,7 @@ export type ProviderErrorKind = 'rate_limit' | 'quota_exhausted' | 'auth' | 'una
 
 const MAX_DETAIL_LENGTH = 500;
 const QUOTA_PATTERN = /quota|insufficient|exceeded your|billing|balance|credit/i;
-const MODEL_MISSING_PATTERN = /not found for account|function .* not found|model .*(?:not found|does not exist)|no such model|unknown model/i;
+const MODEL_MISSING_PATTERN = /not found for account|page not found|function .* not found|model .*(?:not found|does not exist)|no such model|unknown model/i;
 const EXPIRED_AUTH_PATTERN = /token (?:has )?expired|log ?in again|invalid (?:access )?token|not authenticated/i;
 
 export class ProviderError extends Error {

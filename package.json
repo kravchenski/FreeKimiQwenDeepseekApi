@@ -50,6 +50,7 @@
         "setup:agents": "bun run scripts/setup-agents.ts",
         "setup:pi": "bun run scripts/setup-pi.ts",
         "smoke": "bun run scripts/smoke_test.ts",
+        "models:probe": "bun run scripts/probe-models.ts",
         "web": "bun run src/web/server.ts",
         "web:dev": "bun --watch src/web/server.ts"
     },

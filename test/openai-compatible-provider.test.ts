@@ -99,6 +99,8 @@ describe('OpenAI-compatible providers', () => {
     expect(await nvidia.listModels()).toEqual(['deepseek-ai/deepseek-v4.1-flash', 'z-ai/glm-5.3', 'meta/llama-4']);
     expect(isNvidiaChatModel('nvidia/nemotron-3-super-120b-a12b')).toBeTrue();
     expect(isNvidiaChatModel('nvidia/llama-3.1-nemotron-safety-guard-8b-v3')).toBeFalse();
+    expect(isNvidiaChatModel('nvidia/riva-translate-4b-instruct-v2')).toBeFalse();
+    expect(isNvidiaChatModel('nvidia/nvclip')).toBeFalse();
   });
 });
 
