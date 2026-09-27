@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.5.0...v1.6.0) (2026-09-27)
+
+
+### Features
+
+* **router:** keep agent sessions on the provider that served them ([dec194a](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/dec194a9eb7445be5e13beb3985b756f295e99a6))
+* **router:** keep agent sessions on the provider that served them ([6cf447a](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/6cf447acf74b5cf320fbcec0df8daeeefa3d2bfc))
+
 ## [1.5.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.4.0...v1.5.0) (2026-09-27)
 
 
