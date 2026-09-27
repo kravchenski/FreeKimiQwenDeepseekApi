@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.1](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.3.0...v1.3.1) (2026-09-27)
+
+
+### Documentation
+
+* **models:** document current models and fix agent setup fallback list ([c89d335](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/c89d33511edb682de2d84f2e910f8473d21a153e))
+* **models:** document current models and fix agent setup fallback list ([d5c3851](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/d5c3851d2bc8d5b73cd31a38ebec6ade5531d0d2))
+
+
+### Chores
+
+* **types:** add Bun types and run tsc in CI ([23f2625](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/23f2625870dba916beacd6de19e19e19ec40a852))
+* **types:** add Bun types and run tsc in CI ([7d9c697](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/7d9c6977f36fb4bf092064dfd2d2017e6aaf6c82))
+* **types:** enable strict TypeScript ([e8d4aad](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/e8d4aad3cee92f4c1913542e3d2c10e0f5d58c61))
+* **types:** enable strict TypeScript ([1226e6c](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/1226e6cd359980475b650d312a85d00e84d4b56e))
+
 ## [1.3.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.2.0...v1.3.0) (2026-09-27)
 
 
