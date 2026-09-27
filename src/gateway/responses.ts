@@ -132,7 +132,7 @@ export function chatResponseToResponses(body: Record<string, any>, routes: Map<s
     const output: any[] = [];
 
     for (const [index, call] of (message.tool_calls || []).entries()) {
-        const route = routes.get(call?.function?.name) || {
+        const route: ToolRoute = routes.get(call?.function?.name) || {
             type: 'function' as const,
             name: call?.function?.name
         };

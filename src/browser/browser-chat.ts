@@ -25,7 +25,7 @@ const BINDING = '__freeapiStreamChunk';
 function teeScript({ pattern, binding }: { pattern: string; binding: string }) {
   const matcher = new RegExp(pattern);
   const original = window.fetch;
-  window.fetch = async function (this: unknown, ...args: Parameters<typeof fetch>) {
+  window.fetch = Object.assign(async function (this: unknown, ...args: Parameters<typeof fetch>) {
     const response = await original.apply(this, args);
     const target = args[0];
     const url = typeof target === 'string' ? target : target instanceof URL ? target.href : target.url;
@@ -44,7 +44,7 @@ function teeScript({ pattern, binding }: { pattern: string; binding: string }) {
       emit(null);
     })().catch(() => emit(null));
     return new Response(forPage, { status: response.status, statusText: response.statusText, headers: response.headers });
-  };
+  }, original) as typeof fetch;
 }
 
 class ChunkQueue {
