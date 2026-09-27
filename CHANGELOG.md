@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.2](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.8.1...v1.8.2) (2026-09-27)
+
+
+### Bug Fixes
+
+* **accounts:** keep the user info path narrowed for strict type checking ([376b74a](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/376b74a1892952484270ce5c21c5fc35e0c745d8))
+* **accounts:** survive site redirects while capturing a browser session ([648a32b](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/648a32b2e01a6a79ade1f2f5061182b45679b09f))
+* **accounts:** survive site redirects while capturing a browser session ([3affc75](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/3affc75b4c75b68ff12223b0bb01c5ddbfad2e07))
+
 ## [1.8.1](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.8.0...v1.8.1) (2026-09-27)
 
 
