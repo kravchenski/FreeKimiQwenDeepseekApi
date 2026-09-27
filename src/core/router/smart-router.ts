@@ -14,6 +14,11 @@ export const DEFAULT_AUTO_MODELS = [
 ];
 
 const PROVIDER_COOLDOWN_MS = 30_000;
+const MODEL_TIMEOUT_COOLDOWN_MS = 10 * 60_000;
+
+export interface SmartRouterOptions {
+  firstChunkTimeoutMs?: number;
+}
 
 export interface Route {
   provider: Provider;
@@ -22,6 +27,20 @@ export interface Route {
 
 export interface RoutedStream extends ProviderStream {
   route: Route;
+}
+
+class FirstChunkTimeout extends Error {}
+
+function withTimeout<T>(work: Promise<T>, ms: number | undefined, onTimeout: () => void) {
+  if (!ms) return work;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      onTimeout();
+      reject(new FirstChunkTimeout(`no response within ${ms} ms`));
+    }, ms);
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function primeChunks(chunks: AsyncIterable<ChatChunk>) {
@@ -40,12 +59,22 @@ async function primeChunks(chunks: AsyncIterable<ChatChunk>) {
 
 export class SmartRouter {
   private readonly cooldownUntil = new Map<string, number>();
+  private readonly modelCooldownUntil = new Map<string, number>();
 
   constructor(
     private readonly registry: ProviderRegistry,
-    private readonly autoModels: string[] = DEFAULT_AUTO_MODELS,
+    private autoModels: string[] = DEFAULT_AUTO_MODELS,
     private readonly now: () => number = Date.now,
+    private readonly options: SmartRouterOptions = {},
   ) {}
+
+  setAutoModels(models: string[]) {
+    if (models.length) this.autoModels = [...models];
+  }
+
+  autoChain(): readonly string[] {
+    return this.autoModels;
+  }
 
   knows(model: string) {
     return model === AUTO_MODEL || Boolean(this.registry.resolve(model));
@@ -65,6 +94,7 @@ export class SmartRouter {
       if (!provider || !provider.health().available) return [];
       if (!this.registry.availability.isAvailable(candidate)) return [];
       if ((this.cooldownUntil.get(provider.id) ?? 0) > now) return [];
+      if ((this.modelCooldownUntil.get(candidate) ?? 0) > now) return [];
       return [{ provider, model: candidate }];
     });
   }
@@ -75,15 +105,24 @@ export class SmartRouter {
     const failures: string[] = [];
     for (const route of routes) {
       try {
-        const stream = await route.provider.stream(build(route));
-        const chunks = await primeChunks(stream.chunks);
+        const controller = new AbortController();
+        const timeoutMs = routes.length > 1 ? this.options.firstChunkTimeoutMs : undefined;
+        const pending = (async () => {
+          const stream = await route.provider.stream(build(route), { signal: controller.signal });
+          return { stream, chunks: await primeChunks(stream.chunks) };
+        })();
+        const { stream, chunks } = await withTimeout(pending, timeoutMs, () => {
+          controller.abort();
+          pending.then(late => late.chunks.return(undefined), () => undefined);
+        });
         this.cooldownUntil.delete(route.provider.id);
         return { ...stream, chunks, route };
       } catch (error) {
         const modelMissing = error instanceof ProviderError && error.kind === 'model_unavailable';
         if (modelMissing) this.registry.availability.markUnavailable(route.model, error.message);
         if (routes.length === 1) throw error;
-        if (!modelMissing) this.cooldownUntil.set(route.provider.id, this.now() + PROVIDER_COOLDOWN_MS);
+        if (error instanceof FirstChunkTimeout) this.modelCooldownUntil.set(route.model, this.now() + MODEL_TIMEOUT_COOLDOWN_MS);
+        else if (!modelMissing) this.cooldownUntil.set(route.provider.id, this.now() + PROVIDER_COOLDOWN_MS);
         failures.push(`${route.model}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }

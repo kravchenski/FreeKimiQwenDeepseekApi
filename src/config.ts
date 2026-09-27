@@ -16,6 +16,7 @@ const envSchema = z.object({
     SESSION_DIR: text('session'),
     GATEWAY_API_KEY: optionalText,
     AUTO_MODELS: optionalText,
+    AUTO_FIRST_CHUNK_TIMEOUT_MS: z.preprocess(blankToUndefined, z.coerce.number().int().min(0).max(600_000).default(60_000)),
     MODEL_REFRESH_MINUTES: z.preprocess(blankToUndefined, z.coerce.number().int().min(0).max(10_080).default(360)),
 });
 
