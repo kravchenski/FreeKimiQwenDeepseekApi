@@ -203,5 +203,30 @@ describe('unified server routing', () => {
     expect(status.requests[1]).toMatchObject({ provider: 'fake', model: 'fake-model', status: 'success' });
     expect(typeof status.requests[1].latencyMs).toBe('number');
   });
+
+  test('logs a stream that fails after output as an error, once', async () => {
+    server.registry.register({
+      ...fakeProvider,
+      id: 'dropping',
+      supports: model => model === 'dropping-model',
+      async stream() {
+        return {
+          chunks: (async function* (): AsyncGenerator<ChatChunk> {
+            yield { type: 'content', text: 'partial' };
+            throw new Error('socket closed mid-answer');
+          })(),
+        };
+      },
+    });
+
+    const text = await (await chat({ model: 'dropping-model', stream: true })).text();
+    expect(text).toContain('socket closed mid-answer');
+
+    const status = await (await server.app.fetch(new Request('http://local/v1/gateway/status', { headers: { authorization: `Bearer ${key}` } }))).json() as any;
+    const entries = status.requests.filter((entry: any) => entry.provider === 'dropping');
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ status: 'error', model: 'dropping-model' });
+    expect(entries[0].error).toContain('socket closed mid-answer');
+  });
 });
 

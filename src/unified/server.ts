@@ -78,6 +78,10 @@ function db() {
     return database;
 }
 
+function errorText(error: unknown) {
+    return (error instanceof Error ? error.message : String(error)).slice(0, 500);
+}
+
 function logRequest(entry: RequestLog) {
     try {
         recordRequest(db(), entry);
@@ -162,7 +166,8 @@ function handleProviderStream(
     messages: Array<Record<string, any>>,
     first: ProviderStream,
     retry: () => Promise<ProviderStream>,
-    extraHeaders: Record<string, string> = {}
+    extraHeaders: Record<string, string> = {},
+    onFinish: (error?: unknown) => void = () => {}
 ) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -170,6 +175,7 @@ function handleProviderStream(
             try {
                 await writeStream(controller);
             } catch (error) {
+                onFinish(error);
                 const { message, type } = toHttpError(error);
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message, type } })}\n\n`));
                 controller.enqueue(encoder.encode('data: [DONE]\n\n'));
@@ -211,6 +217,7 @@ function handleProviderStream(
         }
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         controller.close();
+        onFinish();
     }
 
     return new Response(stream, {
@@ -270,25 +277,39 @@ app.post('/api/chat/completions', async (c) => {
         const startedAt = Date.now();
         const first = await router.open(model, route => ({ model: route.model, messages: upstreamMessages, conversationId }))
             .catch(error => {
-                logRequest({ provider: registry.resolve(model)?.id ?? 'none', model, status: 'error', latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message.slice(0, 500) : String(error) });
+                logRequest({ provider: registry.resolve(model)?.id ?? 'none', model, status: 'error', latencyMs: Date.now() - startedAt, error: errorText(error) });
                 throw error;
             });
         const { provider, model: routedModel } = first.route;
-        logRequest({ provider: provider.id, model: routedModel, status: 'success', latencyMs: Date.now() - startedAt });
+        const finish = (error?: unknown) => logRequest({
+            provider: provider.id,
+            model: routedModel,
+            status: error === undefined ? 'success' : 'error',
+            latencyMs: Date.now() - startedAt,
+            ...(error === undefined ? {} : { error: errorText(error) }),
+        });
         const open = () => provider.stream({ model: routedModel, messages: upstreamMessages, conversationId });
         const routeHeaders = { 'x-gateway-route': `${provider.id}/${routedModel}` };
 
         if (stream) {
-            return handleProviderStream(id, created, routedModel, captureToolCalls, combinedTools, messages, first, open, routeHeaders);
+            return handleProviderStream(id, created, routedModel, captureToolCalls, combinedTools, messages, first, open, routeHeaders, finish);
         }
 
-        let { content, reasoning } = await collectChunks(first.chunks);
+        let content: string;
+        let reasoning: string;
         let responseFields = first.responseFields;
-        if (captureToolCalls && isEmptyToolCallResponse(content) && !isCodebaseActionRequest(messages)) {
-            const retried = await open();
-            ({ content, reasoning } = await collectChunks(retried.chunks));
-            responseFields = retried.responseFields;
+        try {
+            ({ content, reasoning } = await collectChunks(first.chunks));
+            if (captureToolCalls && isEmptyToolCallResponse(content) && !isCodebaseActionRequest(messages)) {
+                const retried = await open();
+                ({ content, reasoning } = await collectChunks(retried.chunks));
+                responseFields = retried.responseFields;
+            }
+        } catch (error) {
+            finish(error);
+            throw error;
         }
+        finish();
         const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
         c.header('x-gateway-route', routeHeaders['x-gateway-route']);
         return c.json({
