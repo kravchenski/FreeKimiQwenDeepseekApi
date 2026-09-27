@@ -8,7 +8,8 @@ import crypto from 'crypto';
 import { isEmptyToolCallResponse } from '../providers/deepseek/client.ts';
 import { conversationalShellText, parseToolCallJson, recoverBrokenBashToolCall, toolsToPrompt } from '../core/tools/tool-calls.ts';
 import { bearerToken, tokenMatches } from '../gateway/security.ts';
-import { chatResponseToResponses, responsesSseEvents, responsesToChatRequest } from '../gateway/responses.ts';
+import { chatResponseToResponses, responsesToChatRequest } from '../gateway/responses.ts';
+import { ResponsesStreamTranslator } from '../gateway/responses-stream.ts';
 import { anthropicError, anthropicToChatRequest, chatToAnthropicMessage, estimateInputTokens } from '../api/anthropic/messages.ts';
 import { AnthropicStreamTranslator } from '../api/anthropic/stream.ts';
 import { readLines } from '../core/streaming/sse.ts';
@@ -356,6 +357,43 @@ app.post('/v1/chat/completions', async (c) => {
     }));
 });
 
+interface StreamTranslator {
+    start(): string[];
+    push(chunk: Record<string, any>): string[];
+    finish(): string[];
+}
+
+function translatedStream(body: ReadableStream<Uint8Array> | null, translator: StreamTranslator, headers: Record<string, string>) {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+        async start(controller) {
+            const send = (events: string[]) => events.forEach(item => controller.enqueue(encoder.encode(item)));
+            send(translator.start());
+            try {
+                for await (const line of readLines(body)) {
+                    if (!line.startsWith('data:')) continue;
+                    const data = line.slice(5).trim();
+                    if (data === '[DONE]') break;
+                    let chunk: Record<string, any>;
+                    try {
+                        chunk = JSON.parse(data);
+                    } catch {
+                        continue;
+                    }
+                    send(translator.push(chunk));
+                }
+                send(translator.finish());
+            } catch (error) {
+                send(translator.push({ error: { message: errorText(error) } }));
+            }
+            controller.close();
+        }
+    });
+    return new Response(stream, {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', ...headers },
+    });
+}
+
 async function handleResponses(c: Context) {
     let body: Record<string, any>;
     try {
@@ -367,23 +405,25 @@ async function handleResponses(c: Context) {
     const headers = new Headers({ 'content-type': 'application/json' });
     const authorization = c.req.header('authorization');
     if (authorization) headers.set('authorization', authorization);
+    const streaming = Boolean(body.stream);
+    const includeReasoning = Boolean(body.reasoning?.summary);
     const chat = await app.fetch(new Request(new URL('/api/chat/completions', c.req.url), {
         method: 'POST',
         headers,
-        body: JSON.stringify(request),
+        body: JSON.stringify({ ...request, stream: streaming }),
     }));
-    const payload = await chat.json() as Record<string, any>;
     const passthrough: Record<string, string> = {};
     for (const name of ['x-gateway-route', 'retry-after']) {
         const value = chat.headers.get(name);
         if (value) passthrough[name] = value;
     }
-    if (!chat.ok) return c.json(payload, chat.status as ContentfulStatusCode, passthrough);
-    const converted = chatResponseToResponses(payload, routes);
-    if (!body.stream) return c.json(converted, 200, passthrough);
-    return new Response(responsesSseEvents(converted).join(''), {
-        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', ...passthrough },
-    });
+    if (!chat.ok) return c.json(await chat.json().catch(() => ({})), chat.status as ContentfulStatusCode, passthrough);
+    if (!streaming) {
+        return c.json(chatResponseToResponses(await chat.json() as Record<string, any>, routes, includeReasoning), 200, passthrough);
+    }
+    const responseId = `resp_${crypto.randomUUID().replaceAll('-', '').slice(0, 24)}`;
+    const model = typeof body.model === 'string' ? body.model : 'auto';
+    return translatedStream(chat.body, new ResponsesStreamTranslator(responseId, model, routes, includeReasoning), passthrough);
 }
 
 async function handleMessages(c: Context) {
@@ -422,34 +462,7 @@ async function handleMessages(c: Context) {
         return c.json(chatToAnthropicMessage(payload, requestedModel, includeThinking), 200, passthrough);
     }
     const translator = new AnthropicStreamTranslator(`msg_${crypto.randomUUID().replaceAll('-', '').slice(0, 24)}`, requestedModel, includeThinking);
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-        async start(controller) {
-            const send = (events: string[]) => events.forEach(item => controller.enqueue(encoder.encode(item)));
-            send(translator.start());
-            try {
-                for await (const line of readLines(chat.body)) {
-                    if (!line.startsWith('data:')) continue;
-                    const data = line.slice(5).trim();
-                    if (data === '[DONE]') break;
-                    let chunk: Record<string, any>;
-                    try {
-                        chunk = JSON.parse(data);
-                    } catch {
-                        continue;
-                    }
-                    send(translator.push(chunk));
-                }
-                send(translator.finish());
-            } catch (error) {
-                send(translator.push({ error: { message: errorText(error) } }));
-            }
-            controller.close();
-        }
-    });
-    return new Response(stream, {
-        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', ...passthrough },
-    });
+    return translatedStream(chat.body, translator, passthrough);
 }
 
 app.post('/v1/messages', handleMessages);

@@ -1,4 +1,4 @@
-type ToolRoute = {
+export type ToolRoute = {
     type: 'function' | 'custom';
     name: string;
     namespace?: string;
@@ -125,44 +125,54 @@ export function responsesToChatRequest(body: Record<string, any>) {
     };
 }
 
-export function chatResponseToResponses(body: Record<string, any>, routes: Map<string, ToolRoute>) {
+export function toolCallToOutputItem(call: Record<string, any>, index: number, routes: Map<string, ToolRoute>) {
+    const route: ToolRoute = routes.get(call?.function?.name) || {
+        type: 'function' as const,
+        name: call?.function?.name
+    };
+    const callId = call.id || `call_${Date.now()}_${index}`;
+    if (route.type === 'custom') {
+        let input = call?.function?.arguments || '';
+        try {
+            input = JSON.parse(input)?.input ?? input;
+        } catch {
+        }
+        return {
+            type: 'custom_tool_call' as const,
+            id: `ctc_${callId}`,
+            call_id: callId,
+            name: route.name,
+            input,
+            status: 'completed'
+        };
+    }
+    return {
+        type: 'function_call' as const,
+        id: `fc_${callId}`,
+        call_id: callId,
+        name: route.name,
+        ...(route.namespace ? { namespace: route.namespace } : {}),
+        arguments: call?.function?.arguments || '{}',
+        status: 'completed'
+    };
+}
+
+export function reasoningOutputItem(id: string, text: string) {
+    return { type: 'reasoning', id, summary: [{ type: 'summary_text', text }] };
+}
+
+export function chatResponseToResponses(body: Record<string, any>, routes: Map<string, ToolRoute>, includeReasoning = false) {
     const createdAt = Math.floor(Date.now() / 1000);
     const responseId = typeof body.id === 'string' ? body.id.replace(/^chatcmpl-/, 'resp_') : `resp_${Date.now()}`;
     const message = body?.choices?.[0]?.message || {};
     const output: any[] = [];
 
+    if (includeReasoning && typeof message.reasoning_content === 'string' && message.reasoning_content) {
+        output.push(reasoningOutputItem(`rs_${Date.now()}`, message.reasoning_content));
+    }
+
     for (const [index, call] of (message.tool_calls || []).entries()) {
-        const route: ToolRoute = routes.get(call?.function?.name) || {
-            type: 'function' as const,
-            name: call?.function?.name
-        };
-        const callId = call.id || `call_${Date.now()}_${index}`;
-        if (route.type === 'custom') {
-            let input = call?.function?.arguments || '';
-            try {
-                input = JSON.parse(input)?.input ?? input;
-            } catch {
-                // Preserve raw custom-tool input.
-            }
-            output.push({
-                type: 'custom_tool_call',
-                id: `ctc_${callId}`,
-                call_id: callId,
-                name: route.name,
-                input,
-                status: 'completed'
-            });
-        } else {
-            output.push({
-                type: 'function_call',
-                id: `fc_${callId}`,
-                call_id: callId,
-                name: route.name,
-                ...(route.namespace ? { namespace: route.namespace } : {}),
-                arguments: call?.function?.arguments || '{}',
-                status: 'completed'
-            });
-        }
+        output.push(toolCallToOutputItem(call, index, routes));
     }
 
     if (typeof message.content === 'string' && message.content) {
@@ -189,35 +199,4 @@ export function chatResponseToResponses(body: Record<string, any>, routes: Map<s
             total_tokens: body.usage?.total_tokens || 0
         }
     };
-}
-
-export function responsesSseEvents(response: Record<string, any>) {
-    let sequence = 0;
-    const events: string[] = [];
-    const send = (event: Record<string, any>) => {
-        events.push(`event: ${event.type}\ndata: ${JSON.stringify({ ...event, sequence_number: sequence++ })}\n\n`);
-    };
-    send({ type: 'response.created', response: { ...response, status: 'in_progress', output: [] } });
-    send({ type: 'response.in_progress', response: { ...response, status: 'in_progress', output: [] } });
-    response.output.forEach((item: any, output_index: number) => {
-        if (item.type === 'message') {
-            send({ type: 'response.output_item.added', output_index, item: { ...item, status: 'in_progress', content: [] } });
-            item.content.forEach((part: any, content_index: number) => {
-                const base = { item_id: item.id, output_index, content_index };
-                send({ type: 'response.content_part.added', ...base, part: { ...part, text: '' } });
-                send({ type: 'response.output_text.delta', ...base, delta: part.text });
-                send({ type: 'response.output_text.done', ...base, text: part.text });
-                send({ type: 'response.content_part.done', ...base, part });
-            });
-        } else if (item.type === 'function_call') {
-            send({ type: 'response.output_item.added', output_index, item: { ...item, status: 'in_progress', arguments: '' } });
-            send({ type: 'response.function_call_arguments.delta', item_id: item.id, output_index, delta: item.arguments });
-            send({ type: 'response.function_call_arguments.done', item_id: item.id, output_index, arguments: item.arguments });
-        } else {
-            send({ type: 'response.output_item.added', output_index, item });
-        }
-        send({ type: 'response.output_item.done', output_index, item });
-    });
-    send({ type: 'response.completed', response });
-    return events;
 }
