@@ -30,6 +30,7 @@ bun run start
 | Provider | Models | Key |
 |----------|--------|-----|
 | **DeepSeek** | `deepseek-default`, `deepseek-expert`, `deepseek-search` | Browser auth |
+| **GLM / Kimi web chat** | `glm-chat` (chat.z.ai), `kimi-chat` (kimi.ai) — sent through your signed-in browser | `bun run account open <url>` |
 | **NVIDIA** | `deepseek-ai/deepseek-v4.1-flash`, `moonshotai/kimi-k3`, `z-ai/glm-5.3` (list fetched from NVIDIA) | `NVIDIA_API_KEY` |
 
 All models are free. NVIDIA requires an API key.

@@ -24,6 +24,7 @@ import { createQwenProvider } from '../providers/qwen/provider.ts';
 import { BrowserChatSession } from '../browser/browser-chat.ts';
 import { createBrowserChatProvider } from '../providers/browser-chat-provider.ts';
 import { parseZaiStream, ZAI_CHAT_SITE } from '../providers/glm/web.ts';
+import { KIMI_CHAT_SITE, parseKimiStream } from '../providers/kimi/web.ts';
 
 export const app = new Hono();
 const config = loadConfig();
@@ -58,6 +59,15 @@ registry.register(createBrowserChatProvider({
     site: ZAI_CHAT_SITE,
     session: browserChatSession,
     parse: parseZaiStream,
+}));
+
+registry.register(createBrowserChatProvider({
+    id: 'kimi-chat',
+    ownedBy: 'kimi-web',
+    model: 'kimi-chat',
+    site: KIMI_CHAT_SITE,
+    session: browserChatSession,
+    parse: parseKimiStream,
 }));
 
 export const router = new SmartRouter(registry, parseAutoModels(config.AUTO_MODELS));
@@ -423,7 +433,7 @@ export async function startUnifiedServer() {
   Endpoint: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}
   Models:   ${modelCount} total (fetched from upstream APIs)
 
-  Providers: deepseek qwen glm-chat (browser) nvidia (fallback)
+  Providers: deepseek qwen glm-chat kimi-chat (browser) nvidia (fallback)
   NVIDIA models use NVIDIA API; set NVIDIA_API_KEY in .env.
   Qwen models use the Qwen API proxy (QWEN_API_BASE_URL); set QWEN_TOKEN or add accounts via bun run auth.
 

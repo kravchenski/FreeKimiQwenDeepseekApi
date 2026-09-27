@@ -7,6 +7,7 @@ export const DEFAULT_AUTO_MODELS = [
   'qwen3.7-plus',
   'deepseek-default',
   'glm-chat',
+  'kimi-chat',
   'deepseek-ai/deepseek-v4.1-flash',
   'moonshotai/kimi-k3',
   'z-ai/glm-5.3',
