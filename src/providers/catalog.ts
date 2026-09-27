@@ -4,7 +4,7 @@ type Overrides = Pick<OpenAICompatibleConfig, 'env' | 'fetch'>;
 
 const NVIDIA_BASE = 'https://integrate.api.nvidia.com/v1';
 
-const NON_CHAT_MODEL = /embed|retriever|safety|guard|reward|parse|coder-6\.7b/i;
+const NON_CHAT_MODEL = /embed|retriever|safety|guard|reward|parse|coder-6\.7b|translate|clip|detector|deplot/i;
 
 export function isNvidiaChatModel(model: string) {
   return !NON_CHAT_MODEL.test(model);
