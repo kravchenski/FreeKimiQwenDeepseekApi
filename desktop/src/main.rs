@@ -35,6 +35,7 @@ enum Health {
 enum Page {
     Providers,
     Accounts,
+    ApiKeys,
     Requests,
     Provider,
 }
@@ -44,6 +45,7 @@ impl Page {
         match self {
             Page::Providers => "Providers",
             Page::Accounts => "Accounts",
+            Page::ApiKeys => "API keys",
             Page::Requests => "Requests",
             Page::Provider => "Provider",
         }
@@ -52,7 +54,8 @@ impl Page {
     fn subtitle(self) -> &'static str {
         match self {
             Page::Providers => "See which AI providers are connected and connect the missing ones.",
-            Page::Accounts => "Browser accounts signed in to the web chats, and API keys.",
+            Page::Accounts => "Browser accounts signed in to the web chats.",
+            Page::ApiKeys => "Free API keys for the fallback providers, stored encrypted.",
             Page::Requests => "Recent requests routed through the gateway.",
             Page::Provider => "Connection, routing and models of this provider.",
         }
@@ -343,7 +346,8 @@ impl Render for Shell {
                             .children(self.render_message())
                             .child(match self.page {
                                 Page::Providers => self.render_providers(cx),
-                                Page::Accounts => self.render_accounts(cx),
+                                Page::Accounts => self.render_accounts(cx, false),
+                                Page::ApiKeys => self.render_accounts(cx, true),
                                 Page::Requests => self.render_requests(cx),
                                 Page::Provider => self.render_provider_settings(window, cx),
                             }),
@@ -400,6 +404,7 @@ impl Shell {
             .child(nav_heading("Main Menu"))
             .child(nav("nav-providers", IconName::Plug, Page::Providers, cx))
             .child(nav("nav-accounts", IconName::Users, Page::Accounts, cx))
+            .child(nav("nav-api-keys", IconName::KeyRound, Page::ApiKeys, cx))
             .child(nav("nav-requests", IconName::Activity, Page::Requests, cx))
             .child(div().mt_4().h(px(1.)).bg(rgb(BORDER)))
             .child(nav_heading("Gateway"))
@@ -787,13 +792,13 @@ impl Shell {
             )
     }
 
-    fn render_accounts(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_accounts(&self, cx: &mut Context<Self>, keys_page: bool) -> AnyElement {
         let compact = self.compact;
         let states = self.status.as_ref().map(|status| status.accounts.as_slice()).unwrap_or_default();
         let columns: Vec<(&'static str, f32)> = if compact {
-            vec![("Account", 0.), ("Status", 150.), ("Action", 120.)]
+            vec![("Key", 0.), ("Status", 150.), ("Action", 120.)]
         } else {
-            vec![("Account", 0.), ("Provider", 140.), ("Status", 150.), ("Failures", 100.), ("Action", 120.)]
+            vec![("Key", 0.), ("Provider", 140.), ("Status", 150.), ("Failures", 100.), ("Action", 120.)]
         };
         let saved_rows = self.saved.iter().map(|account| {
             let state = states.iter().find(|state| state.account_id == account.id && state.provider == account.provider);
@@ -1002,6 +1007,23 @@ impl Shell {
                     ),
             );
         let total = self.saved.len();
+        if !keys_page {
+            return div()
+                .flex()
+                .flex_col()
+                .gap_4()
+                .child(add_card)
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(div().flex().items_center().justify_between().child(div().font_weight(FontWeight::SEMIBOLD).child("Browser accounts")).child(muted(format!("{} account{}", self.profiles.len(), if self.profiles.len() == 1 { "" } else { "s" })).text_xs()))
+                        .child(div().flex().flex_wrap().gap_4().children(profile_cards))
+                        .children(blocked.then(|| muted("Connecting and checking open the account's browser profile. Stop the API first, because it uses the same profiles.").text_xs())),
+                )
+                .into_any_element();
+        }
         div()
             .flex()
             .flex_col()
@@ -1019,8 +1041,8 @@ impl Shell {
                             .flex()
                             .flex_col()
                             .gap_1()
-                            .child(div().font_weight(FontWeight::SEMIBOLD).child("Accounts are locked"))
-                            .child(muted("Create an encryption secret in the system keyring so API keys and accounts can be saved. Restart the API afterwards.").text_xs()),
+                            .child(div().font_weight(FontWeight::SEMIBOLD).child("API keys are locked"))
+                            .child(muted("Create an encryption secret in the system keyring so API keys can be saved. Restart the API afterwards.").text_xs()),
                     )
                     .child(button("init-secret", "Create secret", Some(IconName::KeyRound), Tone::Primary, !self.busy).when(!self.busy, |this| {
                         this.on_click(cx.listener(|shell, _, _, cx| {
@@ -1029,24 +1051,16 @@ impl Shell {
                         }))
                     }))
             }))
-            .child(div().flex().when(compact, |this| this.flex_col()).gap_4().child(add_card).child(key_card))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(div().flex().items_center().justify_between().child(div().font_weight(FontWeight::SEMIBOLD).child("Browser accounts")).child(muted(format!("{} account{}", self.profiles.len(), if self.profiles.len() == 1 { "" } else { "s" })).text_xs()))
-                    .child(div().flex().flex_wrap().gap_4().children(profile_cards))
-                    .children(blocked.then(|| muted("Connecting and checking open the account's browser profile. Stop the API first, because it uses the same profiles.").text_xs())),
-            )
+            .child(key_card)
+            .child(div().font_weight(FontWeight::SEMIBOLD).child("Saved keys"))
             .child(
                 card()
                     .overflow_hidden()
                     .child(table_header(&columns))
                     .children(saved_rows)
-                    .children((total == 0).then(|| table_row().child(muted("No accounts yet")))),
+                    .children((total == 0).then(|| table_row().child(muted("No saved keys yet")))),
             )
-            .child(muted(format!("Showing {total} accounts")).text_xs())
+            .child(muted(format!("Showing {total} saved key{}", if total == 1 { "" } else { "s" })).text_xs())
             .into_any_element()
     }
 
