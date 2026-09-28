@@ -95,12 +95,6 @@ function collectRows(input: OverviewInput): Row[] {
   };
   const rows: Row[] = [];
 
-  const qwen = pooled('qwen', credentials.filter(entry => entry.provider === 'qwen').map(entry => entry.id),
-    input.env.QWEN_TOKEN ? ['QWEN_TOKEN'] : [], safeStates, 'bun run account add qwen --browser');
-  rows.push(registryError && qwen.state === 'not-connected'
-    ? { id: 'qwen', kind: 'account', state: 'unknown', detail: `registry locked: ${registryError}`, fix: 'bun run account init' }
-    : qwen);
-
   let deepseek: Array<{ id: string; invalid?: boolean }> = [];
   try {
     deepseek = input.deepseekAccounts();
@@ -126,9 +120,13 @@ function collectRows(input: OverviewInput): Row[] {
   }
 
   const savedNvidia = credentials.some(entry => entry.provider === 'nvidia' && entry.method === 'api-key' && entry.token);
-  rows.push(input.env.NVIDIA_API_KEY || savedNvidia
-    ? { id: 'nvidia', kind: 'api-key', state: 'connected', detail: `API key (${input.env.NVIDIA_API_KEY ? 'environment' : 'saved'})` }
-    : { id: 'nvidia', kind: 'api-key', state: 'not-connected', detail: 'no API key', fix: 'bun run account add nvidia --api-key' });
+  if (input.env.NVIDIA_API_KEY || savedNvidia) {
+    rows.push({ id: 'nvidia', kind: 'api-key', state: 'connected', detail: `API key (${input.env.NVIDIA_API_KEY ? 'environment' : 'saved'})` });
+  } else if (registryError) {
+    rows.push({ id: 'nvidia', kind: 'api-key', state: 'unknown', detail: `registry locked: ${registryError}`, fix: 'bun run account init' });
+  } else {
+    rows.push({ id: 'nvidia', kind: 'api-key', state: 'not-connected', detail: 'no API key', fix: 'bun run account add nvidia --api-key' });
+  }
 
   return rows;
 }

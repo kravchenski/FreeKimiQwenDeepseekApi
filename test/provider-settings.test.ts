@@ -65,9 +65,7 @@ describe('accounts CLI provider command', () => {
     const lines: string[] = [];
     const values = new Map<string, boolean>();
     const deps: AccountsCliDeps = {
-      store: { list: () => [], add: () => { throw new Error('unused'); }, remove: () => false },
-      signIn: async () => { throw new Error('unused'); },
-      ask: async () => '',
+      store: { list: () => [], addApiKey: () => { throw new Error('unused'); }, remove: () => false },
       askHidden: async () => '',
       log: line => lines.push(line),
       providerAuto: (id, auto) => {

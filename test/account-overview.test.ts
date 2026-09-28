@@ -21,13 +21,10 @@ function input(overrides: Partial<OverviewInput> = {}): OverviewInput {
   };
 }
 
-const qwenAccount = (id: string): Credential => ({ id, provider: 'qwen', email: `${id}@example.com`, password: '', method: 'browser', token: 't' });
-
 describe('account overview', () => {
   test('shows every provider as not connected with the command to fix it', () => {
     const rows = buildOverview(input());
     expect(rows.map(row => [row.id, row.state, row.fix])).toEqual([
-      ['qwen', 'not-connected', 'bun run account add qwen --browser'],
       ['deepseek', 'not-connected', 'bun run auth:deepseek'],
       ['glm-chat', 'unknown', 'bun run account status'],
       ['kimi-chat', 'unknown', 'bun run account status'],
@@ -36,48 +33,51 @@ describe('account overview', () => {
   });
 
   test('summarises accounts, pool problems, web sign-ins and API keys', () => {
+    const key: Credential = { id: 'nvidia-1', provider: 'nvidia', email: 'main', password: '', method: 'api-key', token: 'k' };
     const rows = buildOverview(input({
-      credentials: () => [qwenAccount('qwen-a'), qwenAccount('qwen-b'), { id: 'nvidia-1', provider: 'nvidia', email: 'main', password: '', method: 'api-key', token: 'k' }],
-      deepseekAccounts: () => [{ id: 'ds-1' }, { id: 'ds-2', invalid: true }],
-      accountStates: () => [
-        { provider: 'qwen', accountId: 'qwen-b', status: 'quota_exhausted' },
-        { provider: 'deepseek', accountId: 'ds-1', status: 'unauthorized' },
-      ],
+      credentials: () => [key],
+      deepseekAccounts: () => [{ id: 'ds-1' }, { id: 'ds-2' }, { id: 'ds-3', invalid: true }],
+      accountStates: () => [{ provider: 'deepseek', accountId: 'ds-2', status: 'quota_exhausted' }],
       signIn: provider => provider === 'glm-chat'
         ? { provider, signedIn: true, checkedAt: NOW - 5 * 60_000 }
         : { provider, signedIn: false, reason: 'www.kimi.ai: session expired; run: bun run account open https://www.kimi.ai/', checkedAt: NOW },
       autoEnabled: provider => provider !== 'nvidia',
     }));
     expect(rows).toEqual([
-      { id: 'qwen', kind: 'account', state: 'degraded', detail: '2 accounts (1 quota exhausted)', auto: true },
-      { id: 'deepseek', kind: 'account', state: 'not-connected', detail: '1 account (1 signed out); 1 invalid', fix: 'bun run auth:deepseek', auto: true },
+      { id: 'deepseek', kind: 'account', state: 'degraded', detail: '2 accounts (1 quota exhausted); 1 invalid', auto: true },
       { id: 'glm-chat', kind: 'web', state: 'connected', detail: 'chat.z.ai: signed in (checked 5 min ago)', url: 'https://chat.z.ai/', auto: true },
       { id: 'kimi-chat', kind: 'web', state: 'not-connected', detail: 'www.kimi.ai: session expired; run: bun run account open https://www.kimi.ai/', fix: 'bun run account open https://www.kimi.ai/', url: 'https://www.kimi.ai/', auto: true },
       { id: 'nvidia', kind: 'api-key', state: 'connected', detail: 'API key (saved)', auto: false },
     ]);
   });
 
-  test('counts environment tokens and keys as connected', () => {
-    const rows = buildOverview(input({ env: { QWEN_TOKEN: 't', NVIDIA_API_KEY: 'k' } }));
-    expect(rows[0]).toEqual({ id: 'qwen', kind: 'account', state: 'connected', detail: 'QWEN_TOKEN', auto: true });
-    expect(rows[4]).toEqual({ id: 'nvidia', kind: 'api-key', state: 'connected', detail: 'API key (environment)', auto: true });
+  test('reports a pool where every account is signed out as not connected', () => {
+    const rows = buildOverview(input({
+      deepseekAccounts: () => [{ id: 'ds-1' }],
+      accountStates: () => [{ provider: 'deepseek', accountId: 'ds-1', status: 'unauthorized' }],
+    }));
+    expect(rows[0]).toEqual({ id: 'deepseek', kind: 'account', state: 'not-connected', detail: '1 account (1 signed out)', fix: 'bun run auth:deepseek', auto: true });
+  });
+
+  test('counts an environment key as connected', () => {
+    const rows = buildOverview(input({ env: { NVIDIA_API_KEY: 'k' } }));
+    expect(rows[3]).toEqual({ id: 'nvidia', kind: 'api-key', state: 'connected', detail: 'API key (environment)', auto: true });
   });
 
   test('explains a locked registry and survives failing sources', () => {
     const fail = () => { throw new Error('ACCOUNTS_SECRET is not set'); };
     const rows = buildOverview(input({ credentials: fail, deepseekAccounts: fail, accountStates: fail, signIn: fail, autoEnabled: fail }));
-    expect(rows[0]).toEqual({ id: 'qwen', kind: 'account', state: 'unknown', detail: 'registry locked: ACCOUNTS_SECRET is not set', fix: 'bun run account init', auto: true });
-    expect(rows.map(row => row.state)).toEqual(['unknown', 'not-connected', 'unknown', 'unknown', 'not-connected']);
+    expect(rows[3]).toEqual({ id: 'nvidia', kind: 'api-key', state: 'unknown', detail: 'registry locked: ACCOUNTS_SECRET is not set', fix: 'bun run account init', auto: true });
+    expect(rows.map(row => row.state)).toEqual(['not-connected', 'unknown', 'unknown', 'unknown']);
   });
 
   test('formats a readable table with fixes under each row', () => {
     const text = formatOverview(buildOverview(input({ env: { NVIDIA_API_KEY: 'k' } })));
-    expect(text.split('\n').slice(0, 5)).toEqual([
-      'Providers (1/5 connected)',
+    expect(text.split('\n').slice(0, 4)).toEqual([
+      'Providers (1/4 connected)',
       '',
-      '  ○ qwen       no accounts',
-      '               → bun run account add qwen --browser',
       '  ○ deepseek   no accounts',
+      '               → bun run auth:deepseek',
     ]);
     expect(text).toContain('  ✓ nvidia     API key (environment)');
     expect(text).not.toContain('k)');
@@ -88,9 +88,7 @@ describe('accounts CLI overview', () => {
   function cli() {
     const lines: string[] = [];
     const deps: AccountsCliDeps = {
-      store: { list: () => [], add: () => { throw new Error('unused'); }, remove: () => false },
-      signIn: async () => { throw new Error('unused'); },
-      ask: async () => '',
+      store: { list: () => [], addApiKey: () => { throw new Error('unused'); }, remove: () => false },
       askHidden: async () => '',
       log: line => lines.push(line),
       overview: () => buildOverview(input()),
@@ -101,9 +99,9 @@ describe('accounts CLI overview', () => {
   test('shows the overview without a command and as JSON', async () => {
     const { deps, lines } = cli();
     expect(await runAccountsCommand([], deps)).toBe(0);
-    expect(lines[0]).toStartWith('Providers (0/5 connected)');
+    expect(lines[0]).toStartWith('Providers (0/4 connected)');
     expect(await runAccountsCommand(['--json'], deps)).toBe(0);
-    expect(JSON.parse(lines[1]!)).toHaveLength(5);
+    expect(JSON.parse(lines[1]!)).toHaveLength(4);
     expect(await runAccountsCommand(['help'], deps)).toBe(0);
     expect(lines[2]).toStartWith('Usage: bun run account');
   });

@@ -5,7 +5,7 @@ from client import client
 IMAGE_URL = "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"
 
 response = client.chat.completions.create(
-    model=os.environ.get("FREEAPI_MODEL", "qwen3.7-plus"),
+    model=os.environ.get("FREEAPI_MODEL", "meta/llama-3.2-11b-vision-instruct"),
     messages=[{
         "role": "user",
         "content": [

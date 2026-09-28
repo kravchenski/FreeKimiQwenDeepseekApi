@@ -127,9 +127,7 @@ describe('accounts CLI secret commands', () => {
   test('init and secret print what happened', async () => {
     const lines: string[] = [];
     const deps: AccountsCliDeps = {
-      store: { list: () => [], add: () => { throw new Error('unused'); }, remove: () => false },
-      signIn: async () => { throw new Error('unused'); },
-      ask: async () => '',
+      store: { list: () => [], addApiKey: () => { throw new Error('unused'); }, remove: () => false },
       askHidden: async () => '',
       log: line => lines.push(line),
       initSecret: async () => 'Moved ACCOUNTS_SECRET',

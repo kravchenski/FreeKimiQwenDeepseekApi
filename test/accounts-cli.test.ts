@@ -3,15 +3,14 @@ import { describe, expect, test } from 'bun:test';
 import { runAccountsCommand, type AccountsCliDeps } from '../src/cli/accounts.ts';
 import type { Credential } from '../src/core/accounts/credential-store.ts';
 
-function harness(signInResult: () => Promise<{ token: string; expiresAt?: number }> = async () => ({ token: 't', expiresAt: 0 })) {
+function harness() {
   const saved: Credential[] = [];
   const lines: string[] = [];
-  const signIns: string[] = [];
   const deps: AccountsCliDeps = {
     store: {
       list: provider => saved.filter(entry => !provider || entry.provider === provider),
-      add: input => {
-        const credential = { ...input, id: `${input.provider}-${saved.length + 1}` };
+      addApiKey: input => {
+        const credential: Credential = { id: `${input.provider}-${saved.length + 1}`, provider: input.provider, email: input.label, password: '', method: 'api-key', token: input.apiKey };
         saved.push(credential);
         return credential;
       },
@@ -22,60 +21,32 @@ function harness(signInResult: () => Promise<{ token: string; expiresAt?: number
         return true;
       },
     },
-    signIn: async email => {
-      signIns.push(email);
-      return signInResult();
-    },
-    ask: async () => 'typed@example.com',
-    askHidden: async () => 'hidden-pw',
+    askHidden: async () => 'nvapi-secret',
     log: line => lines.push(line),
+    verifyApiKey: async () => 3,
   };
-  return { deps, saved, lines, signIns };
+  return { deps, saved, lines };
 }
 
 describe('accounts CLI', () => {
-  test('verifies credentials before saving an account', async () => {
-    const { deps, saved, signIns } = harness();
-    expect(await runAccountsCommand(['add', 'qwen', '--email', 'a@example.com'], deps)).toBe(0);
-    expect(signIns).toEqual(['a@example.com']);
-    expect(saved).toEqual([{ id: 'qwen-1', provider: 'qwen', email: 'a@example.com', password: 'hidden-pw' }]);
-  });
-
-  test('does not save an account whose sign-in fails', async () => {
-    const { deps, saved } = harness(async () => { throw new Error('Qwen sign-in failed: 400 wrong password'); });
-    await expect(runAccountsCommand(['add', 'qwen'], deps)).rejects.toThrow('wrong password');
-    expect(saved).toEqual([]);
-  });
-
-  test('prompts for email and can skip verification', async () => {
-    const { deps, saved, signIns } = harness();
-    await runAccountsCommand(['add', 'qwen', '--no-verify'], deps);
-    expect(signIns).toEqual([]);
-    expect(saved[0]!.email).toBe('typed@example.com');
-  });
-
-  test('lists accounts without printing passwords', async () => {
+  test('lists saved keys without printing them, checks and removes them by id', async () => {
     const { deps, lines } = harness();
-    await runAccountsCommand(['add', 'qwen', '--email', 'a@example.com'], deps);
+    await runAccountsCommand(['add', 'nvidia', '--api-key', '--label', 'main', '--no-verify'], deps);
     lines.length = 0;
     await runAccountsCommand(['list'], deps);
-    expect(lines).toEqual(['qwen-1\tqwen\ta@example.com']);
-    expect(lines.join('\n')).not.toContain('hidden-pw');
+    expect(lines).toEqual(['nvidia-1\tnvidia\tmain']);
+    expect(lines.join('\n')).not.toContain('nvapi-secret');
+    expect(await runAccountsCommand(['test', 'nvidia-1'], deps)).toBe(0);
+    expect(lines.at(-1)).toBe('OK main: 3 models available');
+    expect(await runAccountsCommand(['remove', 'nvidia-1'], deps)).toBe(0);
+    expect(await runAccountsCommand(['remove', 'nvidia-1'], deps)).toBe(1);
+    expect(await runAccountsCommand(['test', 'nvidia-1'], deps)).toBe(1);
   });
 
-  test('tests and removes accounts by id', async () => {
-    const { deps, lines } = harness();
-    await runAccountsCommand(['add', 'qwen', '--email', 'a@example.com', '--no-verify'], deps);
-    expect(await runAccountsCommand(['test', 'qwen-1'], deps)).toBe(0);
-    expect(lines.at(-1)).toStartWith('OK a@example.com');
-    expect(await runAccountsCommand(['remove', 'qwen-1'], deps)).toBe(0);
-    expect(await runAccountsCommand(['remove', 'qwen-1'], deps)).toBe(1);
-    expect(await runAccountsCommand(['test', 'qwen-1'], deps)).toBe(1);
-  });
-
-  test('rejects unknown providers and commands', async () => {
+  test('rejects unknown providers and commands and points to the API key flag', async () => {
     const { deps } = harness();
-    await expect(runAccountsCommand(['add', 'openai'], deps)).rejects.toThrow('Unknown provider: openai');
+    await expect(runAccountsCommand(['add', 'qwen'], deps)).rejects.toThrow('Unknown provider: qwen');
+    await expect(runAccountsCommand(['add', 'nvidia'], deps)).rejects.toThrow('Use: bun run account add nvidia --api-key');
     expect(await runAccountsCommand(['explode'], deps)).toBe(1);
     expect(await runAccountsCommand([], deps)).toBe(0);
   });
@@ -94,23 +65,6 @@ describe('accounts CLI', () => {
     expect(opened).toEqual(['open']);
   });
 
-  test('captures a browser session and labels it with the detected email or a prompt', async () => {
-    const { deps, lines } = harness();
-    const saved: unknown[] = [];
-    deps.store.addBrowserSession = input => {
-      saved.push(input);
-      return { id: 'qwen-9', provider: input.provider, email: input.email, password: '', method: 'browser', token: input.token };
-    };
-    deps.captureSession = async () => ({ token: 'tok', email: 'me@example.com', expiresAt: 0 });
-    expect(await runAccountsCommand(['add', 'qwen', '--browser'], deps)).toBe(0);
-    expect(saved).toEqual([{ provider: 'qwen', email: 'me@example.com', token: 'tok', expiresAt: 0 }]);
-    expect(lines.at(-1)).toStartWith('Saved qwen-9 (me@example.com)');
-
-    deps.captureSession = async () => ({ token: 'tok2' });
-    await runAccountsCommand(['add', 'qwen', '--browser'], deps);
-    expect(saved.at(-1)).toMatchObject({ email: 'typed@example.com', token: 'tok2' });
-  });
-
   test('opens https sites in the browser profile and rejects anything else', async () => {
     const { deps } = harness();
     const opened: string[] = [];
@@ -121,4 +75,3 @@ describe('accounts CLI', () => {
     await expect(runAccountsCommand(['open', 'kimi.com'], deps)).rejects.toThrow('full https URL');
   });
 });
-

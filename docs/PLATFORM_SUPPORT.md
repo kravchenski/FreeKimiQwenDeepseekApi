@@ -2,7 +2,7 @@
 
 FreeQwenApi uses Bun for the host runtime and supports:
 
-| Platform | Native Qwen | Native DeepSeek | Docker Compose | CI |
+| Platform | Web chats (browser) | Native DeepSeek | Docker Compose | CI |
 | --- | --- | --- | --- | --- |
 | Linux x64/arm64 | Supported | Supported | Supported | Tested |
 | macOS arm64/x64 | Supported | Supported | Docker Desktop | Tested |
@@ -16,7 +16,6 @@ Use the same commands in Bash, zsh, PowerShell, and Command Prompt:
 bun install
 bun run start:full
 bun run start:deepseek:full
-bun run start:deepseek:full
 bun run start:full -- --check-only
 bun run setup:agents -- --dry-run
 bun run setup:pi
@@ -24,7 +23,7 @@ bun run setup:pi
 
 ## Browser Discovery
 
-Qwen and DeepSeek authentication automatically search common installations of:
+DeepSeek authentication and the web chats (GLM, Kimi) automatically search common installations of:
 
 - Google Chrome
 - Chromium

@@ -3,11 +3,8 @@
 import { runAccountsCommand } from '../src/cli/accounts.ts';
 import { openCredentialStore } from '../src/core/accounts/credential-store.ts';
 import { verifyNvidiaKey } from '../src/providers/catalog.ts';
-import { qwenLogin } from '../src/providers/qwen/provider.ts';
 import { askHidden } from '../src/utils/hiddenPrompt.ts';
 import { listGoogleAccounts, openGoogleSignIn, openProfileWindow } from '../src/browser/google-profile.ts';
-import { captureSiteSession, QWEN_SITE } from '../src/browser/site-session.ts';
-import { prompt } from '../src/utils/prompt.ts';
 import { checkSignIns } from '../src/browser/sign-in-check.ts';
 import { notSignedIn } from '../src/browser/browser-chat.ts';
 import { WebSignInStatus } from '../src/core/accounts/sign-in-status.ts';
@@ -27,8 +24,6 @@ const store = openCredentialStore();
 try {
   process.exitCode = await runAccountsCommand(process.argv.slice(2), {
     store,
-    signIn: qwenLogin(),
-    ask: question => prompt(question),
     askHidden,
     log: line => console.log(line),
     openGoogleSignIn: () => openGoogleSignIn(),
@@ -37,7 +32,7 @@ try {
     initSecret: async () => INIT_MESSAGES[await initAccountsSecret({ envFile: '.env', env: { ACCOUNTS_SECRET: environmentSecret }, keyring: systemKeyring })],
     secretSource: async () => secretSource,
     providerAuto: (provider, auto) => {
-      const known = new Set(['qwen', 'deepseek', 'nvidia', ...WEB_CHAT_SITES.map(site => site.id)]);
+      const known = new Set(['deepseek', 'nvidia', ...WEB_CHAT_SITES.map(site => site.id)]);
       if (!known.has(provider)) throw new Error(`Unknown provider: ${provider}`);
       const db = openDatabase();
       try {
@@ -76,10 +71,6 @@ try {
     verifyApiKey: (provider, apiKey) => {
       if (provider !== 'nvidia') throw new Error(`API keys are not supported for ${provider}`);
       return verifyNvidiaKey(apiKey);
-    },
-    captureSession: provider => {
-      if (provider !== 'qwen') throw new Error(`Browser sign-in is not supported for ${provider}`);
-      return captureSiteSession(QWEN_SITE);
     },
   });
 } catch (error) {

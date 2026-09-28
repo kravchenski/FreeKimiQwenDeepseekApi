@@ -6,12 +6,8 @@ import type {
   ProviderContext,
   ProviderStream,
 } from '../core/providers/provider.ts';
-import { classifyStatus, ProviderError, upstreamError, type ProviderErrorKind } from '../core/providers/errors.ts';
+import { classifyStatus, ProviderError, upstreamError } from '../core/providers/errors.ts';
 import { readLines } from '../core/streaming/sse.ts';
-
-export type UpstreamOutcome =
-  | { ok: true }
-  | { ok: false; kind: ProviderErrorKind; status?: number; retryAfterSeconds?: number };
 
 export interface OpenAICompatibleConfig {
   id: string;
@@ -31,7 +27,6 @@ export interface OpenAICompatibleConfig {
   accountHint?: string;
   acceptListedModels?: boolean;
   modelFilter?: (model: string) => boolean;
-  reportResult?: (apiKey: string, outcome: UpstreamOutcome) => void;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
 }
@@ -135,24 +130,6 @@ export class OpenAICompatibleProvider implements Provider {
       : { available: false, reason: this.missingKey() };
   }
 
-  async forward(path: string, init: { method?: string; body?: BodyInit; headers?: Record<string, string> } = {}) {
-    const apiKey = await this.apiKey();
-    if (!apiKey) throw new ProviderError(this.missingKey(), 'unavailable');
-    const response = await (this.config.fetch ?? fetch)(`${this.config.baseUrl}${path}`, {
-      method: init.method ?? 'POST',
-      headers: { ...init.headers, Authorization: `Bearer ${apiKey}` },
-      body: init.body,
-      signal: AbortSignal.timeout(180_000),
-    });
-    if (!response.ok) {
-      const error = await upstreamError(`${this.config.label} ${path}`, response);
-      this.config.reportResult?.(apiKey, { ok: false, kind: error.kind, status: error.status, retryAfterSeconds: error.retryAfterSeconds });
-      throw error;
-    }
-    this.config.reportResult?.(apiKey, { ok: true });
-    return response;
-  }
-
   async stream(request: ChatRequest, context: ProviderContext = {}): Promise<ProviderStream> {
     const apiKey = await this.apiKey();
     if (!apiKey) throw new ProviderError(this.missingKey(), 'unavailable');
@@ -163,12 +140,7 @@ export class OpenAICompatibleProvider implements Provider {
       body: JSON.stringify({ ...this.config.extraBody, model, messages: request.messages, stream: true }),
       signal: context.signal,
     });
-    if (!response.ok) {
-      const error = await upstreamError(`${this.config.label} completion`, response);
-      this.config.reportResult?.(apiKey, { ok: false, kind: error.kind, status: error.status, retryAfterSeconds: error.retryAfterSeconds });
-      throw error;
-    }
-    this.config.reportResult?.(apiKey, { ok: true });
+    if (!response.ok) throw await upstreamError(`${this.config.label} completion`, response);
     return { chunks: openAIChunks(response.body) };
   }
 }
