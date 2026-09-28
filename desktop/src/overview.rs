@@ -24,6 +24,7 @@ pub enum Activity {
     Degraded,
     Inactive,
     Unknown,
+    NotConnected,
 }
 
 impl Activity {
@@ -33,6 +34,7 @@ impl Activity {
             Activity::Degraded => "Degraded",
             Activity::Inactive => "Inactive",
             Activity::Unknown => "Not checked",
+            Activity::NotConnected => "Not connected",
         }
     }
 }
@@ -43,6 +45,9 @@ pub fn parse_overview(output: &str) -> Result<Vec<ProviderOverview>, String> {
 }
 
 pub fn activity(overview: &ProviderOverview, live: Option<&ProviderStatus>) -> Activity {
+    if overview.kind == "api-key" && overview.state == "not-connected" {
+        return Activity::NotConnected;
+    }
     if live.is_some_and(|live| !live.available) {
         return Activity::Inactive;
     }
@@ -64,20 +69,25 @@ pub fn detail(overview: &ProviderOverview, live: Option<&ProviderStatus>) -> Str
 
 pub fn display_name(id: &str) -> &str {
     match id {
-        "qwen" | "qwen-chat" => "Qwen",
-        "deepseek" => "DeepSeek",
-        "glm-chat" => "GLM (Z.ai)",
-        "kimi-chat" => "Kimi",
+        "qwen" | "qwen-chat" => "Qwen Chat",
+        "deepseek" => "DeepSeek Chat",
+        "glm-chat" => "GLM Chat",
+        "kimi-chat" => "Kimi Chat",
         "nvidia" => "NVIDIA",
+        "openrouter" => "OpenRouter",
+        "groq" => "Groq",
+        "gemini" => "Google Gemini",
+        "cerebras" => "Cerebras",
+        "mistral" => "Mistral",
+        "sambanova" => "SambaNova",
         other => other,
     }
 }
 
 pub fn kind_label(kind: &str) -> &str {
     match kind {
-        "web" => "Web chat",
+        "web" | "account" => "Chat",
         "api-key" => "API key",
-        "account" => "Web chat",
         other => other,
     }
 }
@@ -122,6 +132,8 @@ mod tests {
         assert_eq!(activity(&unknown, None), Activity::Unknown);
         assert_eq!(activity(&unknown, Some(&live(true, None))), Activity::Active);
         assert_eq!(activity(&row("qwen", "account", "degraded", None), None), Activity::Degraded);
-        assert_eq!(activity(&row("nvidia", "api-key", "not-connected", None), None), Activity::Inactive);
+        assert_eq!(activity(&row("nvidia", "api-key", "not-connected", None), None), Activity::NotConnected);
+        assert_eq!(activity(&row("glm-chat", "web", "not-connected", None), None), Activity::Inactive);
+        assert_eq!(activity(&row("groq", "api-key", "not-connected", None), Some(&live(false, Some("GROQ_API_KEY is not set")))), Activity::NotConnected);
     }
 }

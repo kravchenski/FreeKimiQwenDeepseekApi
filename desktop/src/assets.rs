@@ -9,7 +9,7 @@ icon_assets!(AppIcons, [
 
 pub struct AppAssets;
 
-const LOGOS: [(&str, &[u8]); 7] = [
+const LOGOS: [(&str, &[u8]); 13] = [
     ("logos/qwen.svg", include_bytes!("../assets/logos/qwen.svg")),
     ("logos/qwen-chat.svg", include_bytes!("../assets/logos/qwen.svg")),
     ("logos/deepseek.svg", include_bytes!("../assets/logos/deepseek.svg")),
@@ -17,6 +17,12 @@ const LOGOS: [(&str, &[u8]); 7] = [
     ("logos/kimi-chat.svg", include_bytes!("../assets/logos/kimi-chat.svg")),
     ("logos/nvidia.svg", include_bytes!("../assets/logos/nvidia.svg")),
     ("logos/google.svg", include_bytes!("../assets/logos/google.svg")),
+    ("logos/openrouter.svg", include_bytes!("../assets/logos/openrouter.svg")),
+    ("logos/groq.svg", include_bytes!("../assets/logos/groq.svg")),
+    ("logos/gemini.svg", include_bytes!("../assets/logos/gemini.svg")),
+    ("logos/cerebras.svg", include_bytes!("../assets/logos/cerebras.svg")),
+    ("logos/mistral.svg", include_bytes!("../assets/logos/mistral.svg")),
+    ("logos/sambanova.svg", include_bytes!("../assets/logos/sambanova.svg")),
 ];
 
 pub const FONT_FAMILY: &str = "Plus Jakarta Sans";
@@ -69,7 +75,7 @@ mod tests {
 
     #[test]
     fn serves_a_logo_for_every_provider() {
-        for provider in ["qwen", "qwen-chat", "deepseek", "glm-chat", "kimi-chat", "nvidia", "google"] {
+        for provider in ["qwen", "qwen-chat", "deepseek", "glm-chat", "kimi-chat", "nvidia", "google", "openrouter", "groq", "gemini", "cerebras", "mistral", "sambanova"] {
             let path = logo_path(provider).unwrap();
             let bytes = AppAssets.load(path).unwrap().unwrap();
             assert!(std::str::from_utf8(&bytes).unwrap().contains("width=\"64\""), "{path}");

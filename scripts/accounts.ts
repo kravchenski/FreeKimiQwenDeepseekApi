@@ -2,7 +2,7 @@
 
 import { runAccountsCommand } from '../src/cli/accounts.ts';
 import { openCredentialStore } from '../src/core/accounts/credential-store.ts';
-import { verifyNvidiaKey } from '../src/providers/catalog.ts';
+import { API_KEY_PROVIDERS, apiKeyProvider, verifyProviderKey } from '../src/providers/catalog.ts';
 import { askHidden } from '../src/utils/hiddenPrompt.ts';
 import { listGoogleAccounts, openGoogleSignIn, openProfileWindow } from '../src/browser/google-profile.ts';
 import { checkSignIns } from '../src/browser/sign-in-check.ts';
@@ -32,7 +32,7 @@ try {
     initSecret: async () => INIT_MESSAGES[await initAccountsSecret({ envFile: '.env', env: { ACCOUNTS_SECRET: environmentSecret }, keyring: systemKeyring })],
     secretSource: async () => secretSource,
     providerAuto: (provider, auto) => {
-      const known = new Set(['deepseek', 'nvidia', ...WEB_CHAT_SITES.map(site => site.id)]);
+      const known = new Set(['deepseek', ...API_KEY_PROVIDERS.map(entry => entry.id), ...WEB_CHAT_SITES.map(site => site.id)]);
       if (!known.has(provider)) throw new Error(`Unknown provider: ${provider}`);
       const db = openDatabase();
       try {
@@ -52,6 +52,7 @@ try {
           accountStates: () => accountStates(db),
           signIn: provider => loadSignIn(db, provider),
           webSites: WEB_CHAT_SITES,
+          apiKeyProviders: API_KEY_PROVIDERS,
           autoEnabled: provider => loadProviderSetting(db, provider)?.auto ?? true,
         });
       } finally {
@@ -69,8 +70,9 @@ try {
       return results;
     },
     verifyApiKey: (provider, apiKey) => {
-      if (provider !== 'nvidia') throw new Error(`API keys are not supported for ${provider}`);
-      return verifyNvidiaKey(apiKey);
+      const definition = apiKeyProvider(provider);
+      if (!definition) throw new Error(`API keys are not supported for ${provider}`);
+      return verifyProviderKey(definition, apiKey);
     },
   });
 } catch (error) {

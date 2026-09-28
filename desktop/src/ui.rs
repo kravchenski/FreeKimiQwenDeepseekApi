@@ -24,7 +24,7 @@ pub fn activity_color(activity: Activity) -> u32 {
         Activity::Active => GREEN,
         Activity::Degraded => AMBER,
         Activity::Inactive => RED,
-        Activity::Unknown => GRAY,
+        Activity::Unknown | Activity::NotConnected => GRAY,
     }
 }
 
