@@ -28,7 +28,7 @@ import { parseQwenStream, QWEN_CHAT_SITE } from '../providers/qwen/web.ts';
 import { gatewayStatus } from '../core/status.ts';
 import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
-import { createNvidiaProvider } from '../providers/catalog.ts';
+import { createApiProvider, createNvidiaProvider, FREE_API_PROVIDERS } from '../providers/catalog.ts';
 import { openCredentialStore } from '../core/accounts/credential-store.ts';
 import { loadAccountsSecret } from '../core/secrets/accounts-secret.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
@@ -69,9 +69,13 @@ app.use('*', bodyLimit({
     onError: (c) => c.json({ error: { message: 'Request body too large', type: 'invalid_request_error' } }, 413),
 }));
 
+const credentialStore = openCredentialStore();
+
 export const registry = new ProviderRegistry()
-    .register(createNvidiaProvider({}, openCredentialStore()))
+    .register(createNvidiaProvider({}, credentialStore))
     .register(createDeepSeekProvider());
+
+for (const definition of FREE_API_PROVIDERS) registry.register(createApiProvider(definition, {}, credentialStore));
 
 let browserChat: BrowserChatSession | undefined;
 const signIns = new WebSignInStatus({
@@ -634,8 +638,8 @@ export async function startUnifiedServer() {
   Endpoint: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}
   Models:   ${modelCount} total (fetched from upstream APIs)
 
-  Providers: deepseek qwen-chat glm-chat kimi-chat (browser) nvidia (fallback)
-  NVIDIA models use NVIDIA API; set NVIDIA_API_KEY in .env.
+  Providers: deepseek qwen-chat glm-chat kimi-chat (browser); nvidia openrouter groq gemini cerebras mistral sambanova (API keys, fallback)
+  API providers need a key in .env or: bun run account add <provider> --api-key
 
   ${apiKey ? 'API key required (GATEWAY_API_KEY).' : 'No API key required. Set GATEWAY_API_KEY to protect the API.'} Configure OpenCode:
     OPENCODE_API_URL=http://${host === '0.0.0.0' ? 'localhost' : host}:${port}

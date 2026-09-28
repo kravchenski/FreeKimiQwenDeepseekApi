@@ -21,7 +21,7 @@ if (values.help) {
 
 Sends a one-word prompt to every model the running gateway lists and prints which ones answer.
 
-  --provider <owner>   models of this owner only (default: nvidia, "all" for every model)
+  --provider <owner>   models of this owner only (default: nvidia; e.g. openrouter, groq, "all" for every model)
   --match <text>       only models whose id contains this text
   --timeout <seconds>  wait this long for the first chunk (default: 30)
   --concurrency <n>    parallel requests (default: 4, browser chats always run one at a time)
@@ -40,7 +40,7 @@ try {
   const models = (await listGatewayModels(options)).filter(model =>
     (values.provider === 'all' || model.ownedBy === values.provider) && (!values.match || model.id.includes(values.match)));
   if (!models.length) throw new Error(`No models match provider=${values.provider}${values.match ? ` match=${values.match}` : ''}`);
-  const api = models.filter(model => model.ownedBy === 'nvidia');
+  const api = models.filter(model => !model.ownedBy.endsWith('-web'));
   const web = models.filter(model => !api.includes(model));
   console.error(`Probing ${models.length} models (timeout ${values.timeout}s)…`);
   let done = 0;

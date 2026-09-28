@@ -25,8 +25,11 @@ export interface OverviewInput {
   signIn: (provider: string) => SignInRecord | undefined;
   webSites: ChatSite[];
   autoEnabled?: (provider: string) => boolean;
+  apiKeyProviders?: Array<{ id: string; apiKeyEnv: string; keyUrl?: string }>;
   now?: number;
 }
+
+const DEFAULT_API_KEY_PROVIDERS: Array<{ id: string; apiKeyEnv: string; keyUrl?: string }> = [{ id: 'nvidia', apiKeyEnv: 'NVIDIA_API_KEY' }];
 
 const STATUS_LABELS: Record<Exclude<AccountStatus, 'healthy'>, string> = {
   cooldown: 'cooling down',
@@ -119,13 +122,17 @@ function collectRows(input: OverviewInput): Row[] {
     }
   }
 
-  const savedNvidia = credentials.some(entry => entry.provider === 'nvidia' && entry.method === 'api-key' && entry.token);
-  if (input.env.NVIDIA_API_KEY || savedNvidia) {
-    rows.push({ id: 'nvidia', kind: 'api-key', state: 'connected', detail: `API key (${input.env.NVIDIA_API_KEY ? 'environment' : 'saved'})` });
-  } else if (registryError) {
-    rows.push({ id: 'nvidia', kind: 'api-key', state: 'unknown', detail: `registry locked: ${registryError}`, fix: 'bun run account init' });
-  } else {
-    rows.push({ id: 'nvidia', kind: 'api-key', state: 'not-connected', detail: 'no API key', fix: 'bun run account add nvidia --api-key' });
+  for (const provider of input.apiKeyProviders ?? DEFAULT_API_KEY_PROVIDERS) {
+    const fromEnvironment = Boolean(input.env[provider.apiKeyEnv]);
+    const saved = credentials.some(entry => entry.provider === provider.id && entry.method === 'api-key' && entry.token);
+    const url = provider.keyUrl ? { url: provider.keyUrl } : {};
+    if (fromEnvironment || saved) {
+      rows.push({ id: provider.id, kind: 'api-key', state: 'connected', detail: `API key (${fromEnvironment ? 'environment' : 'saved'})`, ...url });
+    } else if (registryError) {
+      rows.push({ id: provider.id, kind: 'api-key', state: 'unknown', detail: `registry locked: ${registryError}`, fix: 'bun run account init', ...url });
+    } else {
+      rows.push({ id: provider.id, kind: 'api-key', state: 'not-connected', detail: 'no API key', fix: `bun run account add ${provider.id} --api-key`, ...url });
+    }
   }
 
   return rows;

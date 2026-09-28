@@ -2,6 +2,7 @@ import type { ApiKeyCredential, Credential } from '../core/accounts/credential-s
 import type { SiteSignIn } from '../browser/sign-in-check.ts';
 import { notSignedIn } from '../browser/browser-chat.ts';
 import { formatOverview, type ProviderOverview } from './overview.ts';
+import { API_KEY_PROVIDERS as API_KEY_DEFINITIONS } from '../providers/catalog.ts';
 
 export interface AccountsCliDeps {
   store: {
@@ -22,7 +23,7 @@ export interface AccountsCliDeps {
   providerAuto?: (provider: string, auto?: boolean) => boolean;
 }
 
-const API_KEY_PROVIDERS = new Set(['nvidia']);
+const API_KEY_PROVIDERS = new Set(API_KEY_DEFINITIONS.map(provider => provider.id));
 
 export const ACCOUNTS_USAGE = `Usage: bun run account <command>
 
