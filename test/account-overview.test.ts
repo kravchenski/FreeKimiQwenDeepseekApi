@@ -65,7 +65,7 @@ describe('account overview', () => {
   test('explains a locked registry and survives failing sources', () => {
     const fail = () => { throw new Error('ACCOUNTS_SECRET is not set'); };
     const rows = buildOverview(input({ credentials: fail, deepseekAccounts: fail, accountStates: fail, signIn: fail }));
-    expect(rows[0]).toEqual({ id: 'qwen', kind: 'account', state: 'unknown', detail: 'registry locked: ACCOUNTS_SECRET is not set', fix: 'set ACCOUNTS_SECRET in .env' });
+    expect(rows[0]).toEqual({ id: 'qwen', kind: 'account', state: 'unknown', detail: 'registry locked: ACCOUNTS_SECRET is not set', fix: 'bun run account init' });
     expect(rows.map(row => row.state)).toEqual(['unknown', 'not-connected', 'unknown', 'unknown', 'not-connected']);
   });
 

@@ -33,6 +33,10 @@ pub fn parse_list(output: &str) -> Vec<SavedAccount> {
         .collect()
 }
 
+pub fn parse_google_accounts(output: &str) -> Vec<String> {
+    output.lines().filter_map(|line| line.strip_prefix("google\t")).map(|email| email.trim().to_string()).filter(|email| is_valid_email(email)).collect()
+}
+
 pub fn is_valid_email(email: &str) -> bool {
     let email = email.trim();
     let Some((user, domain)) = email.split_once('@') else { return false };
@@ -71,16 +75,6 @@ impl AccountsCli {
         self.run(&["list"], None).map(|output| parse_list(&output))
     }
 
-    pub fn add(&self, provider: &str, email: &str, password: &str) -> Result<String, String> {
-        if !is_valid_email(email) {
-            return Err("Enter a valid email".into());
-        }
-        if password.is_empty() {
-            return Err("Enter a password".into());
-        }
-        self.run(&["add", provider, "--email", email.trim()], Some(&format!("{password}\n")))
-    }
-
     pub fn open_site(&self, url: &str) -> Result<String, String> {
         if !url.starts_with("https://") {
             return Err("Only https sites can be opened".into());
@@ -90,6 +84,38 @@ impl AccountsCli {
 
     pub fn capture_qwen(&self) -> Result<String, String> {
         self.run(&["add", "qwen", "--browser", "--label", "qwen-browser"], None)
+    }
+
+    pub fn overview(&self) -> Result<Vec<crate::overview::ProviderOverview>, String> {
+        self.run(&["--json"], None).and_then(|output| crate::overview::parse_overview(&output))
+    }
+
+    pub fn check_sign_ins(&self) -> Result<String, String> {
+        match self.run(&["status"], None) {
+            Ok(output) => Ok(output),
+            Err(output) if output.contains('○') => Ok(output),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub fn add_api_key(&self, provider: &str, key: &str) -> Result<String, String> {
+        let key = key.trim();
+        if key.is_empty() {
+            return Err("Enter an API key".into());
+        }
+        self.run(&["add", provider, "--api-key"], Some(&format!("{key}\n")))
+    }
+
+    pub fn init_secret(&self) -> Result<String, String> {
+        self.run(&["init"], None)
+    }
+
+    pub fn add_google(&self) -> Result<Vec<String>, String> {
+        self.run(&["google"], None).map(|output| parse_google_accounts(&output))
+    }
+
+    pub fn list_google(&self) -> Result<Vec<String>, String> {
+        self.run(&["google", "--list"], None).map(|output| parse_google_accounts(&output))
     }
 
     pub fn remove(&self, id: &str) -> Result<String, String> {
@@ -127,7 +153,16 @@ mod tests {
         let cli = AccountsCli { root: root.clone(), program: "sh".into(), prefix: vec![script.to_string_lossy().into()] };
         assert_eq!(cli.open_site("https://www.kimi.ai").unwrap(), "args:open https://www.kimi.ai");
         assert_eq!(cli.capture_qwen().unwrap(), "args:add qwen --browser --label qwen-browser");
+        assert_eq!(cli.init_secret().unwrap(), "args:init");
+        assert_eq!(cli.check_sign_ins().unwrap(), "args:status");
+        assert_eq!(cli.list_google().unwrap(), Vec::<String>::new());
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn parses_google_accounts_from_cli_output() {
+        let output = "$ bun run scripts/accounts.ts google --list\ngoogle\ta@gmail.com\nNo Google accounts found\ngoogle\tnot-an-email\ngoogle\tb@example.org";
+        assert_eq!(parse_google_accounts(output), vec!["a@gmail.com".to_string(), "b@example.org".to_string()]);
     }
 
     #[test]
@@ -140,22 +175,21 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_input_before_running_the_cli() {
+    fn rejects_an_empty_api_key_before_running_the_cli() {
         let cli = AccountsCli::new(std::env::temp_dir(), "freeapi-missing-binary".into());
-        assert_eq!(cli.add("qwen", "bad", "pw"), Err("Enter a valid email".into()));
-        assert_eq!(cli.add("qwen", "a@example.com", ""), Err("Enter a password".into()));
+        assert_eq!(cli.add_api_key("nvidia", "  "), Err("Enter an API key".into()));
     }
 
     #[cfg(unix)]
     #[test]
-    fn passes_the_password_through_stdin_not_arguments() {
+    fn passes_the_api_key_through_stdin_not_arguments() {
         let root = std::env::temp_dir().join(format!("freeapi-accounts-test-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let script = root.join("fake.sh");
-        std::fs::write(&script, "echo \"args:$*\"\nread password\necho \"stdin:$password\"\n").unwrap();
+        std::fs::write(&script, "echo \"args:$*\"\nread secret\necho \"stdin:$secret\"\n").unwrap();
         let cli = AccountsCli { root: root.clone(), program: "sh".into(), prefix: vec![script.to_string_lossy().into()] };
-        let output = cli.add("qwen", "a@example.com", "s3cret").unwrap();
-        assert!(output.contains("args:add qwen --email a@example.com"));
+        let output = cli.add_api_key("nvidia", " s3cret ").unwrap();
+        assert!(output.contains("args:add nvidia --api-key"));
         assert!(!output.lines().next().unwrap().contains("s3cret"));
         assert!(output.contains("stdin:s3cret"));
         std::fs::remove_dir_all(root).unwrap();

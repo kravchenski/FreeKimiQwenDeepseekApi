@@ -24,6 +24,7 @@ describe('unified server security', () => {
     test('health is public', async () => {
         const response = await app.fetch(new Request('http://local/health'));
         expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ status: 'ok', service: 'unified', pid: process.pid });
     });
 
     test('rejects requests without a valid bearer token', async () => {

@@ -14,6 +14,7 @@ import { WebSignInStatus } from '../src/core/accounts/sign-in-status.ts';
 import { loadSignIn, openDatabase, saveSignIn } from '../src/core/store/database.ts';
 import { siteForUrl, WEB_CHAT_SITES } from '../src/providers/web-chat-sites.ts';
 import { buildOverview } from '../src/cli/overview.ts';
+import { ensureAccountsSecret } from '../src/cli/accounts-secret.ts';
 import { accountStates } from '../src/core/status.ts';
 import { loadDeepSeekAccounts } from '../src/providers/deepseek/accounts.ts';
 
@@ -29,6 +30,7 @@ try {
     openGoogleSignIn: () => openGoogleSignIn(),
     listGoogleAccounts: () => listGoogleAccounts(),
     openWindow: url => openProfileWindow(url),
+    initSecret: () => ensureAccountsSecret('.env'),
     overview: () => {
       const db = openDatabase();
       try {

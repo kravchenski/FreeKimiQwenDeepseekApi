@@ -332,7 +332,7 @@ app.get('/metrics', (c) => {
 });
 
 app.get('/health', (c) => {
-    return c.json({ status: 'ok', service: 'unified' });
+    return c.json({ status: 'ok', service: 'unified', pid: process.pid });
 });
 
 app.get('/api/models', (c) => {

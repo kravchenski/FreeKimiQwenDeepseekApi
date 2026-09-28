@@ -82,7 +82,7 @@ export function buildOverview(input: OverviewInput): ProviderOverview[] {
   const qwen = pooled('qwen', credentials.filter(entry => entry.provider === 'qwen').map(entry => entry.id),
     input.env.QWEN_TOKEN ? ['QWEN_TOKEN'] : [], safeStates, 'bun run account add qwen --browser');
   rows.push(registryError && qwen.state === 'not-connected'
-    ? { id: 'qwen', kind: 'account', state: 'unknown', detail: `registry locked: ${registryError}`, fix: 'set ACCOUNTS_SECRET in .env' }
+    ? { id: 'qwen', kind: 'account', state: 'unknown', detail: `registry locked: ${registryError}`, fix: 'bun run account init' }
     : qwen);
 
   let deepseek: Array<{ id: string; invalid?: boolean }> = [];
