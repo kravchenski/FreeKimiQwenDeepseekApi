@@ -1,5 +1,6 @@
 import type { ApiKeyCredential, Credential } from '../core/accounts/credential-store.ts';
 import type { SiteSignIn } from '../browser/sign-in-check.ts';
+import type { BrowserProfile } from '../browser/profiles.ts';
 import { notSignedIn } from '../browser/browser-chat.ts';
 import { formatOverview, type ProviderOverview } from './overview.ts';
 import { API_KEY_PROVIDERS as API_KEY_DEFINITIONS } from '../providers/catalog.ts';
@@ -12,18 +13,31 @@ export interface AccountsCliDeps {
   };
   askHidden: (question: string) => Promise<string>;
   log: (line: string) => void;
-  openGoogleSignIn?: () => Promise<void>;
-  listGoogleAccounts?: () => Promise<string[]>;
-  openWindow?: (url: string) => Promise<void>;
+  openGoogleSignIn?: (profile: string) => Promise<void>;
+  listGoogleAccounts?: (profile: string) => Promise<string[]>;
+  openWindow?: (urls: string[], profile: string) => Promise<void>;
   verifyApiKey?: (provider: string, apiKey: string) => Promise<number>;
-  checkSignIns?: (url?: string) => Promise<SiteSignIn[]>;
+  checkSignIns?: (url: string | undefined, profile?: string) => Promise<ProfileSignIn[]>;
+  profiles?: {
+    list(): BrowserProfile[];
+    add(label: string): BrowserProfile;
+    remove(id: string): boolean;
+    summary?(): unknown;
+  };
+  chatUrls?: string[];
   overview?: () => ProviderOverview[];
   initSecret?: () => Promise<string>;
   secretSource?: () => Promise<string>;
   providerAuto?: (provider: string, auto?: boolean) => boolean;
+  autoSettings?: (change: { focus?: string; mode?: string }) => { focus: string; mode: string };
 }
 
 const API_KEY_PROVIDERS = new Set(API_KEY_DEFINITIONS.map(provider => provider.id));
+
+export type ProfileSignIn = SiteSignIn & { profile?: BrowserProfile };
+
+const DEFAULT_ACCOUNT = 'default';
+const GOOGLE_SIGN_IN_URL = 'https://accounts.google.com/';
 
 export const ACCOUNTS_USAGE = `Usage: bun run account <command>
 
@@ -31,13 +45,18 @@ export const ACCOUNTS_USAGE = `Usage: bun run account <command>
   init                                            Create ACCOUNTS_SECRET in the system keyring (moves it out of .env)
   secret                                          Show where ACCOUNTS_SECRET is loaded from
   provider <id> [--auto on|off]                   Show or change whether model=auto may use a provider
+  auto [--focus <f>] [--mode <m>]                 Show or change model=auto: focus general|coding|reasoning|fast, mode fallback|race
   add <provider> --api-key [--label <name>]       Save an API key (the key is always prompted)
   list [provider]                                 List saved API keys
   remove <id>                                     Delete a saved API key
   test <id>                                       Check a saved API key
-  google [--list]                                 Sign in to Google in the browser profile, then list its accounts
-  open <https-url>                                Open a site in the browser profile to sign in manually
-  status                                          Show which web chats the browser profile is signed in to
+  profiles [--json]                               List browser accounts and their web chat sign-ins
+  profile add <name>                              Create a browser account (its own browser profile)
+  profile remove <id>                             Delete a browser account and its browser profile
+  connect [--profile <id>]                        Open Google and every web chat in an account to sign in, then check them
+  google [--list] [--profile <id>]                Sign in to Google in a browser account, then list its Google accounts
+  open <https-url> [--profile <id>]               Open a site in a browser account to sign in manually
+  status [--profile <id>]                         Show which web chats each browser account is signed in to
 
 API key providers: ${[...API_KEY_PROVIDERS].join(', ')}
 Web chats sign in through the browser profile: bun run account open <url>`;
@@ -52,12 +71,22 @@ function requireProvider(provider: string | undefined) {
   return provider;
 }
 
-function reportSignIns(results: SiteSignIn[], log: (line: string) => void) {
-  for (const { site, result } of results) {
+function reportSignIns(results: ProfileSignIn[], log: (line: string) => void) {
+  const labelled = new Set(results.map(entry => entry.profile?.id ?? DEFAULT_ACCOUNT)).size > 1;
+  for (const { site, result, profile } of results) {
     const host = new URL(site.url).hostname;
-    log(result.signedIn ? `✓ ${site.id.padEnd(10)} ${host}` : `○ ${site.id.padEnd(10)} ${notSignedIn(site, result)}`);
+    const suffix = labelled && profile ? `  [${profile.label}]` : '';
+    log(result.signedIn ? `✓ ${site.id.padEnd(10)} ${host}${suffix}` : `○ ${site.id.padEnd(10)} ${notSignedIn(site, result)}${suffix}`);
   }
   return results.every(entry => entry.result.signedIn) ? 0 : 1;
+}
+
+function profileOption(args: string[], deps: AccountsCliDeps) {
+  const id = option(args, '--profile') ?? DEFAULT_ACCOUNT;
+  if (deps.profiles && !deps.profiles.list().some(profile => profile.id === id)) {
+    throw new Error(`Unknown account: ${id}. See: bun run account profiles`);
+  }
+  return id;
 }
 
 export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) {
@@ -82,23 +111,63 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
     return 0;
   }
 
+  if (command === 'auto' && deps.autoSettings) {
+    const current = deps.autoSettings({ focus: option(args, '--focus'), mode: option(args, '--mode') });
+    deps.log(`auto focus: ${current.focus}`);
+    deps.log(`auto mode: ${current.mode}`);
+    return 0;
+  }
+
   if (command === 'secret' && deps.secretSource) {
     deps.log(`ACCOUNTS_SECRET: ${await deps.secretSource()}`);
     return 0;
   }
 
+  if (command === 'profiles' && deps.profiles) {
+    if (args.includes('--json')) {
+      deps.log(JSON.stringify(deps.profiles.summary?.() ?? deps.profiles.list(), null, 2));
+      return 0;
+    }
+    for (const profile of deps.profiles.list()) deps.log(`${profile.id}\t${profile.label}`);
+    return 0;
+  }
+
+  if (command === 'profile' && target === 'add' && deps.profiles) {
+    const label = args.slice(2).join(' ');
+    const profile = deps.profiles.add(label);
+    deps.log(`Created ${profile.id} (${profile.label}). Sign it in to the web chats: bun run account connect --profile ${profile.id}`);
+    return 0;
+  }
+
+  if (command === 'profile' && target === 'remove' && deps.profiles) {
+    const id = args[2];
+    if (!id) throw new Error('Use: bun run account profile remove <id>');
+    const removed = deps.profiles.remove(id);
+    deps.log(removed ? `Removed ${id}` : `Account not found: ${id}`);
+    return removed ? 0 : 1;
+  }
+
+  if (command === 'connect' && deps.openWindow) {
+    const profile = profileOption(args, deps);
+    deps.log('Sign in to Google, then to every web chat tab in the opened window (use "Sign in with Google"). Close the window when done.');
+    await deps.openWindow([GOOGLE_SIGN_IN_URL, ...(deps.chatUrls ?? [])], profile);
+    return deps.checkSignIns ? reportSignIns(await deps.checkSignIns(undefined, profile), deps.log) : 0;
+  }
+
   if (command === 'google' && deps.listGoogleAccounts) {
+    const profile = profileOption(args, deps);
     if (!args.includes('--list') && deps.openGoogleSignIn) {
       deps.log('Sign in to your Google accounts in the opened browser window, then close the window.');
-      await deps.openGoogleSignIn();
+      await deps.openGoogleSignIn(profile);
     }
-    const accounts = await deps.listGoogleAccounts();
+    const accounts = await deps.listGoogleAccounts(profile);
     if (!accounts.length) deps.log('No Google accounts found in the browser profile.');
     for (const email of accounts) deps.log(`google\t${email}`);
     return 0;
   }
 
   if (command === 'open' && deps.openWindow) {
+    const profile = profileOption(args, deps);
     let url: URL;
     try {
       url = new URL(target ?? '');
@@ -107,14 +176,15 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
     }
     if (url.protocol !== 'https:') throw new Error('Only https URLs can be opened');
     deps.log(`Sign in on ${url.hostname} in the opened browser window, then close the window.`);
-    await deps.openWindow(url.href);
+    await deps.openWindow([url.href], profile);
     if (!deps.checkSignIns) return 0;
-    const results = await deps.checkSignIns(url.href);
+    const results = await deps.checkSignIns(url.href, profile);
     return results.length ? reportSignIns(results, deps.log) : 0;
   }
 
   if (command === 'status' && deps.checkSignIns) {
-    return reportSignIns(await deps.checkSignIns(), deps.log);
+    const profile = args.includes('--profile') ? profileOption(args, deps) : undefined;
+    return reportSignIns(await deps.checkSignIns(undefined, profile), deps.log);
   }
 
   if (command === 'add' && args.includes('--api-key')) {

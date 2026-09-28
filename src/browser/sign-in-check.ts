@@ -11,10 +11,11 @@ export interface SiteSignIn {
 export async function checkSignIns(
   sites: ChatSite[],
   launch: (options: LaunchOptions) => Promise<CdpBrowser> = launchCdpBrowser,
+  profileDir = googleProfileDir(),
 ): Promise<SiteSignIn[]> {
   let cdp: CdpBrowser;
   try {
-    cdp = await launch({ profileDir: googleProfileDir() });
+    cdp = await launch({ profileDir });
   } catch (error) {
     throw new Error(`Cannot open the browser profile (is the gateway or another profile window running?): ${error instanceof Error ? error.message : error}`);
   }

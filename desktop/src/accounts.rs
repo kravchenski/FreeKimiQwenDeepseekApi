@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -37,14 +38,33 @@ pub fn parse_secret_missing(output: &str) -> bool {
     output.lines().filter_map(|line| line.strip_prefix("ACCOUNTS_SECRET: ")).any(|source| source.trim() == "missing")
 }
 
-pub fn parse_google_accounts(output: &str) -> Vec<String> {
-    output.lines().filter_map(|line| line.strip_prefix("google\t")).map(|email| email.trim().to_string()).filter(|email| is_valid_email(email)).collect()
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct AccountProfile {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub chats: Vec<ChatSignIn>,
 }
 
-pub fn is_valid_email(email: &str) -> bool {
-    let email = email.trim();
-    let Some((user, domain)) = email.split_once('@') else { return false };
-    !user.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.') && !email.contains(char::is_whitespace)
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSignIn {
+    pub id: String,
+    pub signed_in: Option<bool>,
+    pub checked_at: Option<i64>,
+    pub reason: Option<String>,
+}
+
+pub fn parse_profiles(output: &str) -> Result<Vec<AccountProfile>, String> {
+    let start = output.find('[').ok_or_else(|| "Unexpected accounts output".to_string())?;
+    serde_json::from_str(&output[start..]).map_err(|error| format!("Unexpected accounts output: {error}"))
+}
+
+fn allow_signed_out(result: Result<String, String>) -> Result<String, String> {
+    match result {
+        Err(output) if output.contains('○') => Ok(output),
+        other => other,
+    }
 }
 
 impl AccountsCli {
@@ -91,11 +111,7 @@ impl AccountsCli {
     }
 
     pub fn check_sign_ins(&self) -> Result<String, String> {
-        match self.run(&["status"], None) {
-            Ok(output) => Ok(output),
-            Err(output) if output.contains('○') => Ok(output),
-            Err(error) => Err(error),
-        }
+        allow_signed_out(self.run(&["status"], None))
     }
 
     pub fn add_api_key(&self, provider: &str, key: &str) -> Result<String, String> {
@@ -114,12 +130,30 @@ impl AccountsCli {
         self.run(&["init"], None)
     }
 
-    pub fn add_google(&self) -> Result<Vec<String>, String> {
-        self.run(&["google"], None).map(|output| parse_google_accounts(&output))
+    pub fn profiles(&self) -> Result<Vec<AccountProfile>, String> {
+        self.run(&["profiles", "--json"], None).and_then(|output| parse_profiles(&output))
     }
 
-    pub fn list_google(&self) -> Result<Vec<String>, String> {
-        self.run(&["google", "--list"], None).map(|output| parse_google_accounts(&output))
+    pub fn add_profile(&self, label: &str) -> Result<String, String> {
+        let label = label.trim();
+        if label.is_empty() {
+            return Err("Enter a name for the account".into());
+        }
+        let mut args = vec!["profile", "add"];
+        args.extend(label.split_whitespace());
+        self.run(&args, None)
+    }
+
+    pub fn remove_profile(&self, id: &str) -> Result<String, String> {
+        self.run(&["profile", "remove", id], None)
+    }
+
+    pub fn connect_profile(&self, id: &str) -> Result<String, String> {
+        allow_signed_out(self.run(&["connect", "--profile", id], None))
+    }
+
+    pub fn check_profile(&self, id: &str) -> Result<String, String> {
+        allow_signed_out(self.run(&["status", "--profile", id], None))
     }
 
     pub fn remove(&self, id: &str) -> Result<String, String> {
@@ -167,7 +201,11 @@ mod tests {
         assert_eq!(cli.open_site("https://www.kimi.ai").unwrap(), "args:open https://www.kimi.ai");
         assert_eq!(cli.init_secret().unwrap(), "args:init");
         assert_eq!(cli.check_sign_ins().unwrap(), "args:status");
-        assert_eq!(cli.list_google().unwrap(), Vec::<String>::new());
+        assert_eq!(cli.add_profile("  Work   laptop ").unwrap(), "args:profile add Work laptop");
+        assert_eq!(cli.connect_profile("acct-1").unwrap(), "args:connect --profile acct-1");
+        assert_eq!(cli.check_profile("acct-1").unwrap(), "args:status --profile acct-1");
+        assert_eq!(cli.remove_profile("acct-1").unwrap(), "args:profile remove acct-1");
+        assert_eq!(cli.add_profile(" "), Err("Enter a name for the account".into()));
         assert_eq!(cli.set_auto("nvidia", false).unwrap(), "args:provider nvidia --auto off");
         assert_eq!(cli.set_auto("glm-chat", true).unwrap(), "args:provider glm-chat --auto on");
         std::fs::remove_dir_all(root).unwrap();
@@ -181,18 +219,13 @@ mod tests {
     }
 
     #[test]
-    fn parses_google_accounts_from_cli_output() {
-        let output = "$ bun run scripts/accounts.ts google --list\ngoogle\ta@gmail.com\nNo Google accounts found\ngoogle\tnot-an-email\ngoogle\tb@example.org";
-        assert_eq!(parse_google_accounts(output), vec!["a@gmail.com".to_string(), "b@example.org".to_string()]);
-    }
-
-    #[test]
-    fn validates_emails() {
-        assert!(is_valid_email(" user@example.com "));
-        assert!(!is_valid_email("user@"));
-        assert!(!is_valid_email("user@localhost"));
-        assert!(!is_valid_email("us er@example.com"));
-        assert!(!is_valid_email("@example.com"));
+    fn parses_browser_accounts_with_their_chat_sign_ins() {
+        let output = "$ bun run scripts/accounts.ts profiles --json\n[{\"id\":\"default\",\"label\":\"Main\",\"chats\":[{\"id\":\"glm-chat\",\"signedIn\":true,\"checkedAt\":5,\"reason\":null},{\"id\":\"kimi-chat\",\"signedIn\":null,\"checkedAt\":null,\"reason\":null}]}]";
+        let profiles = parse_profiles(output).unwrap();
+        assert_eq!(profiles[0].label, "Main");
+        assert_eq!(profiles[0].chats[0], ChatSignIn { id: "glm-chat".into(), signed_in: Some(true), checked_at: Some(5), reason: None });
+        assert_eq!(profiles[0].chats[1].signed_in, None);
+        assert!(parse_profiles("nothing").is_err());
     }
 
     #[test]

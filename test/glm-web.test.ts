@@ -37,12 +37,15 @@ describe('Z.ai web chat', () => {
       ownedBy: 'z-ai-web',
       model: 'glm-chat',
       site: ZAI_CHAT_SITE,
-      session: () => ({
-        send: async (site, prompt) => {
-          sent.push([site.id, prompt]);
-          return bytes(sample);
+      sessions: () => [{
+        profile: 'default',
+        session: {
+          send: async (site, prompt) => {
+            sent.push([site.id, prompt]);
+            return bytes(sample);
+          },
         },
-      }),
+      }],
       parse: parseZaiStream,
     });
 

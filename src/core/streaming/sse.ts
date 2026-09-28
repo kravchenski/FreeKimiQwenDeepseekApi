@@ -33,3 +33,39 @@ export async function collectChunks(chunks: AsyncIterable<ChatChunk>) {
   }
   return { content, reasoning };
 }
+
+export interface PrimedChunks extends AsyncIterableIterator<ChatChunk> {
+  return(value?: unknown): Promise<IteratorResult<ChatChunk>>;
+}
+
+export async function primeChunks(chunks: AsyncIterable<ChatChunk>): Promise<PrimedChunks> {
+  const iterator = chunks[Symbol.asyncIterator]();
+  let pending: IteratorResult<ChatChunk> | undefined = await iterator.next();
+  let closed = false;
+  const finish = async () => {
+    if (closed) return;
+    closed = true;
+    await iterator.return?.();
+  };
+  const primed: PrimedChunks = {
+    async next() {
+      if (closed) return { done: true, value: undefined };
+      const result: IteratorResult<ChatChunk> = pending ?? await iterator.next();
+      pending = undefined;
+      if (result.done) closed = true;
+      return result;
+    },
+    async return(value?: unknown) {
+      await finish();
+      return { done: true, value };
+    },
+    async throw(error?: unknown) {
+      await finish();
+      throw error;
+    },
+    [Symbol.asyncIterator]() {
+      return primed;
+    },
+  };
+  return primed;
+}

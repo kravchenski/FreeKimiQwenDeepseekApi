@@ -23,6 +23,7 @@ export interface OverviewInput {
   deepseekAccounts: () => Array<{ id: string; invalid?: boolean }>;
   accountStates: () => Array<{ provider: string; accountId: string; status: AccountStatus }>;
   signIn: (provider: string) => SignInRecord | undefined;
+  accountSignIns?: (provider: string) => SignInRecord[];
   webSites: ChatSite[];
   autoEnabled?: (provider: string) => boolean;
   apiKeyProviders?: Array<{ id: string; apiKeyEnv: string; keyUrl?: string }>;
@@ -108,17 +109,20 @@ function collectRows(input: OverviewInput): Row[] {
   rows.push(deepseekRow);
 
   for (const site of input.webSites) {
-    let record: SignInRecord | undefined;
+    let records: SignInRecord[] = [];
     try {
-      record = input.signIn(site.id);
+      records = input.accountSignIns ? input.accountSignIns(site.id) : [input.signIn(site.id)].filter(record => record !== undefined);
     } catch {}
     const host = new URL(site.url).hostname;
-    if (!record) {
+    const signedIn = records.filter(record => record.signedIn);
+    const latest = Math.max(...records.map(record => record.checkedAt));
+    const accounts = records.length > 1 ? ` on ${signedIn.length} of ${records.length} accounts` : '';
+    if (!records.length) {
       rows.push({ id: site.id, kind: 'web', state: 'unknown', detail: `${host}: not checked yet`, fix: 'bun run account status', url: site.url });
-    } else if (record.signedIn) {
-      rows.push({ id: site.id, kind: 'web', state: 'connected', detail: `${host}: signed in (checked ${ago(now - record.checkedAt)})`, url: site.url });
+    } else if (signedIn.length) {
+      rows.push({ id: site.id, kind: 'web', state: signedIn.length < records.length ? 'degraded' : 'connected', detail: `${host}: signed in${accounts} (checked ${ago(now - latest)})`, url: site.url });
     } else {
-      rows.push({ id: site.id, kind: 'web', state: 'not-connected', detail: record.reason ?? `${host}: not signed in`, fix: `bun run account open ${site.url}`, url: site.url });
+      rows.push({ id: site.id, kind: 'web', state: 'not-connected', detail: records.length > 1 ? `${host}: not signed in on any of ${records.length} accounts` : records[0]!.reason ?? `${host}: not signed in`, fix: `bun run account open ${site.url}`, url: site.url });
     }
   }
 
