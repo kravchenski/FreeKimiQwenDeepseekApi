@@ -33,6 +33,10 @@ pub fn parse_list(output: &str) -> Vec<SavedAccount> {
         .collect()
 }
 
+pub fn parse_secret_missing(output: &str) -> bool {
+    output.lines().filter_map(|line| line.strip_prefix("ACCOUNTS_SECRET: ")).any(|source| source.trim() == "missing")
+}
+
 pub fn parse_google_accounts(output: &str) -> Vec<String> {
     output.lines().filter_map(|line| line.strip_prefix("google\t")).map(|email| email.trim().to_string()).filter(|email| is_valid_email(email)).collect()
 }
@@ -106,6 +110,10 @@ impl AccountsCli {
         self.run(&["add", provider, "--api-key"], Some(&format!("{key}\n")))
     }
 
+    pub fn secret_missing(&self) -> Result<bool, String> {
+        self.run(&["secret"], None).map(|output| parse_secret_missing(&output))
+    }
+
     pub fn init_secret(&self) -> Result<String, String> {
         self.run(&["init"], None)
     }
@@ -157,6 +165,13 @@ mod tests {
         assert_eq!(cli.check_sign_ins().unwrap(), "args:status");
         assert_eq!(cli.list_google().unwrap(), Vec::<String>::new());
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn detects_a_missing_accounts_secret() {
+        assert!(parse_secret_missing("$ bun run scripts/accounts.ts secret\nACCOUNTS_SECRET: missing"));
+        assert!(!parse_secret_missing("ACCOUNTS_SECRET: keyring"));
+        assert!(!parse_secret_missing("ACCOUNTS_SECRET: environment"));
     }
 
     #[test]

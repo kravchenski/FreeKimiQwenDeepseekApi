@@ -69,10 +69,6 @@ pub fn api_key_from(env_value: Option<String>, dotenv: &str) -> Option<String> {
     setting_from("GATEWAY_API_KEY", env_value, dotenv)
 }
 
-pub fn has_setting(root: &Path, name: &str) -> bool {
-    let dotenv = std::fs::read_to_string(root.join(".env")).unwrap_or_default();
-    setting_from(name, std::env::var(name).ok(), &dotenv).is_some()
-}
 
 pub fn read_api_key(root: &Path) -> Option<String> {
     let dotenv = std::fs::read_to_string(root.join(".env")).unwrap_or_default();

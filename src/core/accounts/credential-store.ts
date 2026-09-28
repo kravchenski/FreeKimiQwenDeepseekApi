@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { accountsSecret } from '../secrets/accounts-secret.ts';
 import { open, seal } from '../secrets/vault.ts';
 
 export interface Credential {
@@ -40,7 +41,7 @@ export function adoptLegacyCredentials(legacyFile: string, file = CREDENTIALS_FI
 export class CredentialStore {
   constructor(
     private readonly file: string,
-    private readonly secret: string | undefined,
+    private readonly secret: string | undefined | (() => string | undefined),
   ) {}
 
   list(provider?: string) {
@@ -106,8 +107,9 @@ export class CredentialStore {
   }
 
   private requireSecret() {
-    if (!this.secret) throw new Error('ACCOUNTS_SECRET is not set');
-    return this.secret;
+    const secret = typeof this.secret === 'function' ? this.secret() : this.secret;
+    if (!secret) throw new Error('ACCOUNTS_SECRET is not set; run: bun run account init');
+    return secret;
   }
 
   private read(): Credential[] {
@@ -126,9 +128,9 @@ export class CredentialStore {
   }
 }
 
-export function openCredentialStore(secret = process.env.ACCOUNTS_SECRET) {
+export function openCredentialStore(secret?: string) {
   adoptLegacyCredentials(LEGACY_QWEN_FILE);
-  return new CredentialStore(CREDENTIALS_FILE, secret);
+  return new CredentialStore(CREDENTIALS_FILE, secret ?? (() => accountsSecret()));
 }
 
 export interface CredentialSource {

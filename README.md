@@ -116,7 +116,7 @@ Versions follow [Semantic Versioning](https://semver.org) and are derived from [
 | `UNIFIED_PORT` | `3260` | Server port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `NVIDIA_API_KEY` | - | NVIDIA API key; overrides a key saved with `bun run account add nvidia --api-key` |
-| `ACCOUNTS_SECRET` | - | Encrypts the credential registry `session/credentials.enc` (Qwen accounts, API keys) |
+| `ACCOUNTS_SECRET` | system keyring | Encrypts the credential registry `session/credentials.enc`. `bun run account init` stores it in the OS keyring (Secret Service, Keychain, Credential Manager) and moves it out of `.env`; set the variable only where no keyring exists (Docker, CI) |
 
 ## Project Structure
 

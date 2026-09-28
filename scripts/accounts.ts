@@ -14,10 +14,13 @@ import { WebSignInStatus } from '../src/core/accounts/sign-in-status.ts';
 import { loadSignIn, openDatabase, saveSignIn } from '../src/core/store/database.ts';
 import { siteForUrl, WEB_CHAT_SITES } from '../src/providers/web-chat-sites.ts';
 import { buildOverview } from '../src/cli/overview.ts';
-import { ensureAccountsSecret } from '../src/cli/accounts-secret.ts';
+import { INIT_MESSAGES, initAccountsSecret } from '../src/cli/accounts-secret.ts';
+import { loadAccountsSecret, systemKeyring } from '../src/core/secrets/accounts-secret.ts';
 import { accountStates } from '../src/core/status.ts';
 import { loadDeepSeekAccounts } from '../src/providers/deepseek/accounts.ts';
 
+const environmentSecret = process.env.ACCOUNTS_SECRET;
+const secretSource = await loadAccountsSecret();
 const store = openCredentialStore();
 
 try {
@@ -30,7 +33,8 @@ try {
     openGoogleSignIn: () => openGoogleSignIn(),
     listGoogleAccounts: () => listGoogleAccounts(),
     openWindow: url => openProfileWindow(url),
-    initSecret: () => ensureAccountsSecret('.env'),
+    initSecret: async () => INIT_MESSAGES[await initAccountsSecret({ envFile: '.env', env: { ACCOUNTS_SECRET: environmentSecret }, keyring: systemKeyring })],
+    secretSource: async () => secretSource,
     overview: () => {
       const db = openDatabase();
       try {

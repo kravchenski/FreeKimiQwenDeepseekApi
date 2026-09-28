@@ -27,7 +27,7 @@ export function qwenLogin(env: Record<string, string | undefined> = process.env)
 
 export function createQwenAccountPool(env: Record<string, string | undefined> = process.env) {
   return new QwenAccountPool(
-    openCredentialStore(env.ACCOUNTS_SECRET),
+    openCredentialStore(env === process.env ? undefined : env.ACCOUNTS_SECRET),
     qwenLogin(env),
     () => new AccountPool(openDatabase(), 'qwen'),
   );

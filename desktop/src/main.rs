@@ -17,7 +17,7 @@ use gpui_kit::*;
 use accounts::{AccountsCli, SavedAccount};
 use gateway::{check_health, stop_external, Gateway, GatewayConfig};
 use overview::{action, activity, detail, display_name, kind_label, Activity, ProviderAction, ProviderOverview};
-use status::{fetch_status, has_setting, now_ms, read_api_key, relative_time, GatewayStatus, ProviderStatus};
+use status::{fetch_status, now_ms, read_api_key, relative_time, GatewayStatus, ProviderStatus};
 use ui::*;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -239,11 +239,13 @@ impl Shell {
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
-        self.locked = !has_setting(&self.gateway.config.root, "ACCOUNTS_SECRET");
         let cli = self.accounts.clone();
         cx.spawn(async move |this, cx| {
-            let (overview, saved) = cx.background_executor().spawn(async move { (cli.overview(), cli.list()) }).await;
+            let (overview, saved, missing) = cx.background_executor().spawn(async move { (cli.overview(), cli.list(), cli.secret_missing()) }).await;
             let _ = this.update(cx, |shell, cx| {
+                if let Ok(missing) = missing {
+                    shell.locked = missing;
+                }
                 match overview {
                     Ok(rows) => shell.overview = rows,
                     Err(error) => shell.message = Some((false, error)),
@@ -722,7 +724,7 @@ impl Shell {
                             .flex_col()
                             .gap_1()
                             .child(div().font_weight(FontWeight::SEMIBOLD).child("Accounts are locked"))
-                            .child(muted("Create an encryption secret so API keys and accounts can be saved. Restart the gateway afterwards.").text_xs()),
+                            .child(muted("Create an encryption secret in the system keyring so API keys and accounts can be saved. Restart the API afterwards.").text_xs()),
                     )
                     .child(button("init-secret", "Create secret", Some(IconName::KeyRound), Tone::Primary, !self.busy).when(!self.busy, |this| {
                         this.on_click(cx.listener(|shell, _, _, cx| {

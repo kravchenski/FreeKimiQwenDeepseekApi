@@ -29,6 +29,7 @@ import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
 import { createNvidiaProvider } from '../providers/catalog.ts';
 import { openCredentialStore } from '../core/accounts/credential-store.ts';
+import { loadAccountsSecret } from '../core/secrets/accounts-secret.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
 import { createQwenProvider } from '../providers/qwen/provider.ts';
 import { BrowserChatSession, notSignedIn } from '../browser/browser-chat.ts';
@@ -625,6 +626,7 @@ async function shutdown() {
 export async function startUnifiedServer() {
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
+    await loadAccountsSecret();
     loadModelStatistics();
     await refreshModelLists();
     scheduleModelRefresh();
