@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.10.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.9.0...v1.10.0) (2026-09-28)
+
+
+### Features
+
+* **accounts:** detect web chat sign-in and skip signed-out chats ([a250cc3](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/a250cc38fdf813ef8795780b9f7e2e71203df167))
+* **accounts:** detect web chat sign-in and skip signed-out chats ([ef4a886](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/ef4a8861ad3aac3356b66fb108ddc957fbf10474))
+* **accounts:** keep ACCOUNTS_SECRET in the system keyring instead of .env ([8f93861](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/8f93861d4e6c1884edb12a427aaef55023403191))
+* **accounts:** keep ACCOUNTS_SECRET in the system keyring instead of .env ([95d335d](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/95d335d76ebc31c1958df8d10921b4faf25f67e3))
+* **accounts:** keep all provider credentials in one encrypted registry and save NVIDIA keys there ([05465ce](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/05465ce5edc1527c55b1bfeb0da483c79495a85b))
+* **accounts:** keep all provider credentials in one encrypted registry and save NVIDIA keys there ([b7150eb](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/b7150eb7382ad4a43e7c8c8c88f9e4232dc46d1c))
+* **cli:** show every provider and how to connect it in bun run account ([59a6651](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/59a66516b8e40b971a4ffa1b6beae97f1af7066c))
+* **cli:** show every provider and how to connect it in bun run account ([fe7aa83](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/fe7aa83b9fd07146ff5900aaf33bc3fc526cd26b))
+* **desktop:** filter requests, adapt to narrow windows and manage Google accounts and API keys ([ec78dfd](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/ec78dfd7f07044832146ac903332062d9da26ea9))
+* **desktop:** redesign the app with a sidebar, provider logos and live provider status ([e357f56](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/e357f562bca258ba91f1a41476c99535712ab508))
+* **desktop:** run and stop the API from the app, including a gateway started elsewhere ([744a38c](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/744a38cab12f2ac326d9dd6c1403f8ba98908027))
+* **desktop:** run and stop the API from the app, including a gateway started elsewhere ([22d269b](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/22d269bfe087a80712debc1bb5c1aa697bdbad89))
+
+
+### Bug Fixes
+
+* **deepseek:** embed the PoW wasm so compiled binaries can load it ([a463443](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/a463443864b25d7c21e7c1c5ed3072971d6b9668))
+
+
+### CI
+
+* **desktop:** release .deb, .dmg and .exe installers with a bundled gateway ([b8f1c44](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/b8f1c448ce98a3720203f721ac09e3b2d9b52ff1))
+* **desktop:** release .deb, .dmg and .exe installers with a bundled gateway ([5863964](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/5863964f349c48d0673d4d9d1d5536585c769bff))
+
+
+### Chores
+
+* **deps:** update Bun to 1.4.2 and read the version from package.json in CI ([dc1b5ec](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/dc1b5ecac439e9a10962016a217c4a1464604c56))
+* **deps:** update Bun to 1.4.2 and read the version from package.json in CI ([26da854](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/26da8545203ca24ec2b08c19f7e55451e74429cd))
+
 ## [1.9.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.8.2...v1.9.0) (2026-09-27)
 
 
