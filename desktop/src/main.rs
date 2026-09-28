@@ -2,6 +2,7 @@ mod accounts;
 mod assets;
 mod gateway;
 mod overview;
+mod settings;
 mod status;
 mod ui;
 
@@ -14,6 +15,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use accounts::{AccountProfile, AccountsCli, SavedAccount};
+use settings::{AutoSettings, DesktopSettings, ThemeChoice};
 use gateway::{check_health, open_in_browser, stop_external, Gateway, GatewayConfig};
 use overview::{activity, detail, display_name, kind_label, Activity, ProviderOverview};
 use status::{fetch_status, now_ms, read_api_key, relative_time, GatewayStatus, ProviderStatus};
@@ -32,9 +34,10 @@ enum Health {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Page {
-    Accounts,
-    ApiKeys,
     Requests,
+    ApiKeys,
+    Accounts,
+    Settings,
     Provider,
 }
 
@@ -43,6 +46,7 @@ impl Page {
         match self {
             Page::Accounts => "Accounts",
             Page::ApiKeys => "API keys",
+            Page::Settings => "Settings",
             Page::Requests => "Requests",
             Page::Provider => "Provider",
         }
@@ -52,6 +56,7 @@ impl Page {
         match self {
             Page::Accounts => "Browser accounts signed in to the web chats.",
             Page::ApiKeys => "Free API keys for the fallback providers, stored encrypted.",
+            Page::Settings => "Appearance and how model=auto picks models.",
             Page::Requests => "Recent requests routed through the gateway.",
             Page::Provider => "Connection, routing and models of this provider.",
         }
@@ -73,6 +78,9 @@ struct Shell {
     key_provider: Option<String>,
     request_filter: Option<String>,
     selected_provider: Option<String>,
+    theme: ThemeChoice,
+    applied_dark: Option<bool>,
+    auto_settings: Option<AutoSettings>,
     busy: bool,
     running: bool,
     compact: bool,
@@ -83,6 +91,7 @@ struct Shell {
 impl Shell {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let config = GatewayConfig::from_env();
+        let config_root = config.root.clone();
         let accounts = AccountsCli::new(config.root.clone(), config.accounts_program.clone(), config.accounts_args.clone());
         let base_url = config.base_url();
         let api_key = read_api_key(&config.root);
@@ -127,7 +136,7 @@ impl Shell {
         let mut shell = Self {
             gateway: Gateway::new(config),
             health: Health::Stopped,
-            page: Page::Accounts,
+            page: Page::Requests,
             status: None,
             status_error: None,
             overview: Vec::new(),
@@ -139,6 +148,9 @@ impl Shell {
             key_provider: None,
             request_filter: None,
             selected_provider: None,
+            theme: settings::load(&config_root).theme,
+            applied_dark: None,
+            auto_settings: None,
             busy: false,
             running: false,
             compact: false,
@@ -216,8 +228,14 @@ impl Shell {
     fn refresh(&mut self, cx: &mut Context<Self>) {
         let cli = self.accounts.clone();
         cx.spawn(async move |this, cx| {
-            let (overview, saved, missing, profiles) = cx.background_executor().spawn(async move { (cli.overview(), cli.list(), cli.secret_missing(), cli.profiles()) }).await;
+            let (overview, saved, missing, profiles, auto) = cx
+                .background_executor()
+                .spawn(async move { (cli.overview(), cli.list(), cli.secret_missing(), cli.profiles(), cli.auto_settings()) })
+                .await;
             let _ = this.update(cx, |shell, cx| {
+                if let Ok(auto) = auto {
+                    shell.auto_settings = Some(auto);
+                }
                 if let Ok(profiles) = profiles {
                     shell.profiles = profiles;
                 }
@@ -313,12 +331,22 @@ impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.running = self.gateway.is_running();
         self.compact = window.viewport_size().width < px(COMPACT_WIDTH);
+        let dark = match self.theme {
+            ThemeChoice::Light => false,
+            ThemeChoice::Dark => true,
+            ThemeChoice::System => matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark),
+        };
+        if self.applied_dark != Some(dark) {
+            self.applied_dark = Some(dark);
+            set_dark(dark);
+            Theme::change(if dark { ThemeMode::Dark } else { ThemeMode::Light }, Some(window), cx);
+        }
         div()
             .size_full()
             .flex()
             .font_family(assets::FONT_FAMILY)
-            .bg(rgb(CANVAS))
-            .text_color(rgb(TEXT))
+            .bg(col(CANVAS))
+            .text_color(col(TEXT))
             .child(self.render_sidebar(cx))
             .child(
                 div()
@@ -326,9 +354,9 @@ impl Render for Shell {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .bg(rgb(SURFACE))
+                    .bg(col(SURFACE))
                     .border_l_1()
-                    .border_color(rgb(BORDER))
+                    .border_color(col(BORDER))
                     .child(self.render_header())
                     .child(
                         div()
@@ -343,6 +371,7 @@ impl Render for Shell {
                             .child(match self.page {
                                 Page::Accounts => self.render_accounts(cx, false),
                                 Page::ApiKeys => self.render_accounts(cx, true),
+                                Page::Settings => self.render_settings(cx),
                                 Page::Requests => self.render_requests(cx),
                                 Page::Provider => self.render_provider_settings(window, cx),
                             }),
@@ -376,7 +405,7 @@ impl Shell {
             .flex()
             .flex_col()
             .p_3()
-            .bg(rgb(SIDEBAR))
+            .bg(col(SIDEBAR))
             .child({
                 let enabled = !self.busy && self.health != Health::Starting;
                 let (label, name, tone) = match self.health {
@@ -397,10 +426,11 @@ impl Shell {
                     })
             })
             .child(nav_heading("Main Menu"))
-            .child(nav("nav-accounts", IconName::Users, Page::Accounts, cx))
-            .child(nav("nav-api-keys", IconName::KeyRound, Page::ApiKeys, cx))
             .child(nav("nav-requests", IconName::Activity, Page::Requests, cx))
-            .child(div().mt_4().h(px(1.)).bg(rgb(BORDER)))
+            .child(nav("nav-api-keys", IconName::KeyRound, Page::ApiKeys, cx))
+            .child(nav("nav-accounts", IconName::Users, Page::Accounts, cx))
+            .child(nav("nav-settings", IconName::Settings, Page::Settings, cx))
+            .child(div().mt_4().h(px(1.)).bg(col(BORDER)))
             .child(nav_heading("Gateway"))
             .child(
                 div()
@@ -410,11 +440,11 @@ impl Shell {
                     .px_2p5()
                     .pt_1()
                     .text_sm()
-                    .child(div().size(px(8.)).flex_none().rounded_full().bg(rgb(color)))
+                    .child(div().size(px(8.)).flex_none().rounded_full().bg(col(color)))
                     .child(div().min_w_0().overflow_hidden().child(label)),
             )
-            .child(div().px_2p5().pt_1().text_xs().text_color(rgb(MUTED)).child(format!("{}/v1", self.gateway.config.base_url())))
-            .child(div().mt_4().h(px(1.)).bg(rgb(BORDER)))
+            .child(div().px_2p5().pt_1().text_xs().text_color(col(MUTED)).child(format!("{}/v1", self.gateway.config.base_url())))
+            .child(div().mt_4().h(px(1.)).bg(col(BORDER)))
             .child(nav_heading("Providers"))
             .children(self.overview.iter().map(|row| {
                 let live = self.live(&row.id);
@@ -431,9 +461,9 @@ impl Shell {
                     .rounded_md()
                     .cursor_pointer()
                     .text_sm()
-                    .text_color(rgb(TEXT))
-                    .when(selected, |this| this.bg(rgb(SURFACE)).border_1().border_color(rgb(BORDER)).shadow_sm().font_weight(FontWeight::MEDIUM))
-                    .when(!selected, |this| this.hover(|style| style.bg(rgb(0xf1f2f4))))
+                    .text_color(col(TEXT))
+                    .when(selected, |this| this.bg(col(SURFACE)).border_1().border_color(col(BORDER)).shadow_sm().font_weight(FontWeight::MEDIUM))
+                    .when(!selected, |this| this.hover(|style| style.bg(col(HOVER))))
                     .child(provider_mark(&row.id, 22.))
                     .child(div().flex_1().child(display_name(&row.id).to_string()))
                     .child(status_dot(state))
@@ -462,7 +492,7 @@ impl Shell {
             .flex_none()
             .px_6()
             .border_b_1()
-            .border_color(rgb(BORDER))
+            .border_color(col(BORDER))
             .child(
                 div()
                     .flex()
@@ -484,8 +514,8 @@ impl Shell {
                 .py_2()
                 .rounded_md()
                 .text_sm()
-                .bg(rgb(if ok { PRIMARY_SOFT } else { 0xfef2f2 }))
-                .text_color(rgb(if ok { PRIMARY } else { RED }))
+                .bg(col(if ok { PRIMARY_SOFT } else { DANGER_SOFT }))
+                .text_color(col(if ok { PRIMARY } else { RED }))
                 .child(div().text_size(px(15.)).child(if ok { IconName::CircleCheck } else { IconName::CircleAlert }))
                 .child(text),
         )
@@ -627,7 +657,7 @@ impl Shell {
                     .items_center()
                     .px(px(3.))
                     .rounded_full()
-                    .bg(rgb(if auto { PRIMARY } else { 0xd1d5db }))
+                    .bg(col(if auto { PRIMARY } else { SWITCH_OFF }))
                     .when(auto, |this| this.justify_end())
                     .when(self.busy, |this| this.opacity(0.5))
                     .when(!self.busy, |this| {
@@ -637,7 +667,7 @@ impl Shell {
                             cx.notify();
                         }))
                     })
-                    .child(div().size(px(18.)).rounded_full().bg(rgb(SURFACE)).shadow_sm()),
+                    .child(div().size(px(18.)).rounded_full().bg(col(SURFACE)).shadow_sm()),
             );
 
         div()
@@ -686,8 +716,8 @@ impl Shell {
             table_row()
                 .child(cell(0.).child(model.to_string()))
                 .when(!self.compact, |this| {
-                    this.child(cell(130.).text_color(rgb(MUTED)).child(stat.and_then(|stat| stat.latency_ms).map(|ms| format!("{:.1} s", ms as f64 / 1000.)).unwrap_or_else(|| "—".into())))
-                        .child(cell(100.).text_color(rgb(MUTED)).child(if in_auto { "Yes" } else { "—" }))
+                    this.child(cell(130.).text_color(col(MUTED)).child(stat.and_then(|stat| stat.latency_ms).map(|ms| format!("{:.1} s", ms as f64 / 1000.)).unwrap_or_else(|| "—".into())))
+                        .child(cell(100.).text_color(col(MUTED)).child(if in_auto { "Yes" } else { "—" }))
                 })
                 .child(cell(if self.compact { 140. } else { 150. }).flex().child(labeled_badge(state, label)))
         });
@@ -703,6 +733,82 @@ impl Shell {
                     .children(rows)
                     .children(models.is_empty().then(|| table_row().child(muted("No models listed for this provider")))),
             )
+    }
+
+    fn set_theme(&mut self, theme: ThemeChoice) {
+        self.theme = theme;
+        if let Err(error) = settings::save(&self.gateway.config.root, &DesktopSettings { theme }) {
+            self.message = Some((false, format!("Could not save settings: {error}")));
+        }
+    }
+
+    fn render_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+        let pill = |id: String, label: &'static str, name: Option<IconName>, active: bool| {
+            div()
+                .id(SharedString::from(id))
+                .flex()
+                .items_center()
+                .gap_2()
+                .h(px(34.))
+                .px_3()
+                .rounded_md()
+                .border_1()
+                .border_color(col(if active { PRIMARY } else { BORDER }))
+                .bg(col(if active { PRIMARY_SOFT } else { SURFACE }))
+                .text_sm()
+                .cursor_pointer()
+                .children(name.map(|name| div().text_size(px(15.)).child(name)))
+                .child(label)
+        };
+        let section = |title: &'static str, hint: &'static str| {
+            card().p_4().flex().flex_col().gap_3().child(div().font_weight(FontWeight::SEMIBOLD).child(title)).child(muted(hint).text_xs())
+        };
+        let themes = [(ThemeChoice::Light, "Light", IconName::Sun), (ThemeChoice::Dark, "Dark", IconName::Moon), (ThemeChoice::System, "System", IconName::Monitor)];
+        let theme_row = div().flex().flex_wrap().gap_2().children(themes.into_iter().map(|(choice, label, name)| {
+            pill(format!("theme-{label}"), label, Some(name), self.theme == choice).on_click(cx.listener(move |shell, _, _, cx| {
+                shell.set_theme(choice);
+                cx.notify();
+            }))
+        }));
+        let auto = self.auto_settings.clone();
+        let focuses: [(&'static str, &'static str, &'static str); 4] = [
+            ("general", "General", "Fastest working models first."),
+            ("coding", "Coding", "Models made for code first (coder, codestral, devstral…)."),
+            ("reasoning", "Reasoning", "Thinking models first (reasoner, r1, qwq, magistral…)."),
+            ("fast", "Fast", "Small and quick models first (flash, lightning, mini…)."),
+        ];
+        let current_focus = auto.as_ref().map(|auto| auto.focus.clone()).unwrap_or_default();
+        let focus_hint = focuses.iter().find(|(value, _, _)| *value == current_focus).map(|(_, _, hint)| *hint).unwrap_or("Loading…");
+        let focus_row = div().flex().flex_wrap().gap_2().children(focuses.into_iter().map(|(value, label, _)| {
+            pill(format!("focus-{value}"), label, None, current_focus == value).when(!self.busy, |this| {
+                this.on_click(cx.listener(move |shell, _, _, cx| {
+                    shell.run_command(cx, move |cli| cli.set_auto_focus(value));
+                    cx.notify();
+                }))
+            })
+        }));
+        let modes: [(&'static str, &'static str, &'static str); 2] = [
+            ("fallback", "One by one", "Tries the chain in order and moves on only when a model fails."),
+            ("race", "All at once", "Sends each request to the first three models at the same time and keeps the first answer. Faster, but uses the limits of several providers."),
+        ];
+        let current_mode = auto.as_ref().map(|auto| auto.mode.clone()).unwrap_or_default();
+        let mode_hint = modes.iter().find(|(value, _, _)| *value == current_mode).map(|(_, _, hint)| *hint).unwrap_or("Loading…");
+        let mode_row = div().flex().flex_wrap().gap_2().children(modes.into_iter().map(|(value, label, _)| {
+            pill(format!("mode-{value}"), label, None, current_mode == value).when(!self.busy, |this| {
+                this.on_click(cx.listener(move |shell, _, _, cx| {
+                    shell.run_command(cx, move |cli| cli.set_auto_mode(value));
+                    cx.notify();
+                }))
+            })
+        }));
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(section("Theme", "Light, dark, or follow the system appearance.").child(theme_row))
+            .child(section("Auto focus", "Which models model=auto prefers. Applies within about 30 seconds.").child(focus_row).child(muted(focus_hint).text_xs()))
+            .child(section("Auto mode", "How model=auto sends a request.").child(mode_row).child(muted(mode_hint).text_xs()))
+            .into_any_element()
     }
 
     fn render_accounts(&self, cx: &mut Context<Self>, keys_page: bool) -> AnyElement {
@@ -735,10 +841,10 @@ impl Shell {
                         .child(provider_mark(&account.provider, 26.))
                         .child(div().flex().flex_col().child(account.email.clone()).child(muted(account.id.clone()).text_xs())),
                 )
-                .when(!compact, |this| this.child(cell(140.).text_color(rgb(MUTED)).child(display_name(&account.provider).to_string())))
+                .when(!compact, |this| this.child(cell(140.).text_color(col(MUTED)).child(display_name(&account.provider).to_string())))
                 .child(cell(150.).flex().child(labeled_badge(state_activity, state_label)))
                 .when(!compact, |this| {
-                    this.child(cell(100.).text_color(rgb(MUTED)).child(state.map(|state| state.consecutive_failures.to_string()).unwrap_or_else(|| "—".into())))
+                    this.child(cell(100.).text_color(col(MUTED)).child(state.map(|state| state.consecutive_failures.to_string()).unwrap_or_else(|| "—".into())))
                 })
                 .child(cell(120.).child(
                     button(SharedString::from(format!("remove-{}", account.id)), "Remove", Some(IconName::Trash), Tone::Danger, !self.busy).when(!self.busy, |this| {
@@ -764,8 +870,8 @@ impl Shell {
                 .px_2p5()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(if active { PRIMARY } else { BORDER }))
-                .bg(rgb(if active { PRIMARY_SOFT } else { SURFACE }))
+                .border_color(col(if active { PRIMARY } else { BORDER }))
+                .bg(col(if active { PRIMARY_SOFT } else { SURFACE }))
                 .text_sm()
                 .cursor_pointer()
                 .child(provider_mark(id, 20.))
@@ -823,8 +929,8 @@ impl Shell {
                                 .items_center()
                                 .justify_center()
                                 .rounded_full()
-                                .bg(rgb(PRIMARY_SOFT))
-                                .text_color(rgb(PRIMARY))
+                                .bg(col(PRIMARY_SOFT))
+                                .text_color(col(PRIMARY))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .child(profile.label.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default()),
                         )
@@ -852,7 +958,7 @@ impl Shell {
                         .py_1()
                         .rounded_full()
                         .border_1()
-                        .border_color(rgb(BORDER))
+                        .border_color(col(BORDER))
                         .text_xs()
                         .child(provider_mark(&chat.id, 18.))
                         .child(display_name(&chat.id).trim_end_matches(" Chat").to_string())
@@ -959,7 +1065,7 @@ impl Shell {
                     .justify_between()
                     .gap_3()
                     .p_4()
-                    .bg(rgb(0xfffbeb))
+                    .bg(col(WARNING_SOFT))
                     .child(
                         div()
                             .flex()
@@ -1022,13 +1128,13 @@ impl Shell {
                 .px_2p5()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(if active { PRIMARY } else { BORDER }))
-                .bg(rgb(if active { PRIMARY_SOFT } else { SURFACE }))
+                .border_color(col(if active { PRIMARY } else { BORDER }))
+                .bg(col(if active { PRIMARY_SOFT } else { SURFACE }))
                 .text_sm()
                 .cursor_pointer()
                 .children(id.as_deref().map(|provider| provider_mark(provider, 20.)))
                 .child(label)
-                .child(div().text_xs().text_color(rgb(MUTED)).child(count.to_string()))
+                .child(div().text_xs().text_color(col(MUTED)).child(count.to_string()))
                 .on_click(cx.listener(move |shell, _, _, cx| {
                     shell.request_filter = id.clone();
                     cx.notify();
@@ -1046,7 +1152,7 @@ impl Shell {
         let rows = visible.iter().map(|request| {
             let ok = request.status == "success";
             table_row()
-                .child(cell(if compact { 90. } else { 110. }).text_color(rgb(MUTED)).child(relative_time(request.created_at, now)))
+                .child(cell(if compact { 90. } else { 110. }).text_color(col(MUTED)).child(relative_time(request.created_at, now)))
                 .when(!compact, |this| {
                     this.child(cell(150.).flex().items_center().gap_2().child(provider_mark(&request.provider, 20.)).child(display_name(&request.provider).to_string()))
                 })
@@ -1062,10 +1168,10 @@ impl Shell {
                                 .when(compact, |this| this.child(provider_mark(&request.provider, 18.)))
                                 .child(request.model.clone()),
                         )
-                        .children(request.error.clone().map(|error| div().text_xs().text_color(rgb(RED)).child(error.chars().take(120).collect::<String>()))),
+                        .children(request.error.clone().map(|error| div().text_xs().text_color(col(RED)).child(error.chars().take(120).collect::<String>()))),
                 )
                 .when(!compact, |this| {
-                    this.child(cell(100.).text_color(rgb(MUTED)).child(request.latency_ms.map(|latency| format!("{latency} ms")).unwrap_or_else(|| "—".into())))
+                    this.child(cell(100.).text_color(col(MUTED)).child(request.latency_ms.map(|latency| format!("{latency} ms")).unwrap_or_else(|| "—".into())))
                 })
                 .child(cell(if compact { 120. } else { 130. }).flex().child(labeled_badge(if ok { Activity::Active } else { Activity::Inactive }, if ok { "Success" } else { "Failed" })))
         });

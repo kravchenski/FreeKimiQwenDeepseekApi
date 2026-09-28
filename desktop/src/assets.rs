@@ -4,7 +4,7 @@ use gpui_kit::assets::{icon_assets, Assets};
 use gpui_kit::{AssetSource, Result, SharedString};
 
 icon_assets!(AppIcons, [
-    Zap, Plug, Users, Activity, Play, Square, RefreshCw, LogIn, KeyRound, ExternalLink, Trash, CircleCheck, CircleAlert,
+    Zap, Plug, Users, Activity, Settings, Sun, Moon, Monitor, Play, Square, RefreshCw, LogIn, KeyRound, ExternalLink, Trash, CircleCheck, CircleAlert,
 ]);
 
 pub struct AppAssets;

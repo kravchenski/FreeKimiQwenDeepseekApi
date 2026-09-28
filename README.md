@@ -54,6 +54,10 @@ bun run account profile remove <id>
 
 The desktop app does the same on the Accounts page (Add account, Connect chats, Check, Remove). Stop the API before connecting or checking, because it uses the same browser profiles.
 
+### Tuning `auto`
+
+`bun run account auto --focus coding` makes `model=auto` prefer models made for the task (`general`, `coding`, `reasoning`, `fast`); `--mode race` sends each request to the first three models of the chain at the same time and keeps the first answer (`fallback`, the default, tries them one by one). The desktop app has the same options, plus a light, dark or system theme, on its Settings page.
+
 To keep a provider out of `model=auto` without disconnecting it, run `bun run account provider <id> --auto off` (or use the switch on the provider's page in the desktop app).
 
 To see which models actually answer for your keys and accounts, run `bun run models:probe` while the gateway is running (`--provider all` includes web chats, `--help` for options). The gateway remembers every measurement in `data/gateway.db`, so a probe run also reorders `auto` with the fastest working models first.
