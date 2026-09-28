@@ -9,7 +9,6 @@ use std::time::Duration;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Root, Theme, ThemeMode};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -33,7 +32,6 @@ enum Health {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Page {
-    Providers,
     Accounts,
     ApiKeys,
     Requests,
@@ -43,7 +41,6 @@ enum Page {
 impl Page {
     fn title(self) -> &'static str {
         match self {
-            Page::Providers => "Providers",
             Page::Accounts => "Accounts",
             Page::ApiKeys => "API keys",
             Page::Requests => "Requests",
@@ -53,7 +50,6 @@ impl Page {
 
     fn subtitle(self) -> &'static str {
         match self {
-            Page::Providers => "See which AI providers are connected and connect the missing ones.",
             Page::Accounts => "Browser accounts signed in to the web chats.",
             Page::ApiKeys => "Free API keys for the fallback providers, stored encrypted.",
             Page::Requests => "Recent requests routed through the gateway.",
@@ -131,7 +127,7 @@ impl Shell {
         let mut shell = Self {
             gateway: Gateway::new(config),
             health: Health::Stopped,
-            page: Page::Providers,
+            page: Page::Accounts,
             status: None,
             status_error: None,
             overview: Vec::new(),
@@ -345,7 +341,6 @@ impl Render for Shell {
                             .gap_4()
                             .children(self.render_message())
                             .child(match self.page {
-                                Page::Providers => self.render_providers(cx),
                                 Page::Accounts => self.render_accounts(cx, false),
                                 Page::ApiKeys => self.render_accounts(cx, true),
                                 Page::Requests => self.render_requests(cx),
@@ -402,7 +397,6 @@ impl Shell {
                     })
             })
             .child(nav_heading("Main Menu"))
-            .child(nav("nav-providers", IconName::Plug, Page::Providers, cx))
             .child(nav("nav-accounts", IconName::Users, Page::Accounts, cx))
             .child(nav("nav-api-keys", IconName::KeyRound, Page::ApiKeys, cx))
             .child(nav("nav-requests", IconName::Activity, Page::Requests, cx))
@@ -495,85 +489,6 @@ impl Shell {
                 .child(div().text_size(px(15.)).child(if ok { IconName::CircleCheck } else { IconName::CircleAlert }))
                 .child(text),
         )
-    }
-
-    fn render_providers(&self, cx: &mut Context<Self>) -> AnyElement {
-        let compact = self.compact;
-        let columns: Vec<(&'static str, f32)> = if compact {
-            vec![("Provider", 0.), ("Status", 150.)]
-        } else {
-            vec![("Provider", 0.), ("Type", 160.), ("Status", 170.)]
-        };
-        let active = self.overview.iter().filter(|row| activity(row, self.live(&row.id)) == Activity::Active).count();
-        let rows = self.overview.iter().map(|row| {
-            let live = self.live(&row.id);
-            let state = activity(row, live);
-            let tip: SharedString = detail(row, live).into();
-            table_row()
-                .child(
-                    cell(0.)
-                        .flex()
-                        .items_center()
-                        .gap_2p5()
-                        .child(provider_mark(&row.id, 28.))
-                        .child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .child(div().font_weight(FontWeight::MEDIUM).child(display_name(&row.id).to_string()))
-                                .child(muted(row.id.clone()).text_xs()),
-                        ),
-                )
-                .when(!compact, |this| this.child(cell(160.).text_color(rgb(MUTED)).child(kind_label(&row.kind).to_string())))
-                .child(
-                    cell(if compact { 150. } else { 170. }).flex().child(
-                        div()
-                            .id(SharedString::from(format!("status-{}", row.id)))
-                            .child(status_badge(state))
-                            .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx)),
-                    ),
-                )
-        });
-        div()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .child(muted(format!("{active} of {} providers active", self.overview.len())))
-                    .child(
-                        div()
-                            .flex()
-                            .gap_2()
-                            .child(
-                                button("check-sign-ins", "Check sign-ins", Some(IconName::RefreshCw), Tone::Outline, !self.browser_blocked())
-                                    .when(!self.browser_blocked(), |this| {
-                                        this.on_click(cx.listener(|shell, _, _, cx| {
-                                            shell.run_command(cx, |cli| cli.check_sign_ins());
-                                            cx.notify();
-                                        }))
-                                    }),
-                            )
-                            .child(button("refresh", "Refresh", None, Tone::Primary, !self.busy).on_click(cx.listener(|shell, _, _, cx| {
-                                shell.refresh(cx);
-                                cx.notify();
-                            }))),
-                    ),
-            )
-            .child(
-                card()
-                    .overflow_hidden()
-                    .child(table_header(&columns))
-                    .children(rows)
-                    .children(self.overview.is_empty().then(|| table_row().child(muted("Loading providers…")))),
-            )
-            .children((self.running || self.external()).then(|| {
-                muted("Check sign-ins opens the browser profile, which the running API is using. Stop the API to check sign-ins.").text_xs()
-            }))
-            .into_any_element()
     }
 
     fn render_provider_settings(&self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
