@@ -22,6 +22,8 @@ document.getElementById('box').addEventListener('keydown', async event => {
 });
 </script>`;
 
+const precheckPage = chatPage.replace("const response = await fetch('/api/stream'", "await (await fetch('/api/stream?precheck=1', { method: 'POST' })).text();\n  const response = await fetch('/api/stream'");
+
 const verifyPage = '<!doctype html><textarea></textarea><p>Please complete security verification</p>';
 
 const jwt = (payload: Record<string, unknown>) => `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.sig`;
@@ -36,6 +38,9 @@ beforeAll(() => {
     port: 0,
     async fetch(request) {
       const url = new URL(request.url);
+      if (url.pathname === '/api/stream' && url.searchParams.has('precheck')) {
+        return Response.json({ code: 0, sig: 'from bx' });
+      }
       if (url.pathname === '/api/stream') {
         const prompt = await request.text();
         const parts = ['data: first\n\n', `data: echo ${prompt}\n\n`, 'data: [DONE]\n\n'];
@@ -50,6 +55,7 @@ beforeAll(() => {
         }), { headers: { 'content-type': 'text/event-stream' } });
       }
       const html = url.pathname === '/verify' ? verifyPage
+        : url.pathname === '/precheck' ? precheckPage
         : url.pathname === '/member' ? withToken({ email: 'me@example.com' })
         : url.pathname === '/guest' ? withToken({ email: 'Guest-123@guest.com' })
         : url.pathname === '/signed-out' ? clearToken
@@ -86,6 +92,28 @@ describe.skipIf(process.env.RUN_BROWSER_TESTS !== '1' || !findBrowserExecutable(
       await session.close();
     }
   }, 90_000);
+
+  test('relaunches the browser after its window was closed', async () => {
+    const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });
+    try {
+      expect(await collect(await session.send(site(), 'one'))).toContain('echo one');
+      const cdp = await (session as unknown as { browser: Promise<{ browser: { close(): Promise<void> } }> }).browser;
+      await cdp.browser.close();
+      expect(await collect(await session.send(site(), 'two'))).toContain('echo two');
+    } finally {
+      await session.close();
+    }
+  }, 60_000);
+
+  test('skips a pre-check response and streams the answer the page asks for next', async () => {
+    const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });
+    try {
+      const text = await collect(await session.send({ ...site('/precheck'), ignoredResponse: /"sig":"from bx"/ }, 'real one'));
+      expect(text).toBe('data: first\n\ndata: echo real one\n\ndata: [DONE]\n\n');
+    } finally {
+      await session.close();
+    }
+  }, 60_000);
 
   test('reports a security verification instead of waiting for it', async () => {
     const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true, firstChunkTimeoutMs: 10_000 });
