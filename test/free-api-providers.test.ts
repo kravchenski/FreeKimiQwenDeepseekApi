@@ -114,3 +114,16 @@ describe('API key providers in the overview and CLI', () => {
     await expect(runAccountsCommand(['add', 'unknown-ai', '--api-key'], deps)).rejects.toThrow('Unknown provider: unknown-ai');
   });
 });
+
+describe('saved key cache', () => {
+  test('forgetting saved keys makes providers read a newly saved key at once', async () => {
+    const { forgetSavedKeys } = await import('../src/providers/catalog.ts');
+    let saved: Array<{ method: 'api-key'; token: string }> = [];
+    const groq = createApiProvider(definition('groq'), { env: {} }, { list: () => saved });
+    expect(groq.health().available).toBeFalse();
+    saved = [{ method: 'api-key', token: 'new-key' }];
+    expect(groq.health().available).toBeFalse();
+    forgetSavedKeys();
+    expect(groq.health().available).toBeTrue();
+  });
+});

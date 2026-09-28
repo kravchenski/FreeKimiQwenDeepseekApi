@@ -109,9 +109,16 @@ export function apiKeyProvider(id: string) {
 
 const SAVED_KEY_TTL_MS = 60_000;
 
+const savedKeyResets = new Set<() => void>();
+
+export function forgetSavedKeys() {
+  for (const reset of savedKeyResets) reset();
+}
+
 function savedKeyReader(credentials: CredentialSource, provider: string, now: () => number = Date.now) {
   let key: string | undefined;
   let readAt = -Infinity;
+  savedKeyResets.add(() => { readAt = -Infinity; });
   return () => {
     if (now() - readAt > SAVED_KEY_TTL_MS) {
       key = savedApiKey(credentials, provider);

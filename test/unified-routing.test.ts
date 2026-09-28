@@ -32,12 +32,26 @@ const fakeProvider: Provider = {
 };
 
 let key = '';
+let lateModels: string[] = [];
+
+const lateProvider: Provider = {
+  id: 'late',
+  ownedBy: 'late-owner',
+  supports: model => lateModels.includes(model),
+  listModels: async () => lateModels,
+  capabilities: () => ({ nativeTools: false, reasoning: false, vision: false }),
+  health: () => ({ available: lateModels.length > 0 }),
+  async stream() {
+    throw new Error('not used');
+  },
+};
 
 beforeAll(async () => {
   key = process.env.GATEWAY_API_KEY ||= 'test-key';
   process.env.DATA_DIR ||= mkdtempSync(join(tmpdir(), 'gateway-test-'));
   server = await import('../src/unified/server.ts');
   server.registry.register(fakeProvider);
+  server.registry.register(lateProvider);
 });
 
 function chat(body: Record<string, unknown>) {
@@ -286,5 +300,23 @@ describe('unified server routing', () => {
     expect(text).toMatch(/gateway_requests_total\{provider="fake",model="fake-model",status="success"\} \d+/);
     expect(text).toContain('gateway_provider_available{provider="fake"} 1');
   });
-});
 
+  test('reloads model lists on demand so a newly added key shows its models', async () => {
+    const saved = process.env.NVIDIA_API_KEY;
+    process.env.NVIDIA_API_KEY = '';
+    try {
+      const listed = async () => ((await (await server.app.fetch(new Request('http://local/v1/models', { headers: { authorization: `Bearer ${key}` } }))).json()) as any).data.map((model: any) => model.id);
+      lateModels = [];
+      await server.app.fetch(new Request('http://local/v1/gateway/refresh', { method: 'POST', headers: { authorization: `Bearer ${key}` } }));
+      expect(await listed()).not.toContain('late-model');
+      lateModels = ['late-model'];
+      const refreshed = await server.app.fetch(new Request('http://local/v1/gateway/refresh', { method: 'POST', headers: { authorization: `Bearer ${key}` } }));
+      expect(refreshed.status).toBe(200);
+      expect(((await refreshed.json()) as any).providers).toContainEqual({ id: 'late', available: true });
+      expect(await listed()).toContain('late-model');
+      expect((await server.app.fetch(new Request('http://local/v1/gateway/refresh', { method: 'POST' }))).status).toBe(401);
+    } finally {
+      process.env.NVIDIA_API_KEY = saved;
+    }
+  });
+});

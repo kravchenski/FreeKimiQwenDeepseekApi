@@ -30,7 +30,7 @@ import { parseQwenStream, QWEN_CHAT_SITE } from '../providers/qwen/web.ts';
 import { gatewayStatus } from '../core/status.ts';
 import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
-import { createApiProvider, createNvidiaProvider, FREE_API_PROVIDERS } from '../providers/catalog.ts';
+import { createApiProvider, createNvidiaProvider, forgetSavedKeys, FREE_API_PROVIDERS } from '../providers/catalog.ts';
 import { openCredentialStore } from '../core/accounts/credential-store.ts';
 import { loadAccountsSecret } from '../core/secrets/accounts-secret.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
@@ -228,11 +228,22 @@ function visibleModels() {
     return allModels.filter(entry => registry.availability.isAvailable(entry.id));
 }
 
+const AVAILABILITY_CHECK_MS = 30_000;
+
+function providerAvailability() {
+    return registry.list().map(provider => `${provider.id}:${provider.health().available}`).join(',');
+}
+
 function scheduleModelRefresh() {
-    if (!config.MODEL_REFRESH_MINUTES) return;
+    const refresh = () => refreshModelLists().catch(error => console.error('Model list refresh failed:', errorText(error)));
+    let availability = providerAvailability();
     setInterval(() => {
-        refreshModelLists().catch(error => console.error('Model list refresh failed:', errorText(error)));
-    }, config.MODEL_REFRESH_MINUTES * 60_000).unref();
+        const next = providerAvailability();
+        if (next === availability) return;
+        availability = next;
+        refresh();
+    }, AVAILABILITY_CHECK_MS).unref();
+    if (config.MODEL_REFRESH_MINUTES) setInterval(refresh, config.MODEL_REFRESH_MINUTES * 60_000).unref();
 }
 
 function isCodebaseActionRequest(messages: Array<Record<string, any>>) {
@@ -363,6 +374,15 @@ function handleProviderStream(
         headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', ...extraHeaders }
     });
 }
+
+app.post('/v1/gateway/refresh', async (c) => {
+    forgetSavedKeys();
+    await refreshModelLists();
+    return c.json({
+        models: allModels.length - 1,
+        providers: registry.list().map(provider => ({ id: provider.id, ...provider.health() })),
+    });
+});
 
 app.get('/v1/gateway/status', (c) => c.json({
     ...gatewayStatus(registry, db()),

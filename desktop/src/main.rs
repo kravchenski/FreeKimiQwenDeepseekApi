@@ -18,7 +18,7 @@ use accounts::{AccountProfile, AccountsCli, SavedAccount};
 use settings::{AutoSettings, DesktopSettings, ThemeChoice};
 use gateway::{check_health, open_in_browser, stop_external, Gateway, GatewayConfig};
 use overview::{activity, detail, display_name, kind_label, Activity, ProviderOverview};
-use status::{fetch_status, now_ms, read_api_key, relative_time, GatewayStatus, ProviderStatus};
+use status::{fetch_status, now_ms, read_api_key, refresh_models, relative_time, GatewayStatus, ProviderStatus};
 use ui::*;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -256,11 +256,34 @@ impl Shell {
     }
 
     fn run_command(&mut self, cx: &mut Context<Self>, command: impl FnOnce(AccountsCli) -> Result<String, String> + Send + 'static) {
+        self.run_command_then(cx, command, false);
+    }
+
+    fn run_key_command(&mut self, cx: &mut Context<Self>, command: impl FnOnce(AccountsCli) -> Result<String, String> + Send + 'static) {
+        self.run_command_then(cx, command, true);
+    }
+
+    fn run_command_then(&mut self, cx: &mut Context<Self>, command: impl FnOnce(AccountsCli) -> Result<String, String> + Send + 'static, reload_models: bool) {
         let cli = self.accounts.clone();
+        let base_url = self.gateway.config.base_url();
+        let gateway_key = read_api_key(&self.gateway.config.root);
+        let online = self.health == Health::Online;
         self.busy = true;
         self.message = None;
         cx.spawn(async move |this, cx| {
-            let result = cx.background_executor().spawn(async move { command(cli) }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let result = command(cli);
+                    match (&result, reload_models && online) {
+                        (Ok(output), true) => match refresh_models(&base_url, gateway_key.as_deref()) {
+                            Ok(count) => Ok(format!("{}\nModels reloaded: {count} available.", output.trim_end())),
+                            Err(error) => Ok(format!("{}\nSaved, but the models could not be reloaded yet: {error}", output.trim_end())),
+                        },
+                        _ => result,
+                    }
+                })
+                .await;
             let _ = this.update(cx, |shell, cx| {
                 shell.busy = false;
                 shell.message = Some(match result {
@@ -290,7 +313,7 @@ impl Shell {
     fn add_api_key_for(&mut self, provider: String, window: &mut Window, cx: &mut Context<Self>) {
         let key = self.api_key.read(cx).value().to_string();
         self.api_key.update(cx, |input, cx| input.set_value("", window, cx));
-        self.run_command(cx, move |cli| cli.add_api_key(&provider, &key));
+        self.run_key_command(cx, move |cli| cli.add_api_key(&provider, &key));
     }
 
     fn open_link(&mut self, url: &str) {
@@ -609,7 +632,7 @@ impl Shell {
                             .child(button(SharedString::from(format!("remove-key-{}", account.id)), "Remove", Some(IconName::Trash), Tone::Danger, !self.busy).when(!self.busy, |this| {
                                 this.on_click(cx.listener(move |shell, _, _, cx| {
                                     let id = id.clone();
-                                    shell.run_command(cx, move |cli| cli.remove(&id));
+                                    shell.run_key_command(cx, move |cli| cli.remove(&id));
                                     cx.notify();
                                 }))
                             }))
@@ -850,7 +873,7 @@ impl Shell {
                     button(SharedString::from(format!("remove-{}", account.id)), "Remove", Some(IconName::Trash), Tone::Danger, !self.busy).when(!self.busy, |this| {
                         this.on_click(cx.listener(move |shell, _, _, cx| {
                             let id = id.clone();
-                            shell.run_command(cx, move |cli| cli.remove(&id));
+                            shell.run_key_command(cx, move |cli| cli.remove(&id));
                             cx.notify();
                         }))
                     }),

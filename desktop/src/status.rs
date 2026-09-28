@@ -96,6 +96,28 @@ pub fn setting_from(name: &str, env_value: Option<String>, dotenv: &str) -> Opti
     })
 }
 
+pub fn refresh_models(base_url: &str, api_key: Option<&str>) -> Result<usize, String> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(60)))
+        .build()
+        .into();
+    let mut request = agent.post(format!("{base_url}/v1/gateway/refresh"));
+    if let Some(key) = api_key {
+        request = request.header("authorization", format!("Bearer {key}"));
+    }
+    #[derive(Deserialize)]
+    struct Refreshed {
+        models: usize,
+    }
+    request
+        .send_empty()
+        .map_err(|error| error.to_string())?
+        .body_mut()
+        .read_json::<Refreshed>()
+        .map(|body| body.models)
+        .map_err(|error| error.to_string())
+}
+
 pub fn api_key_from(env_value: Option<String>, dotenv: &str) -> Option<String> {
     setting_from("GATEWAY_API_KEY", env_value, dotenv)
 }
