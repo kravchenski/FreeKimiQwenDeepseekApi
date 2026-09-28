@@ -1,6 +1,6 @@
 import fs from 'fs';
 
-const wasmPath = new URL('./sha3_wasm_bg.wasm', import.meta.url);
+import wasmPath from './sha3_wasm_bg.wasm' with { type: 'file' };
 let instancePromise: Promise<WebAssembly.Instance> | null = null;
 
 function getInstance() {
