@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -11,6 +11,36 @@ pub struct GatewayConfig {
     pub port: u16,
     pub program: String,
     pub args: Vec<String>,
+    pub accounts_program: String,
+    pub accounts_args: Vec<String>,
+}
+
+pub const GATEWAY_SIDECAR: &str = "freeapi-gateway";
+pub const ACCOUNTS_SIDECAR: &str = "freeapi-accounts";
+const APP_DIR: &str = "Free AI Gateway";
+
+pub fn sidecar(dir: &Path, name: &str) -> PathBuf {
+    dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
+}
+
+pub fn installed_sidecars(exe_dir: Option<&Path>) -> Option<(PathBuf, PathBuf)> {
+    let dir = exe_dir?;
+    let gateway = sidecar(dir, GATEWAY_SIDECAR);
+    let accounts = sidecar(dir, ACCOUNTS_SIDECAR);
+    (gateway.is_file() && accounts.is_file()).then_some((gateway, accounts))
+}
+
+pub fn app_data_dir(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    let non_empty = |name: &str| env(name).filter(|value| !value.is_empty()).map(PathBuf::from);
+    if cfg!(windows) {
+        non_empty("APPDATA").map(|dir| dir.join(APP_DIR))
+    } else if cfg!(target_os = "macos") {
+        non_empty("HOME").map(|home| home.join("Library/Application Support").join(APP_DIR))
+    } else {
+        non_empty("XDG_DATA_HOME")
+            .or_else(|| non_empty("HOME").map(|home| home.join(".local/share")))
+            .map(|dir| dir.join("free-ai-gateway"))
+    }
 }
 
 impl GatewayConfig {
@@ -23,12 +53,28 @@ impl GatewayConfig {
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(3260);
+        let explicit_root = std::env::var_os("FREEAPI_ROOT").is_some();
+        let exe = std::env::current_exe().ok();
+        let installed = (!explicit_root).then(|| installed_sidecars(exe.as_deref().and_then(Path::parent))).flatten();
+        if let (Some((gateway, accounts)), Some(data)) = (installed, app_data_dir(|name| std::env::var(name).ok())) {
+            let _ = fs::create_dir_all(&data);
+            return Self {
+                root: data,
+                port,
+                program: gateway.to_string_lossy().into(),
+                args: Vec::new(),
+                accounts_program: accounts.to_string_lossy().into(),
+                accounts_args: Vec::new(),
+            };
+        }
         let program = std::env::var("BUN_PATH").unwrap_or_else(|_| "bun".into());
         Self {
             root,
             port,
-            program,
+            program: program.clone(),
             args: vec!["run".into(), SERVER_ENTRY.into()],
+            accounts_program: program,
+            accounts_args: vec!["run".into(), ACCOUNTS_ENTRY.into()],
         }
     }
 
@@ -38,6 +84,7 @@ impl GatewayConfig {
 }
 
 const SERVER_ENTRY: &str = "src/unified/server.ts";
+const ACCOUNTS_ENTRY: &str = "scripts/accounts.ts";
 
 pub fn resolve_root(explicit: Option<PathBuf>, cwd: Option<PathBuf>) -> PathBuf {
     explicit
@@ -174,6 +221,8 @@ mod tests {
             port,
             program: program.into(),
             args: args.iter().map(|arg| arg.to_string()).collect(),
+            accounts_program: program.into(),
+            accounts_args: Vec::new(),
         }
     }
 
@@ -211,6 +260,33 @@ mod tests {
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
         );
         std::fs::remove_dir_all(repo).unwrap();
+    }
+
+    #[test]
+    fn finds_sidecars_next_to_the_installed_app() {
+        let dir = std::env::temp_dir().join(format!("freeapi-sidecar-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(installed_sidecars(Some(&dir)), None);
+        std::fs::write(sidecar(&dir, GATEWAY_SIDECAR), "").unwrap();
+        assert_eq!(installed_sidecars(Some(&dir)), None);
+        std::fs::write(sidecar(&dir, ACCOUNTS_SIDECAR), "").unwrap();
+        assert_eq!(installed_sidecars(Some(&dir)), Some((sidecar(&dir, GATEWAY_SIDECAR), sidecar(&dir, ACCOUNTS_SIDECAR))));
+        assert_eq!(installed_sidecars(None), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn keeps_installed_data_in_the_user_data_directory() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| move |name: &str| pairs.iter().find(|(key, _)| *key == name).map(|(_, value)| value.to_string());
+        if cfg!(windows) {
+            assert_eq!(app_data_dir(env(&[("APPDATA", "C:/Users/me/AppData/Roaming")])), Some(PathBuf::from("C:/Users/me/AppData/Roaming/Free AI Gateway")));
+        } else if cfg!(target_os = "macos") {
+            assert_eq!(app_data_dir(env(&[("HOME", "/Users/me")])), Some(PathBuf::from("/Users/me/Library/Application Support/Free AI Gateway")));
+        } else {
+            assert_eq!(app_data_dir(env(&[("HOME", "/home/me")])), Some(PathBuf::from("/home/me/.local/share/free-ai-gateway")));
+            assert_eq!(app_data_dir(env(&[("HOME", "/home/me"), ("XDG_DATA_HOME", "/data")])), Some(PathBuf::from("/data/free-ai-gateway")));
+        }
+        assert_eq!(app_data_dir(env(&[])), None);
     }
 
     #[test]

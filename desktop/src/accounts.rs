@@ -48,8 +48,8 @@ pub fn is_valid_email(email: &str) -> bool {
 }
 
 impl AccountsCli {
-    pub fn new(root: PathBuf, program: String) -> Self {
-        Self { root, program, prefix: vec!["run".into(), "scripts/accounts.ts".into()] }
+    pub fn new(root: PathBuf, program: String, prefix: Vec<String>) -> Self {
+        Self { root, program, prefix }
     }
 
     fn run(&self, args: &[&str], stdin: Option<&str>) -> Result<String, String> {
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn refuses_to_open_non_https_sites() {
-        let cli = AccountsCli::new(std::env::temp_dir(), "freeapi-missing-binary".into());
+        let cli = AccountsCli::new(std::env::temp_dir(), "freeapi-missing-binary".into(), Vec::new());
         assert_eq!(cli.open_site("http://chat.z.ai"), Err("Only https sites can be opened".into()));
     }
 
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn rejects_an_empty_api_key_before_running_the_cli() {
-        let cli = AccountsCli::new(std::env::temp_dir(), "freeapi-missing-binary".into());
+        let cli = AccountsCli::new(std::env::temp_dir(), "freeapi-missing-binary".into(), Vec::new());
         assert_eq!(cli.add_api_key("nvidia", "  "), Err("Enter an API key".into()));
     }
 

@@ -80,7 +80,7 @@ struct Shell {
 impl Shell {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let config = GatewayConfig::from_env();
-        let accounts = AccountsCli::new(config.root.clone(), config.program.clone());
+        let accounts = AccountsCli::new(config.root.clone(), config.accounts_program.clone(), config.accounts_args.clone());
         let base_url = config.base_url();
         let api_key = read_api_key(&config.root);
         cx.spawn(async move |this, cx| {

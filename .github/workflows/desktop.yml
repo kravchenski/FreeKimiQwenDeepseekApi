@@ -7,10 +7,12 @@ on:
     paths:
       - desktop/**
       - .github/workflows/desktop.yml
+      - .github/actions/desktop-package/**
   pull_request:
     paths:
       - desktop/**
       - .github/workflows/desktop.yml
+      - .github/actions/desktop-package/**
 
 concurrency:
   group: desktop-${{ github.ref }}
@@ -56,3 +58,48 @@ jobs:
 
       - name: Test
         run: cargo test --manifest-path desktop/Cargo.toml --locked
+
+  package:
+    name: Desktop installer (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+            triple: x86_64-unknown-linux-gnu
+            bun-target: bun-linux-x64
+            format: deb
+          - os: macos-latest
+            target: macos-arm64
+            triple: aarch64-apple-darwin
+            bun-target: bun-darwin-arm64
+            format: dmg
+          - os: windows-latest
+            target: windows-x64
+            triple: x86_64-pc-windows-msvc
+            bun-target: bun-windows-x64
+            format: nsis
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Package
+        id: package
+        uses: ./.github/actions/desktop-package
+        with:
+          target: ${{ matrix.target }}
+          triple: ${{ matrix.triple }}
+          bun-target: ${{ matrix.bun-target }}
+          format: ${{ matrix.format }}
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: free-ai-gateway-${{ matrix.target }}
+          path: ${{ steps.package.outputs.asset }}
+          retention-days: 7
+          if-no-files-found: error
