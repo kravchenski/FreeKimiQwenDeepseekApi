@@ -1,7 +1,5 @@
-import path from 'node:path';
-
 import { AccountPool } from '../../core/accounts/account-pool.ts';
-import { CredentialStore } from '../../core/accounts/credential-store.ts';
+import { openCredentialStore } from '../../core/accounts/credential-store.ts';
 import { openDatabase } from '../../core/store/database.ts';
 import { OpenAICompatibleProvider, type OpenAICompatibleConfig } from '../openai-compatible.ts';
 import { QwenAccountPool } from './account-pool.ts';
@@ -23,15 +21,13 @@ export const QWEN_FALLBACK_MODELS = [
   'qwen-slides',
 ];
 
-export const QWEN_CREDENTIALS_FILE = path.resolve(process.env.SESSION_DIR || 'session', 'qwen', 'accounts.enc');
-
 export function qwenLogin(env: Record<string, string | undefined> = process.env) {
   return (email: string, password: string) => qwenBrowserSignIn(email, password, { headless: env.QWEN_BROWSER_HEADFUL !== '1' });
 }
 
 export function createQwenAccountPool(env: Record<string, string | undefined> = process.env) {
   return new QwenAccountPool(
-    new CredentialStore(QWEN_CREDENTIALS_FILE, env.ACCOUNTS_SECRET),
+    openCredentialStore(env.ACCOUNTS_SECRET),
     qwenLogin(env),
     () => new AccountPool(openDatabase(), 'qwen'),
   );

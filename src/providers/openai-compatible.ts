@@ -28,6 +28,7 @@ export interface OpenAICompatibleConfig {
   hasApiKey?: () => boolean;
   upstreamModels?: boolean;
   fallback?: boolean;
+  accountHint?: string;
   acceptListedModels?: boolean;
   modelFilter?: (model: string) => boolean;
   reportResult?: (apiKey: string, outcome: UpstreamOutcome) => void;
@@ -82,6 +83,10 @@ export class OpenAICompatibleProvider implements Provider {
     return this.envApiKey || (await this.config.resolveApiKey?.());
   }
 
+  private missingKey() {
+    return `${this.config.apiKeyEnv} is not set${this.config.accountHint ? `; ${this.config.accountHint}` : ''}`;
+  }
+
   supports(model: string) {
     return Boolean(this.listed?.has(model)) || this.config.prefixes.some(prefix => model.startsWith(prefix));
   }
@@ -118,12 +123,12 @@ export class OpenAICompatibleProvider implements Provider {
   health() {
     return this.envApiKey || this.config.hasApiKey?.()
       ? { available: true }
-      : { available: false, reason: `${this.config.apiKeyEnv} is not set` };
+      : { available: false, reason: this.missingKey() };
   }
 
   async forward(path: string, init: { method?: string; body?: BodyInit; headers?: Record<string, string> } = {}) {
     const apiKey = await this.apiKey();
-    if (!apiKey) throw new ProviderError(`${this.config.apiKeyEnv} is not set`, 'unavailable');
+    if (!apiKey) throw new ProviderError(this.missingKey(), 'unavailable');
     const response = await (this.config.fetch ?? fetch)(`${this.config.baseUrl}${path}`, {
       method: init.method ?? 'POST',
       headers: { ...init.headers, Authorization: `Bearer ${apiKey}` },
@@ -141,7 +146,7 @@ export class OpenAICompatibleProvider implements Provider {
 
   async stream(request: ChatRequest, context: ProviderContext = {}): Promise<ProviderStream> {
     const apiKey = await this.apiKey();
-    if (!apiKey) throw new ProviderError(`${this.config.apiKeyEnv} is not set`, 'unavailable');
+    if (!apiKey) throw new ProviderError(this.missingKey(), 'unavailable');
     const model = this.config.upstreamModel?.(request.model) ?? request.model;
     const response = await (this.config.fetch ?? fetch)(`${this.config.baseUrl}/chat/completions`, {
       method: 'POST',

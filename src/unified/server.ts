@@ -26,6 +26,7 @@ import { gatewayStatus } from '../core/status.ts';
 import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
 import { createNvidiaProvider } from '../providers/catalog.ts';
+import { openCredentialStore } from '../core/accounts/credential-store.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
 import { createQwenProvider } from '../providers/qwen/provider.ts';
 import { BrowserChatSession } from '../browser/browser-chat.ts';
@@ -68,7 +69,7 @@ app.use('*', bodyLimit({
 const qwenProvider = createQwenProvider();
 
 export const registry = new ProviderRegistry()
-    .register(createNvidiaProvider())
+    .register(createNvidiaProvider({}, openCredentialStore()))
     .register(createDeepSeekProvider())
     .register(qwenProvider);
 
