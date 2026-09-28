@@ -9,8 +9,9 @@ icon_assets!(AppIcons, [
 
 pub struct AppAssets;
 
-const LOGOS: [(&str, &[u8]); 6] = [
+const LOGOS: [(&str, &[u8]); 7] = [
     ("logos/qwen.svg", include_bytes!("../assets/logos/qwen.svg")),
+    ("logos/qwen-chat.svg", include_bytes!("../assets/logos/qwen.svg")),
     ("logos/deepseek.svg", include_bytes!("../assets/logos/deepseek.svg")),
     ("logos/glm-chat.svg", include_bytes!("../assets/logos/glm-chat.svg")),
     ("logos/kimi-chat.svg", include_bytes!("../assets/logos/kimi-chat.svg")),
@@ -68,7 +69,7 @@ mod tests {
 
     #[test]
     fn serves_a_logo_for_every_provider() {
-        for provider in ["qwen", "deepseek", "glm-chat", "kimi-chat", "nvidia", "google"] {
+        for provider in ["qwen", "qwen-chat", "deepseek", "glm-chat", "kimi-chat", "nvidia", "google"] {
             let path = logo_path(provider).unwrap();
             let bytes = AppAssets.load(path).unwrap().unwrap();
             assert!(std::str::from_utf8(&bytes).unwrap().contains("width=\"64\""), "{path}");
