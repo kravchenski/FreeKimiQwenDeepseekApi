@@ -12,6 +12,7 @@ export interface ChatSite {
   responseUrl: RegExp;
   verificationText?: RegExp;
   signIn?: SignInRule;
+  challengeResponse?: RegExp;
 }
 
 export interface BrowserChatOptions {
@@ -24,6 +25,7 @@ export interface BrowserChatOptions {
 }
 
 const BINDING = '__freeapiStreamChunk';
+const CHALLENGE_GRACE_MS = 120_000;
 
 function teeScript({ pattern, binding }: { pattern: string; binding: string }) {
   const matcher = new RegExp(pattern);
@@ -52,6 +54,10 @@ function teeScript({ pattern, binding }: { pattern: string; binding: string }) {
 
 export function notSignedIn(site: Pick<ChatSite, 'url'>, result: SignInResult) {
   return `${new URL(site.url).hostname}: ${result.reason ?? 'not signed in'}; run: bun run account open ${site.url}`;
+}
+
+async function drainResponse(queue: ChunkQueue) {
+  for (let chunk = await queue.next(5_000); chunk instanceof Uint8Array; chunk = await queue.next(5_000));
 }
 
 class ChunkQueue {
@@ -141,15 +147,26 @@ export class BrowserChatSession {
   }
 
   private async *stream(site: ChatSite, page: Page, queue: ChunkQueue, release: () => void): AsyncGenerator<Uint8Array> {
-    const deadline = Date.now() + (this.options.firstChunkTimeoutMs ?? 60_000);
+    let deadline = Date.now() + (this.options.firstChunkTimeoutMs ?? 60_000);
+    let challenged = false;
     try {
       let first: Uint8Array | null | 'timeout' = 'timeout';
       while (first === 'timeout') {
-        if (Date.now() > deadline) throw new ProviderError(`${site.id} did not answer in time`, 'unavailable');
+        if (Date.now() > deadline) {
+          throw new ProviderError(challenged
+            ? `${site.id} asked for a security verification that was not completed in time; complete it in the browser window and retry`
+            : `${site.id} did not answer in time`, 'unavailable');
+        }
         if (site.verificationText && await page.getByText(site.verificationText).first().isVisible().catch(() => false)) {
           throw new ProviderError(`${site.id} asks for a security verification; complete it in the browser window`, 'unavailable');
         }
         first = await queue.next(500);
+        if (first instanceof Uint8Array && site.challengeResponse?.test(new TextDecoder().decode(first))) {
+          if (!challenged) deadline = Math.max(deadline, Date.now() + CHALLENGE_GRACE_MS);
+          challenged = true;
+          await drainResponse(queue);
+          first = 'timeout';
+        }
       }
       if (first === null) return;
       yield first;

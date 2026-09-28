@@ -24,6 +24,7 @@ import { loadModelStats, loadProviderSetting, loadSignIn, saveProviderSetting, o
 import { WebSignInStatus } from '../core/accounts/sign-in-status.ts';
 import { ProviderSettings } from '../core/providers/settings.ts';
 import { WEB_CHAT_SITES } from '../providers/web-chat-sites.ts';
+import { parseQwenStream, QWEN_CHAT_SITE } from '../providers/qwen/web.ts';
 import { gatewayStatus } from '../core/status.ts';
 import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
@@ -82,6 +83,16 @@ const browserChatSession = () => (browserChat ??= new BrowserChatSession({
         const site = WEB_CHAT_SITES.find(entry => entry.id === siteId);
         signIns.record(siteId, result.signedIn, result.signedIn || !site ? undefined : notSignedIn(site, result));
     },
+}));
+
+registry.register(createBrowserChatProvider({
+    id: 'qwen-chat',
+    ownedBy: 'qwen-web',
+    model: 'qwen-chat',
+    site: QWEN_CHAT_SITE,
+    session: browserChatSession,
+    parse: parseQwenStream,
+    health: () => signIns.health('qwen-chat'),
 }));
 
 registry.register(createBrowserChatProvider({
@@ -623,7 +634,7 @@ export async function startUnifiedServer() {
   Endpoint: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}
   Models:   ${modelCount} total (fetched from upstream APIs)
 
-  Providers: deepseek glm-chat kimi-chat (browser) nvidia (fallback)
+  Providers: deepseek qwen-chat glm-chat kimi-chat (browser) nvidia (fallback)
   NVIDIA models use NVIDIA API; set NVIDIA_API_KEY in .env.
 
   ${apiKey ? 'API key required (GATEWAY_API_KEY).' : 'No API key required. Set GATEWAY_API_KEY to protect the API.'} Configure OpenCode:

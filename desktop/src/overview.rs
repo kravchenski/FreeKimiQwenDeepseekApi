@@ -64,7 +64,7 @@ pub fn detail(overview: &ProviderOverview, live: Option<&ProviderStatus>) -> Str
 
 pub fn display_name(id: &str) -> &str {
     match id {
-        "qwen" => "Qwen",
+        "qwen" | "qwen-chat" => "Qwen",
         "deepseek" => "DeepSeek",
         "glm-chat" => "GLM (Z.ai)",
         "kimi-chat" => "Kimi",

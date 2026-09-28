@@ -884,12 +884,13 @@ impl Shell {
         let can_save_key = !self.busy && selected.is_some();
         let google_card = card()
             .flex_1()
+            .min_w_0()
             .p_4()
             .flex()
             .flex_col()
             .gap_3()
             .child(div().flex().items_center().gap_2().child(provider_mark("google", 22.)).child(div().font_weight(FontWeight::SEMIBOLD).child("Google accounts")))
-            .child(muted("Sign in to Google once in the browser profile, then use “Sign in with Google” on Qwen, Kimi, Z.ai and DeepSeek.").text_xs())
+            .child(muted("Sign in to Google once in the browser profile, then use “Sign in with Google” on Kimi, Z.ai and DeepSeek.").text_xs())
             .child(div().flex_1())
             .child(
                 div().flex().justify_end().child(
@@ -905,6 +906,7 @@ impl Shell {
             .children((self.running || self.external()).then(|| muted("Stop the gateway first: the browser profile is in use while it runs.").text_xs()));
         let key_card = card()
             .flex_1()
+            .min_w_0()
             .p_4()
             .flex()
             .flex_col()
