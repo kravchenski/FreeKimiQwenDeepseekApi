@@ -30,14 +30,6 @@ impl Activity {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum ProviderAction {
-    OpenSite(String),
-    CaptureQwen,
-    AddApiKey,
-    RunInTerminal(String),
-}
-
 pub fn parse_overview(output: &str) -> Result<Vec<ProviderOverview>, String> {
     let start = output.find('[').ok_or_else(|| "Unexpected accounts output".to_string())?;
     serde_json::from_str(&output[start..]).map_err(|error| format!("Unexpected accounts output: {error}"))
@@ -61,23 +53,6 @@ pub fn detail(overview: &ProviderOverview, live: Option<&ProviderStatus>) -> Str
         Some(ProviderStatus { available: false, reason: Some(reason), .. }) => reason.clone(),
         _ => overview.detail.clone(),
     }
-}
-
-pub fn action(overview: &ProviderOverview) -> Option<ProviderAction> {
-    let fix = overview.fix.as_deref()?;
-    if let Some(url) = fix.strip_prefix("bun run account open ") {
-        return Some(ProviderAction::OpenSite(url.trim().to_string()));
-    }
-    if fix.starts_with("bun run account add qwen --browser") {
-        return Some(ProviderAction::CaptureQwen);
-    }
-    if fix.starts_with("bun run account add nvidia --api-key") {
-        return Some(ProviderAction::AddApiKey);
-    }
-    if fix == "bun run account status" {
-        return None;
-    }
-    Some(ProviderAction::RunInTerminal(fix.to_string()))
 }
 
 pub fn display_name(id: &str) -> &str {
@@ -136,15 +111,5 @@ mod tests {
         assert_eq!(activity(&unknown, Some(&live(true, None))), Activity::Active);
         assert_eq!(activity(&row("qwen", "account", "degraded", None), None), Activity::Degraded);
         assert_eq!(activity(&row("nvidia", "api-key", "not-connected", None), None), Activity::Inactive);
-    }
-
-    #[test]
-    fn maps_fix_commands_to_actions() {
-        assert_eq!(action(&row("kimi-chat", "web", "not-connected", Some("bun run account open https://www.kimi.ai/"))), Some(ProviderAction::OpenSite("https://www.kimi.ai/".into())));
-        assert_eq!(action(&row("qwen", "account", "not-connected", Some("bun run account add qwen --browser"))), Some(ProviderAction::CaptureQwen));
-        assert_eq!(action(&row("nvidia", "api-key", "not-connected", Some("bun run account add nvidia --api-key"))), Some(ProviderAction::AddApiKey));
-        assert_eq!(action(&row("deepseek", "account", "not-connected", Some("bun run auth:deepseek"))), Some(ProviderAction::RunInTerminal("bun run auth:deepseek".into())));
-        assert_eq!(action(&row("glm-chat", "web", "unknown", Some("bun run account status"))), None);
-        assert_eq!(action(&row("nvidia", "api-key", "connected", None)), None);
     }
 }

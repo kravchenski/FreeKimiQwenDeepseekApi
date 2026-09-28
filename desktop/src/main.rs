@@ -16,7 +16,7 @@ use gpui_kit::*;
 
 use accounts::{AccountsCli, SavedAccount};
 use gateway::{check_health, stop_external, Gateway, GatewayConfig};
-use overview::{action, activity, detail, display_name, kind_label, Activity, ProviderAction, ProviderOverview};
+use overview::{activity, detail, display_name, kind_label, Activity, ProviderOverview};
 use status::{fetch_status, now_ms, read_api_key, relative_time, GatewayStatus, ProviderStatus};
 use ui::*;
 
@@ -286,15 +286,6 @@ impl Shell {
         self.health == Health::Online && !self.running
     }
 
-    fn perform(&mut self, action: ProviderAction, cx: &mut Context<Self>) {
-        match action {
-            ProviderAction::OpenSite(url) => self.run_command(cx, move |cli| cli.open_site(&url)),
-            ProviderAction::CaptureQwen => self.run_command(cx, |cli| cli.capture_qwen()),
-            ProviderAction::AddApiKey => self.page = Page::Accounts,
-            ProviderAction::RunInTerminal(command) => self.message = Some((true, format!("Run in a terminal: {command}"))),
-        }
-    }
-
     fn add_api_key(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(provider) = self.selected_key_provider() else { return };
         let key = self.api_key.read(cx).value().to_string();
@@ -485,22 +476,18 @@ impl Shell {
     fn render_providers(&self, cx: &mut Context<Self>) -> AnyElement {
         let compact = self.compact;
         let columns: Vec<(&'static str, f32)> = if compact {
-            vec![("Provider", 190.), ("Status", 130.), ("Details", 0.), ("Action", 130.)]
+            vec![("Provider", 0.), ("Status", 150.)]
         } else {
-            vec![("Provider", 230.), ("Type", 120.), ("Status", 140.), ("Details", 0.), ("Action", 150.)]
+            vec![("Provider", 0.), ("Type", 160.), ("Status", 170.)]
         };
         let active = self.overview.iter().filter(|row| activity(row, self.live(&row.id)) == Activity::Active).count();
         let rows = self.overview.iter().map(|row| {
             let live = self.live(&row.id);
             let state = activity(row, live);
-            let action = action(row).filter(|_| state != Activity::Active);
-            let enabled = match &action {
-                Some(ProviderAction::OpenSite(_) | ProviderAction::CaptureQwen) => !self.browser_blocked(),
-                _ => !self.busy,
-            };
+            let tip: SharedString = detail(row, live).into();
             table_row()
                 .child(
-                    cell(if compact { 190. } else { 230. })
+                    cell(0.)
                         .flex()
                         .items_center()
                         .gap_2p5()
@@ -513,23 +500,15 @@ impl Shell {
                                 .child(muted(row.id.clone()).text_xs()),
                         ),
                 )
-                .when(!compact, |this| this.child(cell(120.).text_color(rgb(MUTED)).child(kind_label(&row.kind).to_string())))
-                .child(cell(if compact { 130. } else { 140. }).flex().child(status_badge(state)))
-                .child(cell(0.).text_color(rgb(MUTED)).child(detail(row, live)))
-                .child(cell(if compact { 130. } else { 150. }).children(action.map(|action| {
-                    let (label, name) = match &action {
-                        ProviderAction::OpenSite(_) | ProviderAction::CaptureQwen => ("Sign in", IconName::LogIn),
-                        ProviderAction::AddApiKey => ("Add key", IconName::KeyRound),
-                        ProviderAction::RunInTerminal(_) => ("How to", IconName::ExternalLink),
-                    };
-                    button(SharedString::from(format!("action-{}", row.id)), label, Some(name), Tone::Outline, enabled)
-                        .when(enabled, |this| {
-                            this.on_click(cx.listener(move |shell, _, _, cx| {
-                                shell.perform(action.clone(), cx);
-                                cx.notify();
-                            }))
-                        })
-                })))
+                .when(!compact, |this| this.child(cell(160.).text_color(rgb(MUTED)).child(kind_label(&row.kind).to_string())))
+                .child(
+                    cell(if compact { 150. } else { 170. }).flex().child(
+                        div()
+                            .id(SharedString::from(format!("status-{}", row.id)))
+                            .child(status_badge(state))
+                            .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx)),
+                    ),
+                )
         });
         div()
             .flex()
@@ -568,7 +547,7 @@ impl Shell {
                     .children(self.overview.is_empty().then(|| table_row().child(muted("Loading providers…")))),
             )
             .children((self.running || self.external()).then(|| {
-                muted("Signing in opens the browser profile, which the running gateway is using. Stop the gateway to sign in.").text_xs()
+                muted("Check sign-ins opens the browser profile, which the running API is using. Stop the API to check sign-ins.").text_xs()
             }))
             .into_any_element()
     }
