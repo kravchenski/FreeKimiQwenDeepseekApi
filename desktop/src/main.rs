@@ -795,12 +795,15 @@ impl Shell {
     fn render_accounts(&self, cx: &mut Context<Self>, keys_page: bool) -> AnyElement {
         let compact = self.compact;
         let states = self.status.as_ref().map(|status| status.accounts.as_slice()).unwrap_or_default();
+        let first_column = if keys_page { "Key" } else { "Account" };
         let columns: Vec<(&'static str, f32)> = if compact {
-            vec![("Key", 0.), ("Status", 150.), ("Action", 120.)]
+            vec![(first_column, 0.), ("Status", 150.), ("Action", 120.)]
         } else {
-            vec![("Key", 0.), ("Provider", 140.), ("Status", 150.), ("Failures", 100.), ("Action", 120.)]
+            vec![(first_column, 0.), ("Provider", 140.), ("Status", 150.), ("Failures", 100.), ("Action", 120.)]
         };
-        let saved_rows = self.saved.iter().map(|account| {
+        let key_provider_ids = self.key_providers();
+        let listed: Vec<&SavedAccount> = self.saved.iter().filter(|account| key_provider_ids.contains(&account.provider) == keys_page).collect();
+        let saved_rows = listed.iter().map(|account| {
             let state = states.iter().find(|state| state.account_id == account.id && state.provider == account.provider);
             let (state_activity, state_label) = match state.map(|state| state.status.as_str()) {
                 Some("healthy") => (Activity::Active, "Healthy".to_string()),
@@ -1006,7 +1009,7 @@ impl Shell {
                         }),
                     ),
             );
-        let total = self.saved.len();
+        let total = listed.len();
         if !keys_page {
             return div()
                 .flex()
@@ -1022,6 +1025,14 @@ impl Shell {
                         .child(div().flex().flex_wrap().gap_4().children(profile_cards))
                         .children(blocked.then(|| muted("Connecting and checking open the account's browser profile. Stop the API first, because it uses the same profiles.").text_xs())),
                 )
+                .children((total > 0).then(|| {
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(div().font_weight(FontWeight::SEMIBOLD).child("Saved accounts"))
+                        .child(card().overflow_hidden().child(table_header(&columns)).children(saved_rows))
+                }))
                 .into_any_element();
         }
         div()
