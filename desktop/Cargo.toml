@@ -9,3 +9,29 @@ gpui-kit = "=0.6.6"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 ureq = { version = "3.4", features = ["json"] }
+
+[package.metadata.packager]
+product-name = "Free AI Gateway"
+identifier = "com.kravchenski.free-ai-gateway"
+description = "Local OpenAI-compatible gateway for web AI chats and free model APIs"
+homepage = "https://github.com/kravchenski/FreeQwenApi"
+authors = ["kravchenski"]
+publisher = "kravchenski"
+category = "DeveloperTool"
+license-file = "../LICENSE"
+out-dir = "target/packages"
+binaries-dir = "target/release"
+binaries = [{ path = "freeapi-desktop", main = true }]
+external-binaries = ["target/sidecars/freeapi-gateway", "target/sidecars/freeapi-accounts"]
+icons = ["assets/icons/icon-32.png", "assets/icons/icon-128.png", "assets/icons/icon-256.png", "assets/icons/icon-512.png"]
+
+[package.metadata.packager.deb]
+depends = [
+  "libxkbcommon0",
+  "libxkbcommon-x11-0",
+  "libwayland-client0",
+  "libvulkan1",
+  "libfontconfig1",
+  "libfreetype6",
+  "libasound2t64 | libasound2",
+]

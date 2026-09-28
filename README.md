@@ -107,7 +107,9 @@ Both endpoints require the bearer token when `GATEWAY_API_KEY` is set.
 
 ## Releases
 
-Versions follow [Semantic Versioning](https://semver.org) and are derived from [Conventional Commits](https://www.conventionalcommits.org) by [release-please](https://github.com/googleapis/release-please): `feat` → minor, `fix` / `perf` / `refactor` → patch, `!` or `BREAKING CHANGE` → major. Every push to `main` updates a release PR; merging it creates the `vX.Y.Z` tag, a GitHub Release listing the commits in that version, updates `CHANGELOG.md`, publishes `ghcr.io/<owner>/freeqwenapi:X.Y.Z` and attaches desktop app binaries for Linux, macOS and Windows. Run the desktop binary from a clone of this repository (or set `FREEAPI_ROOT`).
+Versions follow [Semantic Versioning](https://semver.org) and are derived from [Conventional Commits](https://www.conventionalcommits.org) by [release-please](https://github.com/googleapis/release-please): `feat` → minor, `fix` / `perf` / `refactor` → patch, `!` or `BREAKING CHANGE` → major. Every push to `main` updates a release PR; merging it creates the `vX.Y.Z` tag, a GitHub Release listing the commits in that version, updates `CHANGELOG.md`, publishes `ghcr.io/<owner>/freeqwenapi:X.Y.Z` and attaches desktop installers: `free-ai-gateway-X.Y.Z-linux-x64.deb`, `free-ai-gateway-X.Y.Z-macos-arm64.dmg` and `free-ai-gateway-X.Y.Z-windows-x64-setup.exe`.
+
+The installers bundle the gateway and the accounts CLI as standalone binaries, so Bun is not required. Chrome or Chromium must be installed for the web chats. The installed app keeps its `.env`, `data/`, `session/` and `logs/` in `~/.local/share/free-ai-gateway` (Linux), `~/Library/Application Support/Free AI Gateway` (macOS) or `%APPDATA%\Free AI Gateway` (Windows). Running the desktop app from a clone (`cd desktop && cargo run`, or `FREEAPI_ROOT=<clone>`) still uses the repository with Bun. The installers are not code-signed yet, so macOS and Windows show a warning on first launch.
 
 ## Environment Variables
 
