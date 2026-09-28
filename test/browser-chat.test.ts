@@ -24,6 +24,10 @@ document.getElementById('box').addEventListener('keydown', async event => {
 
 const verifyPage = '<!doctype html><textarea></textarea><p>Please complete security verification</p>';
 
+const jwt = (payload: Record<string, unknown>) => `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.sig`;
+const withToken = (payload: Record<string, unknown>) => `<script>localStorage.setItem('token', ${JSON.stringify(jwt(payload))})</script>${chatPage}`;
+const clearToken = `<script>localStorage.removeItem('token')</script>${chatPage}`;
+
 let server: ReturnType<typeof Bun.serve>;
 let origin = '';
 
@@ -45,7 +49,11 @@ beforeAll(() => {
           },
         }), { headers: { 'content-type': 'text/event-stream' } });
       }
-      const html = url.pathname === '/verify' ? verifyPage : chatPage;
+      const html = url.pathname === '/verify' ? verifyPage
+        : url.pathname === '/member' ? withToken({ email: 'me@example.com' })
+        : url.pathname === '/guest' ? withToken({ email: 'Guest-123@guest.com' })
+        : url.pathname === '/signed-out' ? clearToken
+        : chatPage;
       return new Response(html, { headers: { 'content-type': 'text/html' } });
     },
   });
@@ -83,6 +91,24 @@ describe.skipIf(process.env.RUN_BROWSER_TESTS !== '1' || !findBrowserExecutable(
     const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true, firstChunkTimeoutMs: 10_000 });
     try {
       await expect(session.send(site('/verify'), 'hi').then(collect)).rejects.toThrow('security verification');
+    } finally {
+      await session.close();
+    }
+  }, 90_000);
+
+  test('checks the sign-in before typing and refuses guests', async () => {
+    const seen: Array<[string, boolean]> = [];
+    const session = new BrowserChatSession({
+      profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'),
+      headless: true,
+      onSignIn: (id, result) => seen.push([id, result.signedIn]),
+    });
+    const rule = { storageKey: 'token', claim: 'email', guestPattern: /guest/i };
+    try {
+      expect(await collect(await session.send({ ...site('/member'), signIn: rule }, 'hi'))).toContain('echo hi');
+      await expect(session.send({ ...site('/guest'), signIn: rule }, 'hi')).rejects.toThrow('signed in as a guest; run: bun run account open');
+      await expect(session.send({ ...site('/signed-out'), signIn: rule }, 'hi')).rejects.toThrow('not signed in');
+      expect(seen).toEqual([['fake', true], ['fake', false], ['fake', false]]);
     } finally {
       await session.close();
     }

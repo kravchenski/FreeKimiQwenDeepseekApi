@@ -8,6 +8,11 @@ import { askHidden } from '../src/utils/hiddenPrompt.ts';
 import { listGoogleAccounts, openGoogleSignIn, openProfileWindow } from '../src/browser/google-profile.ts';
 import { captureSiteSession, QWEN_SITE } from '../src/browser/site-session.ts';
 import { prompt } from '../src/utils/prompt.ts';
+import { checkSignIns } from '../src/browser/sign-in-check.ts';
+import { notSignedIn } from '../src/browser/browser-chat.ts';
+import { WebSignInStatus } from '../src/core/accounts/sign-in-status.ts';
+import { loadSignIn, openDatabase, saveSignIn } from '../src/core/store/database.ts';
+import { siteForUrl, WEB_CHAT_SITES } from '../src/providers/web-chat-sites.ts';
 
 try {
   process.exitCode = await runAccountsCommand(process.argv.slice(2), {
@@ -19,6 +24,16 @@ try {
     openGoogleSignIn: () => openGoogleSignIn(),
     listGoogleAccounts: () => listGoogleAccounts(),
     openWindow: url => openProfileWindow(url),
+    checkSignIns: async url => {
+      const sites = url ? [siteForUrl(url)].filter(site => site !== undefined) : WEB_CHAT_SITES;
+      if (!sites.length) return [];
+      const results = await checkSignIns(sites);
+      const db = openDatabase();
+      const status = new WebSignInStatus({ load: provider => loadSignIn(db, provider), save: record => saveSignIn(db, record) });
+      for (const { site, result } of results) status.record(site.id, result.signedIn, result.signedIn ? undefined : notSignedIn(site, result));
+      db.close();
+      return results;
+    },
     verifyApiKey: (provider, apiKey) => {
       if (provider !== 'nvidia') throw new Error(`API keys are not supported for ${provider}`);
       return verifyNvidiaKey(apiKey);

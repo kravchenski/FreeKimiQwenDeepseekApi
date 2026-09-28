@@ -1,5 +1,5 @@
 import type { BrowserChatSession, ChatSite } from '../browser/browser-chat.ts';
-import type { ChatChunk, Provider, ProviderStream } from '../core/providers/provider.ts';
+import type { ChatChunk, Provider, ProviderHealth, ProviderStream } from '../core/providers/provider.ts';
 import { messagesToPrompt } from '../core/providers/prompt.ts';
 
 export interface BrowserChatProviderConfig {
@@ -10,6 +10,7 @@ export interface BrowserChatProviderConfig {
   session: () => Pick<BrowserChatSession, 'send'>;
   parse: (bytes: AsyncIterable<Uint8Array>) => AsyncIterable<ChatChunk>;
   reasoning?: boolean;
+  health?: () => ProviderHealth;
 }
 
 export function createBrowserChatProvider(config: BrowserChatProviderConfig): Provider {
@@ -19,7 +20,7 @@ export function createBrowserChatProvider(config: BrowserChatProviderConfig): Pr
     supports: model => model === config.model,
     listModels: async () => [config.model],
     capabilities: () => ({ nativeTools: false, reasoning: config.reasoning ?? true, vision: false }),
-    health: () => ({ available: true }),
+    health: () => config.health?.() ?? { available: true },
     async stream(request): Promise<ProviderStream> {
       const bytes = await config.session().send(config.site, messagesToPrompt(request.messages));
       return { chunks: config.parse(bytes) };

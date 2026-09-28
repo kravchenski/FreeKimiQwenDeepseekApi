@@ -3,6 +3,7 @@ import type { Page } from 'playwright-core';
 import { ProviderError } from '../core/providers/errors.ts';
 import { launchCdpBrowser, type CdpBrowser, type LaunchOptions } from './cdp.ts';
 import { googleProfileDir } from './google-profile.ts';
+import { readSignIn, type SignInResult, type SignInRule } from './sign-in.ts';
 
 export interface ChatSite {
   id: string;
@@ -10,6 +11,7 @@ export interface ChatSite {
   inputSelector: string;
   responseUrl: RegExp;
   verificationText?: RegExp;
+  signIn?: SignInRule;
 }
 
 export interface BrowserChatOptions {
@@ -18,6 +20,7 @@ export interface BrowserChatOptions {
   firstChunkTimeoutMs?: number;
   idleTimeoutMs?: number;
   launch?: (options: LaunchOptions) => Promise<CdpBrowser>;
+  onSignIn?: (siteId: string, result: SignInResult) => void;
 }
 
 const BINDING = '__freeapiStreamChunk';
@@ -45,6 +48,10 @@ function teeScript({ pattern, binding }: { pattern: string; binding: string }) {
     })().catch(() => emit(null));
     return new Response(forPage, { status: response.status, statusText: response.statusText, headers: response.headers });
   }, original) as typeof fetch;
+}
+
+export function notSignedIn(site: Pick<ChatSite, 'url'>, result: SignInResult) {
+  return `${new URL(site.url).hostname}: ${result.reason ?? 'not signed in'}; run: bun run account open ${site.url}`;
 }
 
 class ChunkQueue {
@@ -116,6 +123,11 @@ export class BrowserChatSession {
     await page.addInitScript(teeScript, { pattern: site.responseUrl.source, binding: BINDING });
     try {
       await page.goto(site.url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      if (site.signIn) {
+        const signIn = await readSignIn(page, site.signIn);
+        this.options.onSignIn?.(site.id, signIn);
+        if (!signIn.signedIn) throw new ProviderError(notSignedIn(site, signIn), 'auth');
+      }
       const input = page.locator(site.inputSelector).first();
       await input.waitFor({ timeout: 30_000 });
       await input.fill(prompt);
@@ -123,6 +135,7 @@ export class BrowserChatSession {
       return { page, queue };
     } catch (error) {
       await page.close().catch(() => {});
+      if (error instanceof ProviderError) throw error;
       throw new ProviderError(`${site.id} chat page is not ready: ${error instanceof Error ? error.message : error}`, 'unavailable');
     }
   }

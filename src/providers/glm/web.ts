@@ -8,6 +8,7 @@ export const ZAI_CHAT_SITE: ChatSite = {
   inputSelector: 'textarea',
   responseUrl: /\/api\/v2\/chat\/completions/,
   verificationText: /security verification/i,
+  signIn: { storageKey: 'token', claim: 'email', guestPattern: /guest/i },
 };
 
 export function parseZaiEvent(line: string): ChatChunk | 'done' | null {
