@@ -256,24 +256,15 @@ describe('unified server routing', () => {
     expect(events.at(-1).type).toBe('message_stop');
   });
 
-  test('serves image generation through the image upstream with auth and validation', async () => {
-    server.setImageUpstream({
-      async forward(path) {
-        return Response.json({ created: 7, data: [{ url: `https://cdn.test${path}.png` }] });
-      },
-    });
-    const post = (body: unknown, authorization = `Bearer ${key}`) => server.app.fetch(new Request('http://local/v1/images/generations', {
+  test('no longer serves image endpoints', async () => {
+    const response = await server.app.fetch(new Request('http://local/v1/images/generations', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization },
-      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      body: JSON.stringify({ prompt: 'a fox' }),
     }));
-
-    const ok = await post({ prompt: 'a fox' });
-    expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ created: 7, data: [{ url: 'https://cdn.test/images/generations.png' }] });
-    expect((await post({ prompt: '' })).status).toBe(400);
-    expect((await post({ prompt: 'a fox' }, 'Bearer wrong')).status).toBe(401);
+    expect(response.status).toBe(404);
   });
+
 
   test('adds request ids, forwards them to subrequests and exposes Prometheus metrics', async () => {
     replies.push([{ type: 'content', text: 'metrics' }]);

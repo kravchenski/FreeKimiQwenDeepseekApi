@@ -54,9 +54,9 @@ The same commands work in Bash, zsh, PowerShell, and Command Prompt.
 After running the installer:
 
 ```text
-pi --provider freeai --model qwen3-coder-plus
+pi --provider freeai --model auto
 opencode
-hermes chat --provider custom:freeai --model qwen3-coder-plus
+hermes chat --provider custom:freeai --model auto
 aider --config ~/.aider.freeqwenapi.yml
 ```
 
@@ -71,7 +71,7 @@ Cline CLI can be configured with the command generated in
 | Provider | OpenAI Compatible |
 | Base URL | `http://127.0.0.1:3260/api` |
 | API key | `dummy-key` |
-| Model | `qwen3-coder-plus`, `deepseek-default`, or another listed model |
+| Model | `auto`, `deepseek-default`, or another listed model |
 
 ## Codex And Claude Code
 
@@ -84,7 +84,7 @@ uvx --from "litellm[proxy]" litellm --config ~/.freeqwenapi/litellm.yaml --host 
 Then start Codex:
 
 ```text
-FREEAI_API_KEY=dummy-key codex -p freeai -m qwen3-coder-plus
+FREEAI_API_KEY=dummy-key codex -p freeai -m auto
 ```
 
 The installer preserves `~/.codex/config.toml`, migrates its old managed block,
@@ -93,7 +93,7 @@ and updates only `~/.codex/freeai.config.toml` on subsequent runs.
 It also creates one profile per generated model:
 
 ```text
-codex -p freeai-qwen3-coder-plus
+codex -p freeai-deepseek-default
 codex -p freeai-deepseek-reasoner
 ```
 
@@ -104,13 +104,13 @@ PowerShell:
 
 ```powershell
 $env:FREEAI_API_KEY = "dummy-key"
-codex -p freeai -m qwen3-coder-plus
+codex -p freeai -m auto
 ```
 
 Start Claude Code:
 
 ```text
-claude --settings ~/.claude/freeai-settings.json --model qwen3-coder-plus
+claude --settings ~/.claude/freeai-settings.json --model auto
 ```
 
 ## Generated Files

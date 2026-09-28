@@ -2,7 +2,7 @@
 
 # FreeQwenApi
 
-**Free API proxy for Qwen, DeepSeek and NVIDIA models (Kimi, GLM, DeepSeek) — OpenAI-compatible endpoint for OpenCode, Continue, Cline, Aider and any AI agent.**
+**Free local gateway for DeepSeek, GLM and Kimi web chats and NVIDIA models — OpenAI-compatible endpoint for OpenCode, Continue, Cline, Aider and any AI agent.**
 
 [![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun&logoColor=000)](https://bun.sh)
 [![OpenAI compatible](https://img.shields.io/badge/API-OpenAI%20compatible-412991)](#api-reference)
@@ -12,7 +12,7 @@
 
 </div>
 
-FreeQwenApi is a proxy for [Qwen](https://chat.qwen.ai), [DeepSeek Web](https://chat.deepseek.com/) and [NVIDIA API](https://build.nvidia.com) models (Kimi, GLM, DeepSeek) with an OpenAI-compatible API.
+FreeQwenApi is a local gateway for [DeepSeek Web](https://chat.deepseek.com/), [GLM (chat.z.ai)](https://chat.z.ai/), [Kimi](https://www.kimi.ai/) and [NVIDIA API](https://build.nvidia.com) models with an OpenAI-compatible API.
 
 ## Quick Start
 
@@ -30,7 +30,6 @@ bun run start
 | Provider | Models | Key |
 |----------|--------|-----|
 | **Auto** | `auto` — web chats first, then discovered NVIDIA models, each ordered by measured response time; override with `AUTO_MODELS` | — |
-| **Qwen** | `qwen3.7-plus`, `qwen3.8-max`, `qwen3-coder-plus`, … (list fetched from the Qwen API proxy) | `bun run account add qwen --browser` or `QWEN_TOKEN` |
 | **DeepSeek** | `deepseek-default`, `deepseek-reasoner`, `deepseek-expert`, `deepseek-search` | `bun run auth:deepseek` |
 | **GLM / Kimi web chat** | `glm-chat` (chat.z.ai), `kimi-chat` (kimi.ai) — sent through your signed-in browser; `bun run account status` shows which chats are signed in | `bun run account open <url>` |
 | **NVIDIA** | every chat model your key can see (`deepseek-ai/*`, `moonshotai/*`, `z-ai/*`, `meta/*`, `mistralai/*`, …); models missing for your account are hidden after the first 404 | `NVIDIA_API_KEY` or `bun run account add nvidia --api-key` |
@@ -76,7 +75,7 @@ DeepSeek supports tool calls. Web providers (DeepSeek) work through browser (Pup
 | `bun run start` | Start unified server (port 3260) |
 | `bun run dev` | Start with watch mode |
 | `bun run auth:deepseek` | Manage DeepSeek accounts |
-| `bun run account` | Manage Qwen accounts (`add qwen --browser`, `list`, `remove`) |
+| `bun run account` | Show providers; save API keys (`add nvidia --api-key`, `list`, `remove`); web chat sign-in (`open`, `status`) |
 | `bun run test` | Run tests |
 | `bun run check` | Validate build |
 
@@ -87,17 +86,6 @@ docker compose up -d
 ```
 
 Starts the unified API on `127.0.0.1:3260` using `.env` for keys and mounting `session/`, `data/` and `logs/`. Add accounts on the host (`bun run account ...`) before starting. The old per-provider services are available with `docker compose --profile legacy up -d`.
-
-## Images
-
-OpenAI-compatible image endpoints backed by the Qwen API (uses the same Qwen token or accounts):
-
-```bash
-curl http://localhost:3260/v1/images/generations -H 'content-type: application/json' \
-  -d '{"prompt":"a red fox in the snow","size":"16:9"}'
-```
-
-`POST /v1/images/edits` accepts one image as an https URL / data URL in JSON, or as a multipart `image` file.
 
 ## Monitoring
 
@@ -127,7 +115,7 @@ The installers bundle the gateway and the accounts CLI as standalone binaries, s
 ```
 src/
   unified/server.ts      — main server (all providers)
-  providers/             — provider clients (deepseek/, qwen/, OpenAI-compatible NVIDIA catalog)
+  providers/             — provider clients (deepseek/, glm/, kimi/, OpenAI-compatible NVIDIA catalog)
   api/                   — API routes and chat logic
   browser/               — Puppeteer browser
   web/server.ts          — web interface

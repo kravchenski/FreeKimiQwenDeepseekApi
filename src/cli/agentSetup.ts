@@ -41,9 +41,6 @@ const DEFAULT_API_KEY = 'dummy-key';
 const DEFAULT_MODEL = 'auto';
 const FALLBACK_MODELS = [
     'auto',
-    'qwen3.7-plus',
-    'qwen3.8-max',
-    'qwen3-coder-plus',
     'deepseek-default',
     'deepseek-reasoner',
     'deepseek-expert',

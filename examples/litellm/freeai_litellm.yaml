@@ -3,9 +3,9 @@
 # Start: uvx --from "litellm[proxy]" litellm --config examples/litellm/freeai_litellm.yaml --host 127.0.0.1 --port 4000
 
 model_list:
-  - model_name: qwen3-coder-plus
+  - model_name: auto
     litellm_params:
-      model: openai/chat_completions/qwen3-coder-plus
+      model: openai/chat_completions/auto
       api_base: http://127.0.0.1:3260/api
       api_key: dummy-key
 

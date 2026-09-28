@@ -87,9 +87,7 @@ describe('accounts CLI sign-in status', () => {
     const lines: string[] = [];
     const checked: Array<string | undefined> = [];
     const deps: AccountsCliDeps = {
-      store: { list: () => [], add: () => { throw new Error('unused'); }, remove: () => false },
-      signIn: async () => { throw new Error('unused'); },
-      ask: async () => '',
+      store: { list: () => [], addApiKey: () => { throw new Error('unused'); }, remove: () => false },
       askHidden: async () => '',
       log: line => lines.push(line),
       openWindow: async () => {},

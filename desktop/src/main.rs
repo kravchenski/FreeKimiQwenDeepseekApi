@@ -678,20 +678,12 @@ impl Shell {
                         }))
                     })))
             }
-            _ if row.id == "qwen" => connection
-                .child(muted("Sign in to Qwen in the browser; the session is captured and stored encrypted.").text_xs())
-                .child(div().flex().child(button("provider-capture", "Add account via browser", Some(IconName::LogIn), Tone::Primary, !blocked).when(!blocked, |this| {
-                    this.on_click(cx.listener(|shell, _, _, cx| {
-                        shell.run_command(cx, |cli| cli.capture_qwen());
-                        cx.notify();
-                    }))
-                }))),
             _ => connection.child(muted(match row.fix.as_deref() {
                 Some(fix) => format!("Connect it from a terminal: {fix}"),
                 None => "Connected. Manage its accounts from a terminal.".to_string(),
             })),
         }
-        .children((blocked && (row.kind == "web" || row.id == "qwen")).then(|| muted("Browser actions are paused while the API runs, because it uses the same browser profile.").text_xs()));
+        .children((blocked && row.kind == "web").then(|| muted("Browser actions are paused while the API runs, because it uses the same browser profile.").text_xs()));
 
         let provider = row.id.clone();
         let auto = row.auto;

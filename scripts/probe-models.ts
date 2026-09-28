@@ -40,7 +40,7 @@ try {
   const models = (await listGatewayModels(options)).filter(model =>
     (values.provider === 'all' || model.ownedBy === values.provider) && (!values.match || model.id.includes(values.match)));
   if (!models.length) throw new Error(`No models match provider=${values.provider}${values.match ? ` match=${values.match}` : ''}`);
-  const api = models.filter(model => model.ownedBy === 'nvidia' || model.ownedBy === 'qwen-api');
+  const api = models.filter(model => model.ownedBy === 'nvidia');
   const web = models.filter(model => !api.includes(model));
   console.error(`Probing ${models.length} models (timeout ${values.timeout}s)…`);
   let done = 0;

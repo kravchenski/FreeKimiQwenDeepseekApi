@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { runAccountsCommand, type AccountsCliDeps } from '../src/cli/accounts.ts';
-import { adoptLegacyCredentials, CredentialStore, savedApiKey } from '../src/core/accounts/credential-store.ts';
+import { CredentialStore, savedApiKey } from '../src/core/accounts/credential-store.ts';
 import { createNvidiaProvider, verifyNvidiaKey } from '../src/providers/catalog.ts';
 
 const SECRET = 'correct horse battery staple';
@@ -18,8 +18,6 @@ function cli(verify: AccountsCliDeps['verifyApiKey'] = async () => 82) {
   const store = new CredentialStore(join(tempDir(), 'credentials.enc'), SECRET);
   const deps: AccountsCliDeps = {
     store,
-    signIn: async () => { throw new Error('not used'); },
-    ask: async () => 'unused',
     askHidden: async () => '  nvapi-secret  ',
     log: line => lines.push(line),
     verifyApiKey: verify,
@@ -44,20 +42,6 @@ describe('credential registry', () => {
     const store = new CredentialStore(join(tempDir(), 'credentials.enc'), undefined);
     expect(savedApiKey({ list: () => { throw new Error('ACCOUNTS_SECRET is not set'); } }, 'nvidia')).toBeUndefined();
     expect(() => store.addApiKey({ provider: 'nvidia', label: 'a', apiKey: 'k' })).toThrow('ACCOUNTS_SECRET');
-  });
-
-  test('moves the legacy Qwen vault into the shared registry once', () => {
-    const dir = tempDir();
-    const legacy = join(dir, 'qwen', 'accounts.enc');
-    const target = join(dir, 'credentials.enc');
-    mkdirSync(join(dir, 'qwen'));
-    writeFileSync(legacy, 'sealed');
-    expect(adoptLegacyCredentials(legacy, target)).toBeTrue();
-    expect(existsSync(legacy)).toBeFalse();
-    expect(existsSync(target)).toBeTrue();
-    writeFileSync(legacy, 'newer');
-    expect(adoptLegacyCredentials(legacy, target)).toBeFalse();
-    expect(existsSync(legacy)).toBeTrue();
   });
 
   test('NVIDIA uses a saved key when the environment has none', async () => {
@@ -100,12 +84,12 @@ describe('accounts CLI API keys', () => {
     expect(store.list()).toEqual([]);
   });
 
-  test('tests saved keys and refuses the wrong sign-in method', async () => {
+  test('tests saved keys and refuses other sign-in methods', async () => {
     const { deps, lines, store } = cli();
     const key = store.addApiKey({ provider: 'nvidia', label: 'default', apiKey: 'k' });
     expect(await runAccountsCommand(['test', key.id], deps)).toBe(0);
     expect(lines.at(-1)).toBe('OK default: 82 models available');
     await expect(runAccountsCommand(['add', 'nvidia', '--email', 'a@b.c'], deps)).rejects.toThrow('bun run account add nvidia --api-key');
-    await expect(runAccountsCommand(['add', 'qwen', '--api-key'], deps)).rejects.toThrow('does not support');
+    await expect(runAccountsCommand(['add', 'qwen', '--api-key'], deps)).rejects.toThrow('Unknown provider: qwen');
   });
 });

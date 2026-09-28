@@ -10,15 +10,8 @@ export interface Credential {
   provider: string;
   email: string;
   password: string;
-  method?: 'password' | 'browser' | 'api-key';
+  method?: 'password' | 'api-key';
   token?: string;
-  expiresAt?: number;
-}
-
-export interface BrowserSession {
-  provider: string;
-  email: string;
-  token: string;
   expiresAt?: number;
 }
 
@@ -29,14 +22,6 @@ export interface ApiKeyCredential {
 }
 
 export const CREDENTIALS_FILE = path.resolve(process.env.SESSION_DIR || 'session', 'credentials.enc');
-const LEGACY_QWEN_FILE = path.resolve(process.env.SESSION_DIR || 'session', 'qwen', 'accounts.enc');
-
-export function adoptLegacyCredentials(legacyFile: string, file = CREDENTIALS_FILE) {
-  if (fs.existsSync(file) || !fs.existsSync(legacyFile)) return false;
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  fs.renameSync(legacyFile, file);
-  return true;
-}
 
 export class CredentialStore {
   constructor(
@@ -58,23 +43,6 @@ export class CredentialStore {
     }
     const credential = { ...input, email, id: `${input.provider}-${crypto.randomBytes(4).toString('hex')}` };
     this.write([...credentials, credential]);
-    return credential;
-  }
-
-  addBrowserSession(input: BrowserSession) {
-    const email = input.email.trim().toLowerCase();
-    if (!email || !input.token) throw new Error('Label and token are required');
-    const remaining = this.read().filter(credential => !(credential.provider === input.provider && credential.email === email));
-    const credential: Credential = {
-      id: `${input.provider}-${crypto.randomBytes(4).toString('hex')}`,
-      provider: input.provider,
-      email,
-      password: '',
-      method: 'browser',
-      token: input.token,
-      ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
-    };
-    this.write([...remaining, credential]);
     return credential;
   }
 
@@ -129,7 +97,6 @@ export class CredentialStore {
 }
 
 export function openCredentialStore(secret?: string) {
-  adoptLegacyCredentials(LEGACY_QWEN_FILE);
   return new CredentialStore(CREDENTIALS_FILE, secret ?? (() => accountsSecret()));
 }
 

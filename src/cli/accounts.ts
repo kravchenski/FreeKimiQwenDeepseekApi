@@ -1,25 +1,18 @@
-import type { ApiKeyCredential, BrowserSession, Credential } from '../core/accounts/credential-store.ts';
-import type { CapturedSession } from '../browser/site-session.ts';
+import type { ApiKeyCredential, Credential } from '../core/accounts/credential-store.ts';
 import type { SiteSignIn } from '../browser/sign-in-check.ts';
 import { notSignedIn } from '../browser/browser-chat.ts';
 import { formatOverview, type ProviderOverview } from './overview.ts';
-import type { QwenSession } from '../providers/qwen/auth.ts';
 
 export interface AccountsCliDeps {
   store: {
     list(provider?: string): Credential[];
-    add(input: Omit<Credential, 'id'>): Credential;
-    addBrowserSession?(input: BrowserSession): Credential;
-    addApiKey?(input: ApiKeyCredential): Credential;
+    addApiKey(input: ApiKeyCredential): Credential;
     remove(id: string): boolean;
   };
-  signIn: (email: string, password: string) => Promise<QwenSession>;
-  ask: (question: string) => Promise<string>;
   askHidden: (question: string) => Promise<string>;
   log: (line: string) => void;
   openGoogleSignIn?: () => Promise<void>;
   listGoogleAccounts?: () => Promise<string[]>;
-  captureSession?: (provider: string) => Promise<CapturedSession>;
   openWindow?: (url: string) => Promise<void>;
   verifyApiKey?: (provider: string, apiKey: string) => Promise<number>;
   checkSignIns?: (url?: string) => Promise<SiteSignIn[]>;
@@ -29,9 +22,7 @@ export interface AccountsCliDeps {
   providerAuto?: (provider: string, auto?: boolean) => boolean;
 }
 
-const PASSWORD_PROVIDERS = new Set(['qwen']);
 const API_KEY_PROVIDERS = new Set(['nvidia']);
-const PROVIDERS = new Set([...PASSWORD_PROVIDERS, ...API_KEY_PROVIDERS]);
 
 export const ACCOUNTS_USAGE = `Usage: bun run account <command>
 
@@ -39,29 +30,24 @@ export const ACCOUNTS_USAGE = `Usage: bun run account <command>
   init                                            Create ACCOUNTS_SECRET in the system keyring (moves it out of .env)
   secret                                          Show where ACCOUNTS_SECRET is loaded from
   provider <id> [--auto on|off]                   Show or change whether model=auto may use a provider
-  add <provider> [--email <email>] [--no-verify]  Save an account (password is always prompted)
-  add <provider> --browser [--label <name>]       Sign in yourself in the browser; the session is captured
   add <provider> --api-key [--label <name>]       Save an API key (the key is always prompted)
-  list [provider]                                 List saved accounts
-  remove <id>                                     Delete an account
-  test <id>                                       Sign in with a saved account
+  list [provider]                                 List saved API keys
+  remove <id>                                     Delete a saved API key
+  test <id>                                       Check a saved API key
   google [--list]                                 Sign in to Google in the browser profile, then list its accounts
   open <https-url>                                Open a site in the browser profile to sign in manually
   status                                          Show which web chats the browser profile is signed in to
 
-Providers: ${[...PASSWORD_PROVIDERS].join(', ')} (email or browser), ${[...API_KEY_PROVIDERS].join(', ')} (API key)`;
+API key providers: ${[...API_KEY_PROVIDERS].join(', ')}
+Web chats sign in through the browser profile: bun run account open <url>`;
 
 function option(args: string[], name: string) {
   const index = args.indexOf(name);
   return index === -1 ? undefined : args[index + 1];
 }
 
-function requireProvider(provider: string | undefined, allowed: Set<string> = PASSWORD_PROVIDERS) {
-  if (!provider || !PROVIDERS.has(provider)) throw new Error(`Unknown provider: ${provider ?? '(none)'}\n\n${ACCOUNTS_USAGE}`);
-  if (!allowed.has(provider)) {
-    const hint = API_KEY_PROVIDERS.has(provider) ? `use: bun run account add ${provider} --api-key` : `use: bun run account add ${provider}`;
-    throw new Error(`${provider} does not support this sign-in method; ${hint}`);
-  }
+function requireProvider(provider: string | undefined) {
+  if (!provider || !API_KEY_PROVIDERS.has(provider)) throw new Error(`Unknown provider: ${provider ?? '(none)'}\n\n${ACCOUNTS_USAGE}`);
   return provider;
 }
 
@@ -71,10 +57,6 @@ function reportSignIns(results: SiteSignIn[], log: (line: string) => void) {
     log(result.signedIn ? `✓ ${site.id.padEnd(10)} ${host}` : `○ ${site.id.padEnd(10)} ${notSignedIn(site, result)}`);
   }
   return results.every(entry => entry.result.signedIn) ? 0 : 1;
-}
-
-function describeExpiry(session: QwenSession) {
-  return session.expiresAt ? `token valid until ${new Date(session.expiresAt).toISOString()}` : 'token has no expiry';
 }
 
 export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) {
@@ -134,20 +116,8 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
     return reportSignIns(await deps.checkSignIns(), deps.log);
   }
 
-  if (command === 'add' && args.includes('--browser')) {
-    const provider = requireProvider(target);
-    if (!deps.captureSession || !deps.store.addBrowserSession) throw new Error('Browser sign-in is not available');
-    deps.log('Sign in in the opened browser window. When the chat is open, close the window.');
-    const session = await deps.captureSession(provider);
-    const label = session.email ?? option(args, '--label') ?? await deps.ask('Account label (e.g. email): ');
-    const credential = deps.store.addBrowserSession({ provider, email: label, token: session.token, expiresAt: session.expiresAt });
-    deps.log(`Saved ${credential.id} (${credential.email}): ${describeExpiry(session)}`);
-    return 0;
-  }
-
   if (command === 'add' && args.includes('--api-key')) {
-    const provider = requireProvider(target, API_KEY_PROVIDERS);
-    if (!deps.store.addApiKey) throw new Error('API keys are not supported by this store');
+    const provider = requireProvider(target);
     const label = option(args, '--label') ?? 'default';
     const apiKey = (await deps.askHidden('API key: ')).trim();
     if (!apiKey) throw new Error('API key is required');
@@ -160,15 +130,8 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
   }
 
   if (command === 'add') {
-    const provider = requireProvider(target);
-    const email = option(args, '--email') ?? await deps.ask('Email: ');
-    const password = await deps.askHidden('Password: ');
-    if (!args.includes('--no-verify')) {
-      deps.log(`Signed in as ${email}: ${describeExpiry(await deps.signIn(email, password))}`);
-    }
-    const credential = deps.store.add({ provider, email, password });
-    deps.log(`Saved ${credential.id} (${credential.email})`);
-    return 0;
+    requireProvider(target);
+    throw new Error(`Use: bun run account add ${target} --api-key`);
   }
 
   if (command === 'list') {
@@ -195,12 +158,8 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
       deps.log(`OK ${credential.email}: ${await deps.verifyApiKey(credential.provider, credential.token)} models available`);
       return 0;
     }
-    if (credential.method === 'browser') {
-      deps.log(`${credential.email} is a browser session; send a request through the gateway to check it`);
-      return 0;
-    }
-    deps.log(`OK ${credential.email}: ${describeExpiry(await deps.signIn(credential.email, credential.password))}`);
-    return 0;
+    deps.log(`${credential.email} is not an API key; nothing to check`);
+    return 1;
   }
 
   deps.log(ACCOUNTS_USAGE);
