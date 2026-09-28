@@ -196,6 +196,32 @@ pub fn stop_external(base_url: &str) -> Result<u32, String> {
     terminate(pid).map(|()| pid)
 }
 
+pub fn open_in_browser(url: &str) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err("Only https links can be opened".into());
+    }
+    let mut command = if cfg!(windows) {
+        let mut command = Command::new("cmd");
+        command.args(["/C", "start", "", url]);
+        command
+    } else if cfg!(target_os = "macos") {
+        let mut command = Command::new("open");
+        command.arg(url);
+        command
+    } else {
+        let mut command = Command::new("xdg-open");
+        command.arg(url);
+        command
+    };
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not open {url}: {error}"))
+}
+
 pub fn check_health(base_url: &str) -> Result<(), String> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(2)))
@@ -338,6 +364,12 @@ mod tests {
         let status = child.wait().unwrap();
         assert!(!status.success());
         assert!(terminate(child.id()).is_err());
+    }
+
+    #[test]
+    fn opens_only_https_links() {
+        assert_eq!(open_in_browser("http://example.com"), Err("Only https links can be opened".into()));
+        assert_eq!(open_in_browser("javascript:alert(1)"), Err("Only https links can be opened".into()));
     }
 
     #[test]

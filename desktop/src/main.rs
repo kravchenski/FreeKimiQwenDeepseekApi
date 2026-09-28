@@ -15,7 +15,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use accounts::{AccountsCli, SavedAccount};
-use gateway::{check_health, stop_external, Gateway, GatewayConfig};
+use gateway::{check_health, open_in_browser, stop_external, Gateway, GatewayConfig};
 use overview::{activity, detail, display_name, kind_label, Activity, ProviderOverview};
 use status::{fetch_status, now_ms, read_api_key, relative_time, GatewayStatus, ProviderStatus};
 use ui::*;
@@ -300,6 +300,17 @@ impl Shell {
         let key = self.api_key.read(cx).value().to_string();
         self.api_key.update(cx, |input, cx| input.set_value("", window, cx));
         self.run_command(cx, move |cli| cli.add_api_key(&provider, &key));
+    }
+
+    fn open_link(&mut self, url: &str) {
+        self.message = match open_in_browser(url) {
+            Ok(()) => Some((true, format!("Opened {url} in your browser. Create a key there and paste it here."))),
+            Err(error) => Some((false, error)),
+        };
+    }
+
+    fn key_page(&self, provider: &str) -> Option<String> {
+        self.overview.iter().find(|row| row.id == provider && row.kind == "api-key").and_then(|row| row.url.clone())
     }
 
     fn live(&self, id: &str) -> Option<&ProviderStatus> {
@@ -618,8 +629,19 @@ impl Shell {
                             .child(status_badge(state)),
                     )
                     .child(muted(format!("{} · {}", kind_label(&row.kind), row.id)).text_xs())
-                    .child(muted(detail(&row, live))),
-            );
+                    .child(muted(if state == Activity::NotConnected {
+                        "No API key yet. Get a free key from the provider and paste it below.".to_string()
+                    } else {
+                        detail(&row, live)
+                    })),
+            )
+            .children(row.url.clone().filter(|_| row.kind == "api-key").map(|url| {
+                button("provider-get-key", "Get API key", Some(IconName::ExternalLink), if state == Activity::NotConnected { Tone::Primary } else { Tone::Outline }, true)
+                    .on_click(cx.listener(move |shell, _, _, cx| {
+                        shell.open_link(&url);
+                        cx.notify();
+                    }))
+            }));
 
         let connection = card().p_4().flex().flex_col().gap_3().child(div().font_weight(FontWeight::SEMIBOLD).child("Connection"));
         let connection = match (row.kind.as_str(), row.url.clone()) {
@@ -916,14 +938,26 @@ impl Shell {
             .child(div().flex().flex_wrap().gap_2().children(provider_pills).children(key_providers.is_empty().then(|| muted("Loading providers…"))))
             .child(Input::new(&self.api_key))
             .child(
-                div().flex().justify_end().child(
-                    button("add-key", if self.busy { "Working…" } else { "Save key" }, Some(IconName::KeyRound), Tone::Primary, can_save_key).when(can_save_key, |this| {
-                        this.on_click(cx.listener(|shell, _, window, cx| {
-                            shell.add_api_key(window, cx);
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .justify_between()
+                    .gap_2()
+                    .children(selected.clone().and_then(|provider| self.key_page(&provider).map(|url| (provider, url))).map(|(provider, url)| {
+                        button("get-key", format!("Get {} key", display_name(&provider)), Some(IconName::ExternalLink), Tone::Outline, true).on_click(cx.listener(move |shell, _, _, cx| {
+                            shell.open_link(&url);
                             cx.notify();
                         }))
-                    }),
-                ),
+                    }))
+                    .child(div().flex_1())
+                    .child(
+                        button("add-key", if self.busy { "Working…" } else { "Save key" }, Some(IconName::KeyRound), Tone::Primary, can_save_key).when(can_save_key, |this| {
+                            this.on_click(cx.listener(|shell, _, window, cx| {
+                                shell.add_api_key(window, cx);
+                                cx.notify();
+                            }))
+                        }),
+                    ),
             );
         let total = self.google.len() + self.saved.len();
         div()
