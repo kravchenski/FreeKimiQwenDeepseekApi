@@ -9,7 +9,7 @@ export interface Credential {
   provider: string;
   email: string;
   password: string;
-  method?: 'password' | 'browser';
+  method?: 'password' | 'browser' | 'api-key';
   token?: string;
   expiresAt?: number;
 }
@@ -19,6 +19,22 @@ export interface BrowserSession {
   email: string;
   token: string;
   expiresAt?: number;
+}
+
+export interface ApiKeyCredential {
+  provider: string;
+  label: string;
+  apiKey: string;
+}
+
+export const CREDENTIALS_FILE = path.resolve(process.env.SESSION_DIR || 'session', 'credentials.enc');
+const LEGACY_QWEN_FILE = path.resolve(process.env.SESSION_DIR || 'session', 'qwen', 'accounts.enc');
+
+export function adoptLegacyCredentials(legacyFile: string, file = CREDENTIALS_FILE) {
+  if (fs.existsSync(file) || !fs.existsSync(legacyFile)) return false;
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  fs.renameSync(legacyFile, file);
+  return true;
 }
 
 export class CredentialStore {
@@ -61,6 +77,26 @@ export class CredentialStore {
     return credential;
   }
 
+  addApiKey(input: ApiKeyCredential) {
+    const label = input.label.trim().toLowerCase();
+    const apiKey = input.apiKey.trim();
+    if (!label || !apiKey) throw new Error('Label and API key are required');
+    const credentials = this.read();
+    if (credentials.some(credential => credential.provider === input.provider && credential.email === label)) {
+      throw new Error(`Account already exists: ${input.provider} ${label}`);
+    }
+    const credential: Credential = {
+      id: `${input.provider}-${crypto.randomBytes(4).toString('hex')}`,
+      provider: input.provider,
+      email: label,
+      password: '',
+      method: 'api-key',
+      token: apiKey,
+    };
+    this.write([...credentials, credential]);
+    return credential;
+  }
+
   remove(id: string) {
     const credentials = this.read();
     const remaining = credentials.filter(credential => credential.id !== id);
@@ -87,5 +123,22 @@ export class CredentialStore {
     fs.writeFileSync(temporary, `${payload}\n`, { mode: 0o600 });
     fs.renameSync(temporary, this.file);
     fs.chmodSync(this.file, 0o600);
+  }
+}
+
+export function openCredentialStore(secret = process.env.ACCOUNTS_SECRET) {
+  adoptLegacyCredentials(LEGACY_QWEN_FILE);
+  return new CredentialStore(CREDENTIALS_FILE, secret);
+}
+
+export interface CredentialSource {
+  list(provider?: string): Array<Pick<Credential, 'method' | 'token'>>;
+}
+
+export function savedApiKey(store: CredentialSource, provider: string) {
+  try {
+    return store.list(provider).find(credential => credential.method === 'api-key' && credential.token)?.token;
+  } catch {
+    return undefined;
   }
 }

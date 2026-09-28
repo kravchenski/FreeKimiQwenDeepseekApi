@@ -33,7 +33,7 @@ bun run start
 | **Qwen** | `qwen3.7-plus`, `qwen3.8-max`, `qwen3-coder-plus`, … (list fetched from the Qwen API proxy) | `bun run account add qwen --browser` or `QWEN_TOKEN` |
 | **DeepSeek** | `deepseek-default`, `deepseek-reasoner`, `deepseek-expert`, `deepseek-search` | `bun run auth:deepseek` |
 | **GLM / Kimi web chat** | `glm-chat` (chat.z.ai), `kimi-chat` (kimi.ai) — sent through your signed-in browser | `bun run account open <url>` |
-| **NVIDIA** | every chat model your key can see (`deepseek-ai/*`, `moonshotai/*`, `z-ai/*`, `meta/*`, `mistralai/*`, …); models missing for your account are hidden after the first 404 | `NVIDIA_API_KEY` |
+| **NVIDIA** | every chat model your key can see (`deepseek-ai/*`, `moonshotai/*`, `z-ai/*`, `meta/*`, `mistralai/*`, …); models missing for your account are hidden after the first 404 | `NVIDIA_API_KEY` or `bun run account add nvidia --api-key` |
 
 All models are free. NVIDIA is the fallback and requires an API key.
 
@@ -113,7 +113,8 @@ Versions follow [Semantic Versioning](https://semver.org) and are derived from [
 |----------|---------|-------------|
 | `UNIFIED_PORT` | `3260` | Server port |
 | `HOST` | `0.0.0.0` | Bind address |
-| `NVIDIA_API_KEY` | - | NVIDIA API key (for DeepSeek V4 Pro, Kimi K2.6) |
+| `NVIDIA_API_KEY` | - | NVIDIA API key; overrides a key saved with `bun run account add nvidia --api-key` |
+| `ACCOUNTS_SECRET` | - | Encrypts the credential registry `session/credentials.enc` (Qwen accounts, API keys) |
 
 ## Project Structure
 
@@ -124,7 +125,7 @@ src/
   api/                   — API routes and chat logic
   browser/               — Puppeteer browser
   web/server.ts          — web interface
-session/                 — account tokens (gitignored)
+session/                 — credential registry, browser profile and web sessions (gitignored)
 ```
 
 ## License

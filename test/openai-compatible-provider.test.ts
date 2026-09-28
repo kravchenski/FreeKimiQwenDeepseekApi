@@ -73,7 +73,7 @@ describe('OpenAI-compatible providers', () => {
     const { calls, fetchFn } = recordingFetch(() => sseResponse([]));
     const nvidia = createNvidiaProvider({ env: {}, fetch: fetchFn });
 
-    expect(nvidia.health()).toEqual({ available: false, reason: 'NVIDIA_API_KEY is not set' });
+    expect(nvidia.health()).toEqual({ available: false, reason: 'NVIDIA_API_KEY is not set; or run: bun run account add nvidia --api-key' });
     await expect(nvidia.stream({ model: 'moonshotai/kimi-k3', messages: [] })).rejects.toThrow('NVIDIA_API_KEY');
     expect(calls).toHaveLength(0);
   });
