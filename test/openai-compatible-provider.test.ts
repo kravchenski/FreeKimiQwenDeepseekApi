@@ -104,3 +104,31 @@ describe('OpenAI-compatible providers', () => {
   });
 });
 
+
+describe('errors inside an OpenAI-compatible stream', () => {
+  test('turns an error event into a provider error with its status', () => {
+    const errorOf = (line: string) => {
+      try {
+        parseOpenAIEvent(line);
+      } catch (error) {
+        return error;
+      }
+      throw new Error(`no error thrown for ${line}`);
+    };
+    expect(errorOf('data: {"error":{"message":"Service temporarily overloaded","type":"service_unavailable","code":503}}'))
+      .toMatchObject({ kind: 'unavailable', status: 503, message: 'Upstream stream failed: Service temporarily overloaded' });
+    expect(errorOf('data: {"error":{"message":"Rate limit reached","code":429}}')).toMatchObject({ kind: 'rate_limit', status: 429 });
+    expect(errorOf('data: {"error":{"message":"overloaded","type":"service_unavailable"}}')).toMatchObject({ kind: 'unavailable', status: 503 });
+    expect(errorOf('data: {"error":"boom"}')).toMatchObject({ kind: 'upstream', status: 502 });
+  });
+
+  test('fails the stream instead of returning an empty answer', async () => {
+    const { fetchFn } = recordingFetch(() => sseResponse([
+      'data: {"error":{"message":"Service temporarily overloaded","type":"service_unavailable","code":503}}',
+      'data: [DONE]',
+    ]));
+    const nvidia = createNvidiaProvider({ env: { NVIDIA_API_KEY: 'n' }, fetch: fetchFn });
+    const stream = await nvidia.stream({ model: 'nvidia/nemotron-3-super-120b-a12b', messages: [] });
+    await expect(collectChunks(stream.chunks)).rejects.toThrow('Service temporarily overloaded');
+  });
+});

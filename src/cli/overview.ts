@@ -11,7 +11,11 @@ export interface ProviderOverview {
   state: ConnectionState;
   detail: string;
   fix?: string;
+  auto: boolean;
+  url?: string;
 }
+
+type Row = Omit<ProviderOverview, 'auto'>;
 
 export interface OverviewInput {
   env: Record<string, string | undefined>;
@@ -20,6 +24,7 @@ export interface OverviewInput {
   accountStates: () => Array<{ provider: string; accountId: string; status: AccountStatus }>;
   signIn: (provider: string) => SignInRecord | undefined;
   webSites: ChatSite[];
+  autoEnabled?: (provider: string) => boolean;
   now?: number;
 }
 
@@ -41,7 +46,7 @@ function ago(ms: number) {
   return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
 }
 
-function pooled(id: string, ids: string[], extra: string[], states: OverviewInput['accountStates'], fix: string): ProviderOverview {
+function pooled(id: string, ids: string[], extra: string[], states: OverviewInput['accountStates'], fix: string): Row {
   if (!ids.length && !extra.length) return { id, kind: 'account', state: 'not-connected', detail: 'no accounts', fix };
   const byId = new Map(states().filter(state => state.provider === id).map(state => [state.accountId, state.status]));
   const problems = new Map<string, number>();
@@ -62,6 +67,17 @@ function pooled(id: string, ids: string[], extra: string[], states: OverviewInpu
 }
 
 export function buildOverview(input: OverviewInput): ProviderOverview[] {
+  const autoEnabled = (provider: string) => {
+    try {
+      return input.autoEnabled?.(provider) ?? true;
+    } catch {
+      return true;
+    }
+  };
+  return collectRows(input).map(row => ({ ...row, auto: autoEnabled(row.id) }));
+}
+
+function collectRows(input: OverviewInput): Row[] {
   const now = input.now ?? Date.now();
   let credentials: Credential[] = [];
   let registryError: string | undefined;
@@ -77,7 +93,7 @@ export function buildOverview(input: OverviewInput): ProviderOverview[] {
       return [];
     }
   };
-  const rows: ProviderOverview[] = [];
+  const rows: Row[] = [];
 
   const qwen = pooled('qwen', credentials.filter(entry => entry.provider === 'qwen').map(entry => entry.id),
     input.env.QWEN_TOKEN ? ['QWEN_TOKEN'] : [], safeStates, 'bun run account add qwen --browser');
@@ -101,11 +117,11 @@ export function buildOverview(input: OverviewInput): ProviderOverview[] {
     } catch {}
     const host = new URL(site.url).hostname;
     if (!record) {
-      rows.push({ id: site.id, kind: 'web', state: 'unknown', detail: `${host}: not checked yet`, fix: 'bun run account status' });
+      rows.push({ id: site.id, kind: 'web', state: 'unknown', detail: `${host}: not checked yet`, fix: 'bun run account status', url: site.url });
     } else if (record.signedIn) {
-      rows.push({ id: site.id, kind: 'web', state: 'connected', detail: `${host}: signed in (checked ${ago(now - record.checkedAt)})` });
+      rows.push({ id: site.id, kind: 'web', state: 'connected', detail: `${host}: signed in (checked ${ago(now - record.checkedAt)})`, url: site.url });
     } else {
-      rows.push({ id: site.id, kind: 'web', state: 'not-connected', detail: record.reason ?? `${host}: not signed in`, fix: `bun run account open ${site.url}` });
+      rows.push({ id: site.id, kind: 'web', state: 'not-connected', detail: record.reason ?? `${host}: not signed in`, fix: `bun run account open ${site.url}`, url: site.url });
     }
   }
 

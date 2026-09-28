@@ -9,6 +9,13 @@ pub struct ProviderOverview {
     pub state: String,
     pub detail: String,
     pub fix: Option<String>,
+    #[serde(default = "enabled")]
+    pub auto: bool,
+    pub url: Option<String>,
+}
+
+fn enabled() -> bool {
+    true
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -28,14 +35,6 @@ impl Activity {
             Activity::Unknown => "Not checked",
         }
     }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ProviderAction {
-    OpenSite(String),
-    CaptureQwen,
-    AddApiKey,
-    RunInTerminal(String),
 }
 
 pub fn parse_overview(output: &str) -> Result<Vec<ProviderOverview>, String> {
@@ -63,23 +62,6 @@ pub fn detail(overview: &ProviderOverview, live: Option<&ProviderStatus>) -> Str
     }
 }
 
-pub fn action(overview: &ProviderOverview) -> Option<ProviderAction> {
-    let fix = overview.fix.as_deref()?;
-    if let Some(url) = fix.strip_prefix("bun run account open ") {
-        return Some(ProviderAction::OpenSite(url.trim().to_string()));
-    }
-    if fix.starts_with("bun run account add qwen --browser") {
-        return Some(ProviderAction::CaptureQwen);
-    }
-    if fix.starts_with("bun run account add nvidia --api-key") {
-        return Some(ProviderAction::AddApiKey);
-    }
-    if fix == "bun run account status" {
-        return None;
-    }
-    Some(ProviderAction::RunInTerminal(fix.to_string()))
-}
-
 pub fn display_name(id: &str) -> &str {
     match id {
         "qwen" => "Qwen",
@@ -105,7 +87,7 @@ mod tests {
     use super::*;
 
     fn row(id: &str, kind: &str, state: &str, fix: Option<&str>) -> ProviderOverview {
-        ProviderOverview { id: id.into(), kind: kind.into(), state: state.into(), detail: "d".into(), fix: fix.map(Into::into) }
+        ProviderOverview { id: id.into(), kind: kind.into(), state: state.into(), detail: "d".into(), fix: fix.map(Into::into), auto: true, url: None }
     }
 
     fn live(available: bool, reason: Option<&str>) -> ProviderStatus {
@@ -114,14 +96,19 @@ mod tests {
 
     #[test]
     fn parses_cli_json_after_the_script_banner() {
-        let output = "$ bun run scripts/accounts.ts --json\n[{\"id\":\"nvidia\",\"kind\":\"api-key\",\"state\":\"connected\",\"detail\":\"API key (environment)\"}]";
-        assert_eq!(parse_overview(output).unwrap(), vec![ProviderOverview {
+        let output = "$ bun run scripts/accounts.ts --json\n[{\"id\":\"nvidia\",\"kind\":\"api-key\",\"state\":\"connected\",\"detail\":\"API key (environment)\",\"auto\":false},{\"id\":\"glm-chat\",\"kind\":\"web\",\"state\":\"unknown\",\"detail\":\"d\",\"url\":\"https://chat.z.ai/\"}]";
+        let rows = parse_overview(output).unwrap();
+        assert_eq!(rows[0], ProviderOverview {
             id: "nvidia".into(),
             kind: "api-key".into(),
             state: "connected".into(),
             detail: "API key (environment)".into(),
             fix: None,
-        }]);
+            auto: false,
+            url: None,
+        });
+        assert!(rows[1].auto);
+        assert_eq!(rows[1].url.as_deref(), Some("https://chat.z.ai/"));
         assert!(parse_overview("no json").is_err());
     }
 
@@ -136,15 +123,5 @@ mod tests {
         assert_eq!(activity(&unknown, Some(&live(true, None))), Activity::Active);
         assert_eq!(activity(&row("qwen", "account", "degraded", None), None), Activity::Degraded);
         assert_eq!(activity(&row("nvidia", "api-key", "not-connected", None), None), Activity::Inactive);
-    }
-
-    #[test]
-    fn maps_fix_commands_to_actions() {
-        assert_eq!(action(&row("kimi-chat", "web", "not-connected", Some("bun run account open https://www.kimi.ai/"))), Some(ProviderAction::OpenSite("https://www.kimi.ai/".into())));
-        assert_eq!(action(&row("qwen", "account", "not-connected", Some("bun run account add qwen --browser"))), Some(ProviderAction::CaptureQwen));
-        assert_eq!(action(&row("nvidia", "api-key", "not-connected", Some("bun run account add nvidia --api-key"))), Some(ProviderAction::AddApiKey));
-        assert_eq!(action(&row("deepseek", "account", "not-connected", Some("bun run auth:deepseek"))), Some(ProviderAction::RunInTerminal("bun run auth:deepseek".into())));
-        assert_eq!(action(&row("glm-chat", "web", "unknown", Some("bun run account status"))), None);
-        assert_eq!(action(&row("nvidia", "api-key", "connected", None)), None);
     }
 }

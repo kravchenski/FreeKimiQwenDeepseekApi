@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { SignInRecord } from '../accounts/sign-in-status.ts';
+import type { ProviderSetting } from '../providers/settings.ts';
 import type { ModelStat } from '../models/stats.ts';
 
 const MIGRATIONS = [
@@ -73,6 +74,11 @@ const MIGRATIONS = [
     signed_in INTEGER NOT NULL,
     reason TEXT,
     checked_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE provider_settings (
+    provider TEXT PRIMARY KEY,
+    auto INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
   )`,
 ];
 
@@ -164,4 +170,19 @@ export function loadSignIn(db: Database, provider: string): SignInRecord | undef
     WHERE provider = $provider`).get({ provider }) as { provider: string; signedIn: number; reason: string | null; checkedAt: number } | null;
   if (!row) return undefined;
   return { provider: row.provider, signedIn: row.signedIn === 1, checkedAt: row.checkedAt, ...(row.reason ? { reason: row.reason } : {}) };
+}
+
+export function saveProviderSetting(db: Database, setting: ProviderSetting) {
+  db.query(`INSERT INTO provider_settings (provider, auto, updated_at) VALUES ($provider, $auto, $updatedAt)
+    ON CONFLICT (provider) DO UPDATE SET auto = excluded.auto, updated_at = excluded.updated_at`).run({
+    provider: setting.provider,
+    auto: setting.auto ? 1 : 0,
+    updatedAt: setting.updatedAt,
+  });
+}
+
+export function loadProviderSetting(db: Database, provider: string): ProviderSetting | undefined {
+  const row = db.query(`SELECT provider, auto, updated_at AS updatedAt FROM provider_settings WHERE provider = $provider`)
+    .get({ provider }) as { provider: string; auto: number; updatedAt: number } | null;
+  return row ? { provider: row.provider, auto: row.auto === 1, updatedAt: row.updatedAt } : undefined;
 }

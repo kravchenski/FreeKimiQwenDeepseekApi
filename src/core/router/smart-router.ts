@@ -10,6 +10,7 @@ const MODEL_TIMEOUT_COOLDOWN_MS = 10 * 60_000;
 
 export interface SmartRouterOptions {
   firstChunkTimeoutMs?: number;
+  autoEnabled?: (providerId: string) => boolean;
 }
 
 export interface Route {
@@ -84,6 +85,7 @@ export class SmartRouter {
     return candidates.flatMap(candidate => {
       const provider = this.registry.resolve(candidate);
       if (!provider || !provider.health().available) return [];
+      if (this.options.autoEnabled && !this.options.autoEnabled(provider.id)) return [];
       if (!this.registry.availability.isAvailable(candidate)) return [];
       if ((this.cooldownUntil.get(provider.id) ?? 0) > now) return [];
       if ((this.modelCooldownUntil.get(candidate) ?? 0) > now) return [];

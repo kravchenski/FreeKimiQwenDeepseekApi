@@ -86,10 +86,6 @@ impl AccountsCli {
         self.run(&["open", url], None)
     }
 
-    pub fn capture_qwen(&self) -> Result<String, String> {
-        self.run(&["add", "qwen", "--browser", "--label", "qwen-browser"], None)
-    }
-
     pub fn overview(&self) -> Result<Vec<crate::overview::ProviderOverview>, String> {
         self.run(&["--json"], None).and_then(|output| crate::overview::parse_overview(&output))
     }
@@ -129,6 +125,19 @@ impl AccountsCli {
     pub fn remove(&self, id: &str) -> Result<String, String> {
         self.run(&["remove", id], None)
     }
+
+    pub fn set_auto(&self, provider: &str, auto: bool) -> Result<String, String> {
+        self.run(&["provider", provider, "--auto", if auto { "on" } else { "off" }], None)
+    }
+
+    pub fn capture_qwen(&self) -> Result<String, String> {
+        self.run(&["add", "qwen", "--browser", "--label", "qwen-browser"], None)
+    }
+
+    pub fn check_site(&self, url: &str) -> Result<String, String> {
+        let host = url.trim_start_matches("https://").trim_end_matches('/').to_string();
+        self.check_sign_ins().map(|output| output.lines().find(|line| line.contains(&host)).unwrap_or("Checked").trim().to_string())
+    }
 }
 
 #[cfg(test)]
@@ -160,10 +169,12 @@ mod tests {
         std::fs::write(&script, "echo \"args:$*\"\n").unwrap();
         let cli = AccountsCli { root: root.clone(), program: "sh".into(), prefix: vec![script.to_string_lossy().into()] };
         assert_eq!(cli.open_site("https://www.kimi.ai").unwrap(), "args:open https://www.kimi.ai");
-        assert_eq!(cli.capture_qwen().unwrap(), "args:add qwen --browser --label qwen-browser");
         assert_eq!(cli.init_secret().unwrap(), "args:init");
         assert_eq!(cli.check_sign_ins().unwrap(), "args:status");
         assert_eq!(cli.list_google().unwrap(), Vec::<String>::new());
+        assert_eq!(cli.set_auto("nvidia", false).unwrap(), "args:provider nvidia --auto off");
+        assert_eq!(cli.set_auto("glm-chat", true).unwrap(), "args:provider glm-chat --auto on");
+        assert_eq!(cli.capture_qwen().unwrap(), "args:add qwen --browser --label qwen-browser");
         std::fs::remove_dir_all(root).unwrap();
     }
 

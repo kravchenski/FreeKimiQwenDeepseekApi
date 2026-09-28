@@ -6,7 +6,7 @@ import type {
   ProviderContext,
   ProviderStream,
 } from '../core/providers/provider.ts';
-import { ProviderError, upstreamError, type ProviderErrorKind } from '../core/providers/errors.ts';
+import { classifyStatus, ProviderError, upstreamError, type ProviderErrorKind } from '../core/providers/errors.ts';
 import { readLines } from '../core/streaming/sse.ts';
 
 export type UpstreamOutcome =
@@ -36,6 +36,14 @@ export interface OpenAICompatibleConfig {
   fetch?: typeof fetch;
 }
 
+function streamError(error: unknown) {
+  const details = typeof error === 'object' && error !== null ? error as Record<string, unknown> : { message: String(error) };
+  const message = String(details.message ?? JSON.stringify(details)).slice(0, 300);
+  const code = Number(details.code ?? details.status);
+  const status = Number.isInteger(code) && code >= 400 && code < 600 ? code : details.type === 'service_unavailable' ? 503 : 502;
+  return new ProviderError(`Upstream stream failed: ${message}`, classifyStatus(status, message), status);
+}
+
 export function parseOpenAIEvent(line: string): ChatChunk[] | 'done' | null {
   if (!line.startsWith('data:')) return null;
   const data = line.slice(5).trim();
@@ -46,6 +54,7 @@ export function parseOpenAIEvent(line: string): ChatChunk[] | 'done' | null {
   } catch {
     return null;
   }
+  if (event?.error) throw streamError(event.error);
   const delta = event?.choices?.[0]?.delta;
   if (!delta) return null;
   const chunks: ChatChunk[] = [];
