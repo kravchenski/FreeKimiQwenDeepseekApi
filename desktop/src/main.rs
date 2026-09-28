@@ -14,7 +14,7 @@ use gpui_kit::component::{Root, Theme, ThemeMode};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use accounts::{AccountsCli, SavedAccount};
+use accounts::{AccountProfile, AccountsCli, SavedAccount};
 use gateway::{check_health, open_in_browser, stop_external, Gateway, GatewayConfig};
 use overview::{activity, detail, display_name, kind_label, Activity, ProviderOverview};
 use status::{fetch_status, now_ms, read_api_key, relative_time, GatewayStatus, ProviderStatus};
@@ -23,7 +23,6 @@ use ui::*;
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const OVERVIEW_EVERY_POLLS: u32 = 10;
 const COMPACT_WIDTH: f32 = 1100.;
-const GOOGLE_ACCOUNTS_URL: &str = "https://accounts.google.com/SignOutOptions";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Health {
@@ -53,7 +52,7 @@ impl Page {
     fn subtitle(self) -> &'static str {
         match self {
             Page::Providers => "See which AI providers are connected and connect the missing ones.",
-            Page::Accounts => "Google accounts for web chats, saved accounts and API keys.",
+            Page::Accounts => "Browser accounts signed in to the web chats, and API keys.",
             Page::Requests => "Recent requests routed through the gateway.",
             Page::Provider => "Connection, routing and models of this provider.",
         }
@@ -69,7 +68,8 @@ struct Shell {
     overview: Vec<ProviderOverview>,
     accounts: AccountsCli,
     saved: Vec<SavedAccount>,
-    google: Vec<String>,
+    profiles: Vec<AccountProfile>,
+    profile_name: Entity<InputState>,
     api_key: Entity<InputState>,
     key_provider: Option<String>,
     request_filter: Option<String>,
@@ -134,7 +134,8 @@ impl Shell {
             overview: Vec::new(),
             accounts,
             saved: Vec::new(),
-            google: Vec::new(),
+            profiles: Vec::new(),
+            profile_name: cx.new(|cx| InputState::new(window, cx).placeholder("Account name, e.g. Work")),
             api_key: cx.new(|cx| InputState::new(window, cx).placeholder("Paste the API key").masked(true)),
             key_provider: None,
             request_filter: None,
@@ -146,45 +147,15 @@ impl Shell {
             message: None,
         };
         shell.refresh(cx);
-        shell.load_google(cx);
         shell
     }
 
-    fn load_google(&mut self, cx: &mut Context<Self>) {
-        let cli = self.accounts.clone();
-        cx.spawn(async move |this, cx| {
-            let result = cx.background_executor().spawn(async move { cli.list_google() }).await;
-            let _ = this.update(cx, |shell, cx| {
-                if let Ok(accounts) = result {
-                    shell.google = accounts;
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-    }
-
-    fn add_google(&mut self, cx: &mut Context<Self>) {
-        let cli = self.accounts.clone();
-        self.busy = true;
-        self.message = Some((true, "Sign in to Google in the opened browser window, then close the window.".into()));
-        cx.spawn(async move |this, cx| {
-            let result = cx.background_executor().spawn(async move { cli.add_google() }).await;
-            let _ = this.update(cx, |shell, cx| {
-                shell.busy = false;
-                shell.message = Some(match result {
-                    Ok(accounts) => {
-                        let count = accounts.len();
-                        shell.google = accounts;
-                        (true, format!("Found {count} Google account{} in the browser profile", if count == 1 { "" } else { "s" }))
-                    }
-                    Err(error) => (false, last_line(&error, "Failed to open Google sign-in")),
-                });
-                shell.refresh(cx);
-                cx.notify();
-            });
-        })
-        .detach();
+    fn add_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let label = self.profile_name.read(cx).value().to_string();
+        self.profile_name.update(cx, |input, cx| input.set_value("", window, cx));
+        self.run_command(cx, move |cli| {
+            cli.add_profile(&label).map(|_| format!("Added {}. Stop the API if it runs, then press Connect chats on its card to sign it in.", label.trim()))
+        });
     }
 
     fn key_providers(&self) -> Vec<String> {
@@ -246,8 +217,11 @@ impl Shell {
     fn refresh(&mut self, cx: &mut Context<Self>) {
         let cli = self.accounts.clone();
         cx.spawn(async move |this, cx| {
-            let (overview, saved, missing) = cx.background_executor().spawn(async move { (cli.overview(), cli.list(), cli.secret_missing()) }).await;
+            let (overview, saved, missing, profiles) = cx.background_executor().spawn(async move { (cli.overview(), cli.list(), cli.secret_missing(), cli.profiles()) }).await;
             let _ = this.update(cx, |shell, cx| {
+                if let Ok(profiles) = profiles {
+                    shell.profiles = profiles;
+                }
                 if let Ok(missing) = missing {
                     shell.locked = missing;
                 }
@@ -821,29 +795,6 @@ impl Shell {
         } else {
             vec![("Account", 0.), ("Provider", 140.), ("Status", 150.), ("Failures", 100.), ("Action", 120.)]
         };
-        let google_rows = self.google.iter().enumerate().map(|(index, email)| {
-            table_row()
-                .child(
-                    cell(0.)
-                        .flex()
-                        .items_center()
-                        .gap_2p5()
-                        .child(provider_mark("google", 26.))
-                        .child(div().flex().flex_col().child(email.clone()).child(muted("Browser profile · used to sign in to web chats").text_xs())),
-                )
-                .when(!compact, |this| this.child(cell(140.).text_color(rgb(MUTED)).child("Google")))
-                .child(cell(150.).flex().child(labeled_badge(Activity::Active, "Signed in")))
-                .when(!compact, |this| this.child(cell(100.).text_color(rgb(MUTED)).child("—")))
-                .child(cell(120.).child(
-                    button(SharedString::from(format!("manage-google-{index}")), "Manage", Some(IconName::ExternalLink), Tone::Outline, !self.browser_blocked())
-                        .when(!self.browser_blocked(), |this| {
-                            this.on_click(cx.listener(|shell, _, _, cx| {
-                                shell.run_command(cx, |cli| cli.open_site(GOOGLE_ACCOUNTS_URL));
-                                cx.notify();
-                            }))
-                        }),
-                ))
-        });
         let saved_rows = self.saved.iter().map(|account| {
             let state = states.iter().find(|state| state.account_id == account.id && state.provider == account.provider);
             let (state_activity, state_label) = match state.map(|state| state.status.as_str()) {
@@ -904,28 +855,119 @@ impl Shell {
                 }))
         });
         let can_save_key = !self.busy && selected.is_some();
-        let google_card = card()
+        let blocked = self.browser_blocked();
+        let add_card = card()
             .flex_1()
             .min_w_0()
             .p_4()
             .flex()
             .flex_col()
             .gap_3()
-            .child(div().flex().items_center().gap_2().child(provider_mark("google", 22.)).child(div().font_weight(FontWeight::SEMIBOLD).child("Google accounts")))
-            .child(muted("Sign in to Google once in the browser profile, then use “Sign in with Google” on Kimi, Z.ai and DeepSeek.").text_xs())
-            .child(div().flex_1())
+            .child(div().flex().items_center().gap_2().child(div().text_size(px(18.)).child(IconName::Users)).child(div().font_weight(FontWeight::SEMIBOLD).child("Add account")))
+            .child(muted("Each account is its own browser profile. Sign it in to Google once, then use “Sign in with Google” on every web chat. Requests rotate between signed-in accounts.").text_xs())
+            .child(Input::new(&self.profile_name))
             .child(
                 div().flex().justify_end().child(
-                    button("add-google", if self.busy { "Working…" } else { "Add Google account via browser" }, Some(IconName::LogIn), Tone::Primary, !self.browser_blocked())
-                        .when(!self.browser_blocked(), |this| {
-                            this.on_click(cx.listener(|shell, _, _, cx| {
-                                shell.add_google(cx);
+                    button("add-profile", if self.busy { "Working…" } else { "Add account" }, Some(IconName::Users), Tone::Primary, !self.busy).when(!self.busy, |this| {
+                        this.on_click(cx.listener(|shell, _, window, cx| {
+                            shell.add_profile(window, cx);
+                            cx.notify();
+                        }))
+                    }),
+                ),
+            );
+        let profile_cards = self.profiles.iter().map(|profile| {
+            let signed = profile.chats.iter().filter(|chat| chat.signed_in == Some(true)).count();
+            let all = profile.chats.len();
+            let connect_id = profile.id.clone();
+            let check_id = profile.id.clone();
+            let remove_id = profile.id.clone();
+            card()
+                .w(px(if compact { 320. } else { 390. }))
+                .flex_none()
+                .p_4()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2p5()
+                        .child(
+                            div()
+                                .size(px(34.))
+                                .flex_none()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded_full()
+                                .bg(rgb(PRIMARY_SOFT))
+                                .text_color(rgb(PRIMARY))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(profile.label.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default()),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .child(div().font_weight(FontWeight::SEMIBOLD).child(profile.label.clone()))
+                                .child(muted(format!("{signed} of {all} chats signed in")).text_xs()),
+                        ),
+                )
+                .child(div().flex().flex_wrap().gap_2().children(profile.chats.iter().map(|chat| {
+                    let state = match chat.signed_in {
+                        Some(true) => Activity::Active,
+                        Some(false) => Activity::Inactive,
+                        None => Activity::Unknown,
+                    };
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1p5()
+                        .px_2()
+                        .py_1()
+                        .rounded_full()
+                        .border_1()
+                        .border_color(rgb(BORDER))
+                        .text_xs()
+                        .child(provider_mark(&chat.id, 18.))
+                        .child(display_name(&chat.id).trim_end_matches(" Chat").to_string())
+                        .child(status_dot(state))
+                })))
+                .child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap_2()
+                        .child(button(SharedString::from(format!("connect-{}", profile.id)), "Connect chats", Some(IconName::LogIn), if signed < all { Tone::Primary } else { Tone::Outline }, !blocked).when(!blocked, |this| {
+                            this.on_click(cx.listener(move |shell, _, _, cx| {
+                                let id = connect_id.clone();
+                                shell.message = Some((true, "Sign in to Google and every chat tab in the opened window, then close it.".into()));
+                                shell.run_command(cx, move |cli| cli.connect_profile(&id));
                                 cx.notify();
                             }))
-                        }),
-                ),
-            )
-            .children((self.running || self.external()).then(|| muted("Stop the gateway first: the browser profile is in use while it runs.").text_xs()));
+                        }))
+                        .child(button(SharedString::from(format!("check-{}", profile.id)), "Check", Some(IconName::RefreshCw), Tone::Outline, !blocked).when(!blocked, |this| {
+                            this.on_click(cx.listener(move |shell, _, _, cx| {
+                                let id = check_id.clone();
+                                shell.run_command(cx, move |cli| cli.check_profile(&id));
+                                cx.notify();
+                            }))
+                        }))
+                        .children((profile.id != "default").then(|| {
+                            button(SharedString::from(format!("remove-profile-{}", profile.id)), "Remove", Some(IconName::Trash), Tone::Danger, !self.busy).when(!self.busy, |this| {
+                                this.on_click(cx.listener(move |shell, _, _, cx| {
+                                    let id = remove_id.clone();
+                                    shell.run_command(cx, move |cli| cli.remove_profile(&id));
+                                    cx.notify();
+                                }))
+                            })
+                        })),
+                )
+        });
         let key_card = card()
             .flex_1()
             .min_w_0()
@@ -959,7 +1001,7 @@ impl Shell {
                         }),
                     ),
             );
-        let total = self.google.len() + self.saved.len();
+        let total = self.saved.len();
         div()
             .flex()
             .flex_col()
@@ -987,12 +1029,20 @@ impl Shell {
                         }))
                     }))
             }))
-            .child(div().flex().when(compact, |this| this.flex_col()).gap_4().child(google_card).child(key_card))
+            .child(div().flex().when(compact, |this| this.flex_col()).gap_4().child(add_card).child(key_card))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(div().flex().items_center().justify_between().child(div().font_weight(FontWeight::SEMIBOLD).child("Browser accounts")).child(muted(format!("{} account{}", self.profiles.len(), if self.profiles.len() == 1 { "" } else { "s" })).text_xs()))
+                    .child(div().flex().flex_wrap().gap_4().children(profile_cards))
+                    .children(blocked.then(|| muted("Connecting and checking open the account's browser profile. Stop the API first, because it uses the same profiles.").text_xs())),
+            )
             .child(
                 card()
                     .overflow_hidden()
                     .child(table_header(&columns))
-                    .children(google_rows)
                     .children(saved_rows)
                     .children((total == 0).then(|| table_row().child(muted("No accounts yet")))),
             )

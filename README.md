@@ -40,6 +40,20 @@ All models are free. The API providers are fallbacks after the web chats and eac
 
 Run `bun run account` to see every provider, whether it is connected and the command that connects it (`--json` for scripts).
 
+### Several accounts for the web chats
+
+Each browser account is its own browser profile. Sign it in to Google once and use "Sign in with Google" on every web chat; requests to `qwen-chat`, `glm-chat` and `kimi-chat` then rotate between the signed-in accounts and fall through to the next one when an account is signed out, limited or asked for a verification. The existing profile is the account `Main`.
+
+```bash
+bun run account profile add Work          # create an account
+bun run account connect --profile <id>    # open Google and every web chat in it, then check the sign-ins
+bun run account profiles                  # list accounts (--json for scripts)
+bun run account status                    # check every account
+bun run account profile remove <id>
+```
+
+The desktop app does the same on the Accounts page (Add account, Connect chats, Check, Remove). Stop the API before connecting or checking, because it uses the same browser profiles.
+
 To keep a provider out of `model=auto` without disconnecting it, run `bun run account provider <id> --auto off` (or use the switch on the provider's page in the desktop app).
 
 To see which models actually answer for your keys and accounts, run `bun run models:probe` while the gateway is running (`--provider all` includes web chats, `--help` for options). The gateway remembers every measurement in `data/gateway.db`, so a probe run also reorders `auto` with the fastest working models first.
