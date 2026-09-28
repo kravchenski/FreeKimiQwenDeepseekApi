@@ -160,6 +160,18 @@ impl AccountsCli {
         self.run(&["remove", id], None)
     }
 
+    pub fn auto_settings(&self) -> Result<crate::settings::AutoSettings, String> {
+        self.run(&["auto"], None).and_then(|output| crate::settings::parse_auto(&output).ok_or_else(|| "Unexpected auto settings output".to_string()))
+    }
+
+    pub fn set_auto_focus(&self, focus: &str) -> Result<String, String> {
+        self.run(&["auto", "--focus", focus], None)
+    }
+
+    pub fn set_auto_mode(&self, mode: &str) -> Result<String, String> {
+        self.run(&["auto", "--mode", mode], None)
+    }
+
     pub fn set_auto(&self, provider: &str, auto: bool) -> Result<String, String> {
         self.run(&["provider", provider, "--auto", if auto { "on" } else { "off" }], None)
     }
@@ -205,6 +217,8 @@ mod tests {
         assert_eq!(cli.connect_profile("acct-1").unwrap(), "args:connect --profile acct-1");
         assert_eq!(cli.check_profile("acct-1").unwrap(), "args:status --profile acct-1");
         assert_eq!(cli.remove_profile("acct-1").unwrap(), "args:profile remove acct-1");
+        assert_eq!(cli.set_auto_focus("coding").unwrap(), "args:auto --focus coding");
+        assert_eq!(cli.set_auto_mode("race").unwrap(), "args:auto --mode race");
         assert_eq!(cli.add_profile(" "), Err("Enter a name for the account".into()));
         assert_eq!(cli.set_auto("nvidia", false).unwrap(), "args:provider nvidia --auto off");
         assert_eq!(cli.set_auto("glm-chat", true).unwrap(), "args:provider glm-chat --auto on");
