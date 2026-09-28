@@ -24,6 +24,7 @@ export interface AccountsCliDeps {
   verifyApiKey?: (provider: string, apiKey: string) => Promise<number>;
   checkSignIns?: (url?: string) => Promise<SiteSignIn[]>;
   overview?: () => ProviderOverview[];
+  initSecret?: () => 'created' | 'exists';
 }
 
 const PASSWORD_PROVIDERS = new Set(['qwen']);
@@ -33,6 +34,7 @@ const PROVIDERS = new Set([...PASSWORD_PROVIDERS, ...API_KEY_PROVIDERS]);
 export const ACCOUNTS_USAGE = `Usage: bun run account <command>
 
   (no command) [--json]                           Show every provider and whether it is connected
+  init                                            Create ACCOUNTS_SECRET in .env so accounts can be saved
   add <provider> [--email <email>] [--no-verify]  Save an account (password is always prompted)
   add <provider> --browser [--label <name>]       Sign in yourself in the browser; the session is captured
   add <provider> --api-key [--label <name>]       Save an API key (the key is always prompted)
@@ -77,6 +79,13 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
   if ((command === undefined || command === '--json' || command === 'overview') && deps.overview) {
     const rows = deps.overview();
     deps.log(args.includes('--json') ? JSON.stringify(rows, null, 2) : formatOverview(rows));
+    return 0;
+  }
+
+  if (command === 'init' && deps.initSecret) {
+    deps.log(deps.initSecret() === 'created'
+      ? 'Created ACCOUNTS_SECRET in .env. Restart the gateway to use saved accounts.'
+      : 'ACCOUNTS_SECRET is already set.');
     return 0;
   }
 

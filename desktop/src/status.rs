@@ -54,14 +54,24 @@ pub fn fetch_status(base_url: &str, api_key: Option<&str>) -> Result<GatewayStat
         .map_err(|error| error.to_string())
 }
 
-pub fn api_key_from(env_value: Option<String>, dotenv: &str) -> Option<String> {
+pub fn setting_from(name: &str, env_value: Option<String>, dotenv: &str) -> Option<String> {
+    let prefix = format!("{name}=");
     env_value.filter(|value| !value.is_empty()).or_else(|| {
         dotenv
             .lines()
-            .filter_map(|line| line.trim().strip_prefix("GATEWAY_API_KEY="))
+            .filter_map(|line| line.trim().strip_prefix(prefix.as_str()))
             .map(|value| value.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
             .rfind(|value| !value.is_empty())
     })
+}
+
+pub fn api_key_from(env_value: Option<String>, dotenv: &str) -> Option<String> {
+    setting_from("GATEWAY_API_KEY", env_value, dotenv)
+}
+
+pub fn has_setting(root: &Path, name: &str) -> bool {
+    let dotenv = std::fs::read_to_string(root.join(".env")).unwrap_or_default();
+    setting_from(name, std::env::var(name).ok(), &dotenv).is_some()
 }
 
 pub fn read_api_key(root: &Path) -> Option<String> {
@@ -107,6 +117,8 @@ mod tests {
         assert_eq!(api_key_from(Some("from-env".into()), dotenv).as_deref(), Some("from-env"));
         assert_eq!(api_key_from(Some(String::new()), dotenv).as_deref(), Some("from-file"));
         assert_eq!(api_key_from(None, "GATEWAY_API_KEY=\n"), None);
+        assert_eq!(setting_from("ACCOUNTS_SECRET", None, "GATEWAY_API_KEY=x\nACCOUNTS_SECRET=\"s\"\n").as_deref(), Some("s"));
+        assert_eq!(setting_from("ACCOUNTS_SECRET", None, "ACCOUNTS_SECRET=\n"), None);
     }
 
     #[test]
