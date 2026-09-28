@@ -33,3 +33,17 @@ export async function collectChunks(chunks: AsyncIterable<ChatChunk>) {
   }
   return { content, reasoning };
 }
+
+export async function primeChunks(chunks: AsyncIterable<ChatChunk>) {
+  const iterator = chunks[Symbol.asyncIterator]();
+  const first = await iterator.next();
+  return (async function* () {
+    try {
+      if (first.done) return;
+      yield first.value;
+      for (let next = await iterator.next(); !next.done; next = await iterator.next()) yield next.value;
+    } finally {
+      await iterator.return?.();
+    }
+  })();
+}

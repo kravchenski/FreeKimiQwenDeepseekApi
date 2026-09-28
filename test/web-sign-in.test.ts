@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { runAccountsCommand, type AccountsCliDeps } from '../src/cli/accounts.ts';
 import { decodeJwtPayload, evaluateSignIn } from '../src/browser/sign-in.ts';
 import { WebSignInStatus, type SignInRecord } from '../src/core/accounts/sign-in-status.ts';
-import { loadSignIn, openDatabase, saveSignIn } from '../src/core/store/database.ts';
+import { addBrowserProfile, listBrowserProfiles, loadSignIn, loadSignIns, openDatabase, removeBrowserProfile, saveSignIn } from '../src/core/store/database.ts';
 import { KIMI_CHAT_SITE } from '../src/providers/kimi/web.ts';
 import { ZAI_CHAT_SITE } from '../src/providers/glm/web.ts';
 import { siteForUrl } from '../src/providers/web-chat-sites.ts';
@@ -77,8 +77,36 @@ describe('WebSignInStatus', () => {
     const db = openDatabase(':memory:');
     saveSignIn(db, { provider: 'glm-chat', signedIn: false, reason: 'guest', checkedAt: 5 });
     saveSignIn(db, { provider: 'glm-chat', signedIn: true, checkedAt: 6 });
-    expect(loadSignIn(db, 'glm-chat')).toEqual({ provider: 'glm-chat', signedIn: true, checkedAt: 6 });
+    saveSignIn(db, { provider: 'glm-chat', profile: 'acct-1', signedIn: false, reason: 'expired', checkedAt: 7 });
+    expect(loadSignIn(db, 'glm-chat')).toEqual({ provider: 'glm-chat', profile: 'default', signedIn: true, checkedAt: 6 });
+    expect(loadSignIn(db, 'glm-chat', 'acct-1')).toEqual({ provider: 'glm-chat', profile: 'acct-1', signedIn: false, reason: 'expired', checkedAt: 7 });
+    expect(loadSignIns(db, 'glm-chat').map(record => record.profile)).toEqual(['acct-1', 'default']);
     expect(loadSignIn(db, 'kimi-chat')).toBeUndefined();
+  });
+
+  test('stores browser profiles and forgets their sign-ins when removed', () => {
+    const db = openDatabase(':memory:');
+    addBrowserProfile(db, { id: 'acct-1', label: 'Work', createdAt: 1 });
+    saveSignIn(db, { provider: 'kimi-chat', profile: 'acct-1', signedIn: true, checkedAt: 2 });
+    expect(listBrowserProfiles(db)).toEqual([{ id: 'acct-1', label: 'Work', createdAt: 1 }]);
+    expect(removeBrowserProfile(db, 'acct-1')).toBeTrue();
+    expect(removeBrowserProfile(db, 'acct-1')).toBeFalse();
+    expect(loadSignIns(db, 'kimi-chat')).toEqual([]);
+  });
+
+  test('prefers signed-in accounts, keeps unchecked ones and skips recently signed-out ones', () => {
+    let now = 0;
+    const records = new Map<string, SignInRecord>();
+    const tracker = new WebSignInStatus({ load: (provider, profile) => records.get(`${provider}|${profile}`), save: record => { records.set(`${record.provider}|${record.profile}`, record); } }, () => now);
+    tracker.record('qwen-chat', true, undefined, 'b');
+    tracker.record('qwen-chat', false, 'expired', 'c');
+    expect(tracker.usable('qwen-chat', ['a', 'b', 'c'])).toEqual({ signedIn: ['b'], unknown: ['a'] });
+    expect(tracker.health('qwen-chat', ['c'])).toEqual({ available: false, reason: 'expired' });
+    expect(tracker.health('qwen-chat', ['c', 'd'])).toEqual({ available: true });
+    tracker.record('qwen-chat', false, 'expired', 'd');
+    expect(tracker.health('qwen-chat', ['c', 'd'])).toEqual({ available: false, reason: 'not signed in on any of 2 accounts' });
+    now = 10 * 60_000;
+    expect(tracker.usable('qwen-chat', ['c'])).toEqual({ signedIn: [], unknown: ['c'] });
   });
 });
 

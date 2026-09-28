@@ -1,16 +1,28 @@
 import type { BrowserChatSession, ChatSite } from '../browser/browser-chat.ts';
+import { ProviderError } from '../core/providers/errors.ts';
 import type { ChatChunk, Provider, ProviderHealth, ProviderStream } from '../core/providers/provider.ts';
 import { messagesToPrompt } from '../core/providers/prompt.ts';
+import { primeChunks } from '../core/streaming/sse.ts';
+
+export interface ProfileSession {
+  profile: string;
+  session: Pick<BrowserChatSession, 'send'>;
+}
 
 export interface BrowserChatProviderConfig {
   id: string;
   ownedBy: string;
   model: string;
   site: ChatSite;
-  session: () => Pick<BrowserChatSession, 'send'>;
+  sessions: () => ProfileSession[];
   parse: (bytes: AsyncIterable<Uint8Array>) => AsyncIterable<ChatChunk>;
   reasoning?: boolean;
   health?: () => ProviderHealth;
+  onResult?: (profile: string, ok: boolean) => void;
+}
+
+function message(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function createBrowserChatProvider(config: BrowserChatProviderConfig): Provider {
@@ -22,8 +34,22 @@ export function createBrowserChatProvider(config: BrowserChatProviderConfig): Pr
     capabilities: () => ({ nativeTools: false, reasoning: config.reasoning ?? true, vision: false }),
     health: () => config.health?.() ?? { available: true },
     async stream(request): Promise<ProviderStream> {
-      const bytes = await config.session().send(config.site, messagesToPrompt(request.messages));
-      return { chunks: config.parse(bytes) };
+      const candidates = config.sessions();
+      if (!candidates.length) throw new ProviderError(`${config.id}: no account is signed in`, 'unavailable');
+      const prompt = messagesToPrompt(request.messages);
+      const failures: string[] = [];
+      for (const candidate of candidates) {
+        try {
+          const chunks = await primeChunks(config.parse(await candidate.session.send(config.site, prompt)));
+          config.onResult?.(candidate.profile, true);
+          return { chunks };
+        } catch (error) {
+          config.onResult?.(candidate.profile, false);
+          if (candidates.length === 1) throw error;
+          failures.push(`${candidate.profile}: ${message(error)}`);
+        }
+      }
+      throw new ProviderError(`${config.id} failed on every account: ${failures.join('; ')}`, 'unavailable');
     },
   };
 }

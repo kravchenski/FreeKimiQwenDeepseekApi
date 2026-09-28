@@ -2,7 +2,7 @@ import { Database } from 'bun:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { SignInRecord } from '../accounts/sign-in-status.ts';
+import { DEFAULT_PROFILE, type SignInRecord } from '../accounts/sign-in-status.ts';
 import type { ProviderSetting } from '../providers/settings.ts';
 import type { ModelStat } from '../models/stats.ts';
 
@@ -80,6 +80,23 @@ const MIGRATIONS = [
     auto INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE web_sign_in_v2 (
+    provider TEXT NOT NULL,
+    profile TEXT NOT NULL,
+    signed_in INTEGER NOT NULL,
+    reason TEXT,
+    checked_at INTEGER NOT NULL,
+    PRIMARY KEY (provider, profile)
+  )`,
+  `INSERT INTO web_sign_in_v2 (provider, profile, signed_in, reason, checked_at)
+    SELECT provider, 'default', signed_in, reason, checked_at FROM web_sign_in`,
+  'DROP TABLE web_sign_in',
+  'ALTER TABLE web_sign_in_v2 RENAME TO web_sign_in',
+  `CREATE TABLE browser_profiles (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
 ];
 
 export function defaultDatabaseFile() {
@@ -156,20 +173,50 @@ export function saveModelStat(db: Database, stat: ModelStat) {
 }
 
 export function saveSignIn(db: Database, record: SignInRecord) {
-  db.query(`INSERT INTO web_sign_in (provider, signed_in, reason, checked_at) VALUES ($provider, $signedIn, $reason, $checkedAt)
-    ON CONFLICT (provider) DO UPDATE SET signed_in = excluded.signed_in, reason = excluded.reason, checked_at = excluded.checked_at`).run({
+  db.query(`INSERT INTO web_sign_in (provider, profile, signed_in, reason, checked_at) VALUES ($provider, $profile, $signedIn, $reason, $checkedAt)
+    ON CONFLICT (provider, profile) DO UPDATE SET signed_in = excluded.signed_in, reason = excluded.reason, checked_at = excluded.checked_at`).run({
     provider: record.provider,
+    profile: record.profile ?? DEFAULT_PROFILE,
     signedIn: record.signedIn ? 1 : 0,
     reason: record.reason ?? null,
     checkedAt: record.checkedAt,
   });
 }
 
-export function loadSignIn(db: Database, provider: string): SignInRecord | undefined {
-  const row = db.query(`SELECT provider, signed_in AS signedIn, reason, checked_at AS checkedAt FROM web_sign_in
-    WHERE provider = $provider`).get({ provider }) as { provider: string; signedIn: number; reason: string | null; checkedAt: number } | null;
-  if (!row) return undefined;
-  return { provider: row.provider, signedIn: row.signedIn === 1, checkedAt: row.checkedAt, ...(row.reason ? { reason: row.reason } : {}) };
+type SignInRow = { provider: string; profile: string; signedIn: number; reason: string | null; checkedAt: number };
+
+function signInRecord(row: SignInRow): SignInRecord {
+  return { provider: row.provider, profile: row.profile, signedIn: row.signedIn === 1, checkedAt: row.checkedAt, ...(row.reason ? { reason: row.reason } : {}) };
+}
+
+export function loadSignIn(db: Database, provider: string, profile = DEFAULT_PROFILE): SignInRecord | undefined {
+  const row = db.query(`SELECT provider, profile, signed_in AS signedIn, reason, checked_at AS checkedAt FROM web_sign_in
+    WHERE provider = $provider AND profile = $profile`).get({ provider, profile }) as SignInRow | null;
+  return row ? signInRecord(row) : undefined;
+}
+
+export function loadSignIns(db: Database, provider: string): SignInRecord[] {
+  return (db.query(`SELECT provider, profile, signed_in AS signedIn, reason, checked_at AS checkedAt FROM web_sign_in
+    WHERE provider = $provider ORDER BY profile`).all({ provider }) as SignInRow[]).map(signInRecord);
+}
+
+export interface BrowserProfileRow {
+  id: string;
+  label: string;
+  createdAt: number;
+}
+
+export function listBrowserProfiles(db: Database): BrowserProfileRow[] {
+  return db.query(`SELECT id, label, created_at AS createdAt FROM browser_profiles ORDER BY created_at, id`).all() as BrowserProfileRow[];
+}
+
+export function addBrowserProfile(db: Database, profile: BrowserProfileRow) {
+  db.query(`INSERT INTO browser_profiles (id, label, created_at) VALUES ($id, $label, $createdAt)`).run({ ...profile });
+}
+
+export function removeBrowserProfile(db: Database, id: string) {
+  db.query(`DELETE FROM web_sign_in WHERE profile = $id`).run({ id });
+  return db.query(`DELETE FROM browser_profiles WHERE id = $id`).run({ id }).changes > 0;
 }
 
 export function saveProviderSetting(db: Database, setting: ProviderSetting) {

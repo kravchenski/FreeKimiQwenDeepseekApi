@@ -20,7 +20,7 @@ import { ProviderError, toHttpError } from '../core/providers/errors.ts';
 import { buildAutoChain } from '../core/router/auto-chain.ts';
 import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
 import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
-import { loadModelStats, loadProviderSetting, loadSignIn, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
+import { listBrowserProfiles, loadModelStats, loadProviderSetting, loadSignIn, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
 import { WebSignInStatus } from '../core/accounts/sign-in-status.ts';
 import { ProviderSettings } from '../core/providers/settings.ts';
 import { WEB_CHAT_SITES } from '../providers/web-chat-sites.ts';
@@ -32,8 +32,11 @@ import { createApiProvider, createNvidiaProvider, FREE_API_PROVIDERS } from '../
 import { openCredentialStore } from '../core/accounts/credential-store.ts';
 import { loadAccountsSecret } from '../core/secrets/accounts-secret.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
-import { BrowserChatSession, notSignedIn } from '../browser/browser-chat.ts';
-import { createBrowserChatProvider } from '../providers/browser-chat-provider.ts';
+import { BrowserChatSession, notSignedIn, type ChatSite } from '../browser/browser-chat.ts';
+import { listProfiles, profileDir } from '../browser/profiles.ts';
+import { ProfileRotation } from '../core/accounts/profile-rotation.ts';
+import { DEFAULT_PROFILE } from '../core/accounts/sign-in-status.ts';
+import { createBrowserChatProvider, type BrowserChatProviderConfig } from '../providers/browser-chat-provider.ts';
 import { parseZaiStream, ZAI_CHAT_SITE } from '../providers/glm/web.ts';
 import { KIMI_CHAT_SITE, parseKimiStream } from '../providers/kimi/web.ts';
 
@@ -77,47 +80,59 @@ export const registry = new ProviderRegistry()
 
 for (const definition of FREE_API_PROVIDERS) registry.register(createApiProvider(definition, {}, credentialStore));
 
-let browserChat: BrowserChatSession | undefined;
+const browserSessions = new Map<string, BrowserChatSession>();
 const signIns = new WebSignInStatus({
-    load: provider => loadSignIn(db(), provider),
+    load: (provider, profile) => loadSignIn(db(), provider, profile),
     save: record => saveSignIn(db(), record),
 });
-const browserChatSession = () => (browserChat ??= new BrowserChatSession({
-    onSignIn: (siteId, result) => {
-        const site = WEB_CHAT_SITES.find(entry => entry.id === siteId);
-        signIns.record(siteId, result.signedIn, result.signedIn || !site ? undefined : notSignedIn(site, result));
-    },
-}));
 
-registry.register(createBrowserChatProvider({
-    id: 'qwen-chat',
-    ownedBy: 'qwen-web',
-    model: 'qwen-chat',
-    site: QWEN_CHAT_SITE,
-    session: browserChatSession,
-    parse: parseQwenStream,
-    health: () => signIns.health('qwen-chat'),
-}));
+const PROFILE_CACHE_MS = 30_000;
+let profileCache: { ids: string[]; readAt: number } | undefined;
+function accountProfiles() {
+    if (profileCache && Date.now() - profileCache.readAt < PROFILE_CACHE_MS) return profileCache.ids;
+    let ids = [DEFAULT_PROFILE];
+    try {
+        ids = listProfiles({ list: () => listBrowserProfiles(db()) }).map(profile => profile.id);
+    } catch (error) {
+        console.error('Accounts unavailable:', errorText(error));
+    }
+    profileCache = { ids, readAt: Date.now() };
+    return ids;
+}
 
-registry.register(createBrowserChatProvider({
-    id: 'glm-chat',
-    ownedBy: 'z-ai-web',
-    model: 'glm-chat',
-    site: ZAI_CHAT_SITE,
-    session: browserChatSession,
-    health: () => signIns.health('glm-chat'),
-    parse: parseZaiStream,
-}));
+function browserSession(profile: string) {
+    let session = browserSessions.get(profile);
+    if (!session) {
+        session = new BrowserChatSession({
+            profileDir: profileDir(profile),
+            onSignIn: (siteId, result) => {
+                const site = WEB_CHAT_SITES.find(entry => entry.id === siteId);
+                signIns.record(siteId, result.signedIn, result.signedIn || !site ? undefined : notSignedIn(site, result), profile);
+            },
+        });
+        browserSessions.set(profile, session);
+    }
+    return session;
+}
 
-registry.register(createBrowserChatProvider({
-    id: 'kimi-chat',
-    ownedBy: 'kimi-web',
-    model: 'kimi-chat',
-    site: KIMI_CHAT_SITE,
-    session: browserChatSession,
-    health: () => signIns.health('kimi-chat'),
-    parse: parseKimiStream,
-}));
+const rotation = new ProfileRotation(accountProfiles, signIns);
+
+function registerWebChat(id: string, ownedBy: string, site: ChatSite, parse: BrowserChatProviderConfig['parse']) {
+    registry.register(createBrowserChatProvider({
+        id,
+        ownedBy,
+        model: id,
+        site,
+        parse,
+        sessions: () => rotation.order(id).map(profile => ({ profile, session: browserSession(profile) })),
+        health: () => signIns.health(id, accountProfiles()),
+        onResult: (profile, ok) => ok ? rotation.succeeded(id, profile) : rotation.failed(id, profile),
+    }));
+}
+
+registerWebChat('qwen-chat', 'qwen-web', QWEN_CHAT_SITE, parseQwenStream);
+registerWebChat('glm-chat', 'z-ai-web', ZAI_CHAT_SITE, parseZaiStream);
+registerWebChat('kimi-chat', 'kimi-web', KIMI_CHAT_SITE, parseKimiStream);
 
 const providerSettings = new ProviderSettings({
     load: provider => loadProviderSetting(db(), provider),
@@ -612,7 +627,7 @@ app.post('/v1/responses', handleResponses);
 app.post('/api/v1/responses', handleResponses);
 
 async function shutdown() {
-    await browserChat?.close();
+    await Promise.all([...browserSessions.values()].map(session => session.close()));
     process.exit(0);
 }
 

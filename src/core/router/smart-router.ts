@@ -1,6 +1,7 @@
 import { ProviderError, type ProviderErrorKind } from '../providers/errors.ts';
 import type { ChatChunk, ChatRequest, Provider, ProviderStream } from '../providers/provider.ts';
 import type { ProviderRegistry } from '../providers/registry.ts';
+import { primeChunks } from '../streaming/sse.ts';
 
 export const AUTO_MODEL = 'auto';
 
@@ -34,20 +35,6 @@ function withTimeout<T>(work: Promise<T>, ms: number | undefined, onTimeout: () 
     }, ms);
   });
   return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
-}
-
-async function primeChunks(chunks: AsyncIterable<ChatChunk>) {
-  const iterator = chunks[Symbol.asyncIterator]();
-  const first = await iterator.next();
-  return (async function* () {
-    try {
-      if (first.done) return;
-      yield first.value;
-      for (let next = await iterator.next(); !next.done; next = await iterator.next()) yield next.value;
-    } finally {
-      await iterator.return?.();
-    }
-  })();
 }
 
 export class SmartRouter {

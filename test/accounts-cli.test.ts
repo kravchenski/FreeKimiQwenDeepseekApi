@@ -68,7 +68,7 @@ describe('accounts CLI', () => {
   test('opens https sites in the browser profile and rejects anything else', async () => {
     const { deps } = harness();
     const opened: string[] = [];
-    deps.openWindow = async url => { opened.push(url); };
+    deps.openWindow = async urls => { opened.push(...urls); };
     expect(await runAccountsCommand(['open', 'https://www.kimi.com'], deps)).toBe(0);
     expect(opened).toEqual(['https://www.kimi.com/']);
     await expect(runAccountsCommand(['open', 'http://chat.z.ai'], deps)).rejects.toThrow('https');
