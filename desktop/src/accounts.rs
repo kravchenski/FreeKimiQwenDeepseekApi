@@ -92,6 +92,26 @@ impl AccountsCli {
         self.run(&["add", "qwen", "--browser", "--label", "qwen-browser"], None)
     }
 
+    pub fn overview(&self) -> Result<Vec<crate::overview::ProviderOverview>, String> {
+        self.run(&["--json"], None).and_then(|output| crate::overview::parse_overview(&output))
+    }
+
+    pub fn check_sign_ins(&self) -> Result<String, String> {
+        match self.run(&["status"], None) {
+            Ok(output) => Ok(output),
+            Err(output) if output.contains('○') => Ok(output),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub fn add_api_key(&self, provider: &str, key: &str) -> Result<String, String> {
+        let key = key.trim();
+        if key.is_empty() {
+            return Err("Enter an API key".into());
+        }
+        self.run(&["add", provider, "--api-key"], Some(&format!("{key}\n")))
+    }
+
     pub fn remove(&self, id: &str) -> Result<String, String> {
         self.run(&["remove", id], None)
     }
