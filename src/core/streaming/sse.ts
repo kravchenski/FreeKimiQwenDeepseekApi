@@ -34,16 +34,38 @@ export async function collectChunks(chunks: AsyncIterable<ChatChunk>) {
   return { content, reasoning };
 }
 
-export async function primeChunks(chunks: AsyncIterable<ChatChunk>) {
+export interface PrimedChunks extends AsyncIterableIterator<ChatChunk> {
+  return(value?: unknown): Promise<IteratorResult<ChatChunk>>;
+}
+
+export async function primeChunks(chunks: AsyncIterable<ChatChunk>): Promise<PrimedChunks> {
   const iterator = chunks[Symbol.asyncIterator]();
-  const first = await iterator.next();
-  return (async function* () {
-    try {
-      if (first.done) return;
-      yield first.value;
-      for (let next = await iterator.next(); !next.done; next = await iterator.next()) yield next.value;
-    } finally {
-      await iterator.return?.();
-    }
-  })();
+  let pending: IteratorResult<ChatChunk> | undefined = await iterator.next();
+  let closed = false;
+  const finish = async () => {
+    if (closed) return;
+    closed = true;
+    await iterator.return?.();
+  };
+  const primed: PrimedChunks = {
+    async next() {
+      if (closed) return { done: true, value: undefined };
+      const result: IteratorResult<ChatChunk> = pending ?? await iterator.next();
+      pending = undefined;
+      if (result.done) closed = true;
+      return result;
+    },
+    async return(value?: unknown) {
+      await finish();
+      return { done: true, value };
+    },
+    async throw(error?: unknown) {
+      await finish();
+      throw error;
+    },
+    [Symbol.asyncIterator]() {
+      return primed;
+    },
+  };
+  return primed;
 }

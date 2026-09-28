@@ -97,6 +97,11 @@ const MIGRATIONS = [
     label TEXT NOT NULL,
     created_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE gateway_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
 ];
 
 export function defaultDatabaseFile() {
@@ -232,4 +237,14 @@ export function loadProviderSetting(db: Database, provider: string): ProviderSet
   const row = db.query(`SELECT provider, auto, updated_at AS updatedAt FROM provider_settings WHERE provider = $provider`)
     .get({ provider }) as { provider: string; auto: number; updatedAt: number } | null;
   return row ? { provider: row.provider, auto: row.auto === 1, updatedAt: row.updatedAt } : undefined;
+}
+
+export function saveGatewaySetting(db: Database, key: string, value: string, now = Date.now()) {
+  db.query(`INSERT INTO gateway_settings (key, value, updated_at) VALUES ($key, $value, $now)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run({ key, value, now });
+}
+
+export function loadGatewaySetting(db: Database, key: string): string | undefined {
+  const row = db.query(`SELECT value FROM gateway_settings WHERE key = $key`).get({ key }) as { value: string } | null;
+  return row?.value;
 }

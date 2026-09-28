@@ -10,11 +10,12 @@ import { notSignedIn } from '../src/browser/browser-chat.ts';
 import { WebSignInStatus } from '../src/core/accounts/sign-in-status.ts';
 import type { Database } from 'bun:sqlite';
 import {
-  addBrowserProfile, listBrowserProfiles, loadProviderSetting, loadSignIn, loadSignIns, openDatabase, removeBrowserProfile,
-  saveProviderSetting, saveSignIn, type BrowserProfileRow,
+  addBrowserProfile, listBrowserProfiles, loadGatewaySetting, loadProviderSetting, loadSignIn, loadSignIns, openDatabase, removeBrowserProfile,
+  saveGatewaySetting, saveProviderSetting, saveSignIn, type BrowserProfileRow,
 } from '../src/core/store/database.ts';
 import { createProfile, deleteProfile, listProfiles, profileDir } from '../src/browser/profiles.ts';
 import { ProviderSettings } from '../src/core/providers/settings.ts';
+import { GatewaySettings } from '../src/core/settings/gateway-settings.ts';
 import { siteForUrl, WEB_CHAT_SITES } from '../src/providers/web-chat-sites.ts';
 import { buildOverview } from '../src/cli/overview.ts';
 import { INIT_MESSAGES, initAccountsSecret } from '../src/cli/accounts-secret.ts';
@@ -62,6 +63,12 @@ try {
     },
     initSecret: async () => INIT_MESSAGES[await initAccountsSecret({ envFile: '.env', env: { ACCOUNTS_SECRET: environmentSecret }, keyring: systemKeyring })],
     secretSource: async () => secretSource,
+    autoSettings: change => withDb(db => {
+      const settings = new GatewaySettings({ load: key => loadGatewaySetting(db, key), save: (key, value) => saveGatewaySetting(db, key, value) });
+      if (change.focus !== undefined) settings.setAutoFocus(change.focus);
+      if (change.mode !== undefined) settings.setAutoMode(change.mode);
+      return { focus: settings.autoFocus(), mode: settings.autoMode() };
+    }),
     providerAuto: (provider, auto) => {
       const known = new Set(['deepseek', ...API_KEY_PROVIDERS.map(entry => entry.id), ...WEB_CHAT_SITES.map(site => site.id)]);
       if (!known.has(provider)) throw new Error(`Unknown provider: ${provider}`);

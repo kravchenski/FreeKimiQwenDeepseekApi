@@ -29,6 +29,7 @@ export interface AccountsCliDeps {
   initSecret?: () => Promise<string>;
   secretSource?: () => Promise<string>;
   providerAuto?: (provider: string, auto?: boolean) => boolean;
+  autoSettings?: (change: { focus?: string; mode?: string }) => { focus: string; mode: string };
 }
 
 const API_KEY_PROVIDERS = new Set(API_KEY_DEFINITIONS.map(provider => provider.id));
@@ -44,6 +45,7 @@ export const ACCOUNTS_USAGE = `Usage: bun run account <command>
   init                                            Create ACCOUNTS_SECRET in the system keyring (moves it out of .env)
   secret                                          Show where ACCOUNTS_SECRET is loaded from
   provider <id> [--auto on|off]                   Show or change whether model=auto may use a provider
+  auto [--focus <f>] [--mode <m>]                 Show or change model=auto: focus general|coding|reasoning|fast, mode fallback|race
   add <provider> --api-key [--label <name>]       Save an API key (the key is always prompted)
   list [provider]                                 List saved API keys
   remove <id>                                     Delete a saved API key
@@ -106,6 +108,13 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
     if (value !== undefined && value !== 'on' && value !== 'off') throw new Error('Use --auto on or --auto off');
     const auto = deps.providerAuto(target, value === undefined ? undefined : value === 'on');
     deps.log(`${target} auto: ${auto ? 'on' : 'off'}`);
+    return 0;
+  }
+
+  if (command === 'auto' && deps.autoSettings) {
+    const current = deps.autoSettings({ focus: option(args, '--focus'), mode: option(args, '--mode') });
+    deps.log(`auto focus: ${current.focus}`);
+    deps.log(`auto mode: ${current.mode}`);
     return 0;
   }
 

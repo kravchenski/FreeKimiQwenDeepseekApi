@@ -18,9 +18,11 @@ import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts
 import { collectChunks } from '../core/streaming/sse.ts';
 import { ProviderError, toHttpError } from '../core/providers/errors.ts';
 import { buildAutoChain } from '../core/router/auto-chain.ts';
+import { focusPreference, type AutoFocus } from '../core/router/focus.ts';
+import { GatewaySettings } from '../core/settings/gateway-settings.ts';
 import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
 import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
-import { listBrowserProfiles, loadModelStats, loadProviderSetting, loadSignIn, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
+import { listBrowserProfiles, loadGatewaySetting, loadModelStats, loadProviderSetting, loadSignIn, saveGatewaySetting, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
 import { WebSignInStatus } from '../core/accounts/sign-in-status.ts';
 import { ProviderSettings } from '../core/providers/settings.ts';
 import { WEB_CHAT_SITES } from '../providers/web-chat-sites.ts';
@@ -139,9 +141,18 @@ const providerSettings = new ProviderSettings({
     save: setting => saveProviderSetting(db(), setting),
 });
 
+const gatewaySettings = new GatewaySettings({
+    load: key => loadGatewaySetting(db(), key),
+    save: (key, value) => saveGatewaySetting(db(), key, value),
+});
+
 export const router = new SmartRouter(registry, parseAutoModels(config.AUTO_MODELS), Date.now, {
     firstChunkTimeoutMs: config.AUTO_FIRST_CHUNK_TIMEOUT_MS,
     autoEnabled: provider => providerSettings.autoEnabled(provider),
+    autoMode: () => gatewaySettings.autoMode(),
+    prepareAuto: () => {
+        if (gatewaySettings.autoFocus() !== chainFocus) rebuildAutoChain();
+    },
 });
 
 let database: Database | undefined;
@@ -183,13 +194,16 @@ async function refreshModelLists() {
     rebuildAutoChain();
 }
 
+let chainFocus: AutoFocus | undefined;
+
 function rebuildAutoChain() {
     if (config.AUTO_MODELS) return;
+    chainFocus = gatewaySettings.autoFocus();
     const candidates = allModels.flatMap(entry => {
         const provider = registry.resolve(entry.id);
         return provider ? [{ id: entry.id, provider: provider.id, fallback: provider.fallback ?? false }] : [];
     });
-    router.setAutoModels(buildAutoChain(candidates, registry.stats, model => registry.availability.isAvailable(model)));
+    router.setAutoModels(buildAutoChain(candidates, registry.stats, model => registry.availability.isAvailable(model), focusPreference(chainFocus)));
 }
 
 function loadModelStatistics() {
@@ -353,6 +367,8 @@ function handleProviderStream(
 app.get('/v1/gateway/status', (c) => c.json({
     ...gatewayStatus(registry, db()),
     autoModels: router.autoChain(),
+    autoFocus: gatewaySettings.autoFocus(),
+    autoMode: gatewaySettings.autoMode(),
     modelStats: registry.stats.list(),
     models: allModels.flatMap(entry => {
         const provider = registry.resolve(entry.id);

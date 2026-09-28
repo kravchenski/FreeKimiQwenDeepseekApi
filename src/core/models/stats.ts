@@ -65,14 +65,14 @@ export class ModelStats {
   }
 }
 
-export function rankModels(models: string[], stats: Pick<ModelStats, 'get'>) {
+export function rankModels(models: string[], stats: Pick<ModelStats, 'get'>, preference: (model: string) => number = () => 0) {
   const group = (model: string) => {
     const stat = stats.get(model);
     if (!stat) return 1;
     return stat.lastOutcome === 'success' ? 0 : 2;
   };
   return models
-    .map((model, order) => ({ model, order, group: group(model), latency: stats.get(model)?.latencyMs ?? 0 }))
-    .sort((a, b) => a.group - b.group || (a.group === 0 ? a.latency - b.latency : 0) || a.order - b.order)
+    .map((model, order) => ({ model, order, group: group(model), preferred: preference(model), latency: stats.get(model)?.latencyMs ?? 0 }))
+    .sort((a, b) => a.group - b.group || b.preferred - a.preferred || (a.group === 0 ? a.latency - b.latency : 0) || a.order - b.order)
     .map(entry => entry.model);
 }
