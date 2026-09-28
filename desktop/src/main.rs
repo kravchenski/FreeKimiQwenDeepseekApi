@@ -15,7 +15,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use accounts::{AccountsCli, SavedAccount};
-use gateway::{check_health, Gateway, GatewayConfig};
+use gateway::{check_health, stop_external, Gateway, GatewayConfig};
 use overview::{action, activity, detail, display_name, kind_label, Activity, ProviderAction, ProviderOverview};
 use status::{fetch_status, has_setting, now_ms, read_api_key, relative_time, GatewayStatus, ProviderStatus};
 use ui::*;
@@ -203,14 +203,37 @@ impl Shell {
         };
     }
 
-    fn toggle_gateway(&mut self) {
+    fn toggle_gateway(&mut self, cx: &mut Context<Self>) {
         if self.gateway.is_running() {
             self.gateway.stop();
             self.health = Health::Stopped;
             return;
         }
+        if self.external() {
+            let base_url = self.gateway.config.base_url();
+            self.busy = true;
+            cx.spawn(async move |this, cx| {
+                let result = cx.background_executor().spawn(async move { stop_external(&base_url) }).await;
+                let _ = this.update(cx, |shell, cx| {
+                    shell.busy = false;
+                    shell.message = Some(match result {
+                        Ok(pid) => {
+                            shell.health = Health::Stopped;
+                            (true, format!("Stopped the API (process {pid})"))
+                        }
+                        Err(error) => (false, error),
+                    });
+                    cx.notify();
+                });
+            })
+            .detach();
+            return;
+        }
         match self.gateway.start() {
-            Ok(()) => self.health = Health::Starting,
+            Ok(()) => {
+                self.health = Health::Starting;
+                self.message = None;
+            }
             Err(error) => self.message = Some((false, format!("Failed to start gateway: {error}"))),
         }
     }
@@ -354,21 +377,20 @@ impl Shell {
             .p_3()
             .bg(rgb(SIDEBAR))
             .child({
-                let external = self.external();
-                let (label, name, tone) = if self.running {
-                    ("Stop API", IconName::Square, Tone::Outline)
-                } else if external {
-                    ("API is running", IconName::Play, Tone::Outline)
-                } else {
-                    ("Start API", IconName::Play, Tone::Primary)
+                let enabled = !self.busy && self.health != Health::Starting;
+                let (label, name, tone) = match self.health {
+                    Health::Starting => ("Starting…", IconName::Play, Tone::Outline),
+                    Health::Online => ("Stop API", IconName::Square, Tone::Danger),
+                    Health::Stopped if self.running => ("Stop API", IconName::Square, Tone::Danger),
+                    Health::Stopped => ("Run API", IconName::Play, Tone::Primary),
                 };
-                button("gateway-toggle", label, Some(name), tone, !external)
+                button("gateway-toggle", label, Some(name), tone, enabled)
                     .w_full()
                     .h(px(40.))
                     .justify_center()
-                    .when(!external, |this| {
+                    .when(enabled, |this| {
                         this.on_click(cx.listener(|shell, _, _, cx| {
-                            shell.toggle_gateway();
+                            shell.toggle_gateway(cx);
                             cx.notify();
                         }))
                     })

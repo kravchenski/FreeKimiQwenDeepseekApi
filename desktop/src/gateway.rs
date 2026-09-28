@@ -1,7 +1,9 @@
 use std::fs::{self, File};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+const STOP_GRACE: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug)]
 pub struct GatewayConfig {
@@ -86,6 +88,14 @@ impl Gateway {
 
     pub fn stop(&mut self) {
         if let Some(mut child) = self.child.take() {
+            let _ = terminate(child.id());
+            let deadline = Instant::now() + STOP_GRACE;
+            while Instant::now() < deadline {
+                if matches!(child.try_wait(), Ok(Some(_))) {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -96,6 +106,47 @@ impl Drop for Gateway {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+pub fn terminate(pid: u32) -> Result<(), String> {
+    let status = if cfg!(windows) {
+        Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"]).stdout(Stdio::null()).stderr(Stdio::null()).status()
+    } else {
+        Command::new("kill").args(["-TERM", &pid.to_string()]).stdout(Stdio::null()).stderr(Stdio::null()).status()
+    };
+    match status {
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => Err(format!("Could not stop process {pid} ({status})")),
+        Err(error) => Err(format!("Could not stop process {pid}: {error}")),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct Health {
+    pid: Option<u32>,
+}
+
+pub fn gateway_pid(base_url: &str) -> Result<u32, String> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(2)))
+        .build()
+        .into();
+    let health: Health = agent
+        .get(format!("{base_url}/health"))
+        .call()
+        .map_err(|error| error.to_string())?
+        .body_mut()
+        .read_json()
+        .map_err(|error| error.to_string())?;
+    health.pid.ok_or_else(|| "This gateway is too old to be stopped from the app; stop it in its terminal".to_string())
+}
+
+pub fn stop_external(base_url: &str) -> Result<u32, String> {
+    let pid = gateway_pid(base_url)?;
+    if pid == std::process::id() {
+        return Err("Refusing to stop the app itself".into());
+    }
+    terminate(pid).map(|()| pid)
 }
 
 pub fn check_health(base_url: &str) -> Result<(), String> {
@@ -180,6 +231,37 @@ mod tests {
             let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
         });
         assert!(check_health(&format!("http://127.0.0.1:{port}")).is_ok());
+    }
+
+    fn serve_once(body: &'static str) -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0u8; 1024];
+            let _ = stream.read(&mut buffer);
+            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            let _ = stream.write_all(response.as_bytes());
+        });
+        port
+    }
+
+    #[test]
+    fn reads_the_gateway_pid_from_health() {
+        let port = serve_once(r#"{"status":"ok","service":"unified","pid":4242}"#);
+        assert_eq!(gateway_pid(&format!("http://127.0.0.1:{port}")), Ok(4242));
+        let old = serve_once(r#"{"status":"ok","service":"unified"}"#);
+        assert!(gateway_pid(&format!("http://127.0.0.1:{old}")).unwrap_err().contains("too old"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn terminates_a_process_gracefully() {
+        let mut child = Command::new("sleep").arg("30").spawn().unwrap();
+        terminate(child.id()).unwrap();
+        let status = child.wait().unwrap();
+        assert!(!status.success());
+        assert!(terminate(child.id()).is_err());
     }
 
     #[test]
