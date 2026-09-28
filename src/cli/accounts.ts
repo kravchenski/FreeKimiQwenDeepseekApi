@@ -1,5 +1,7 @@
 import type { ApiKeyCredential, BrowserSession, Credential } from '../core/accounts/credential-store.ts';
 import type { CapturedSession } from '../browser/site-session.ts';
+import type { SiteSignIn } from '../browser/sign-in-check.ts';
+import { notSignedIn } from '../browser/browser-chat.ts';
 import type { QwenSession } from '../providers/qwen/auth.ts';
 
 export interface AccountsCliDeps {
@@ -19,6 +21,7 @@ export interface AccountsCliDeps {
   captureSession?: (provider: string) => Promise<CapturedSession>;
   openWindow?: (url: string) => Promise<void>;
   verifyApiKey?: (provider: string, apiKey: string) => Promise<number>;
+  checkSignIns?: (url?: string) => Promise<SiteSignIn[]>;
 }
 
 const PASSWORD_PROVIDERS = new Set(['qwen']);
@@ -35,6 +38,7 @@ export const ACCOUNTS_USAGE = `Usage: bun run account <command>
   test <id>                                       Sign in with a saved account
   google [--list]                                 Sign in to Google in the browser profile, then list its accounts
   open <https-url>                                Open a site in the browser profile to sign in manually
+  status                                          Show which web chats the browser profile is signed in to
 
 Providers: ${[...PASSWORD_PROVIDERS].join(', ')} (email or browser), ${[...API_KEY_PROVIDERS].join(', ')} (API key)`;
 
@@ -50,6 +54,14 @@ function requireProvider(provider: string | undefined, allowed: Set<string> = PA
     throw new Error(`${provider} does not support this sign-in method; ${hint}`);
   }
   return provider;
+}
+
+function reportSignIns(results: SiteSignIn[], log: (line: string) => void) {
+  for (const { site, result } of results) {
+    const host = new URL(site.url).hostname;
+    log(result.signedIn ? `✓ ${site.id.padEnd(10)} ${host}` : `○ ${site.id.padEnd(10)} ${notSignedIn(site, result)}`);
+  }
+  return results.every(entry => entry.result.signedIn) ? 0 : 1;
 }
 
 function describeExpiry(session: QwenSession) {
@@ -80,7 +92,13 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
     if (url.protocol !== 'https:') throw new Error('Only https URLs can be opened');
     deps.log(`Sign in on ${url.hostname} in the opened browser window, then close the window.`);
     await deps.openWindow(url.href);
-    return 0;
+    if (!deps.checkSignIns) return 0;
+    const results = await deps.checkSignIns(url.href);
+    return results.length ? reportSignIns(results, deps.log) : 0;
+  }
+
+  if (command === 'status' && deps.checkSignIns) {
+    return reportSignIns(await deps.checkSignIns(), deps.log);
   }
 
   if (command === 'add' && args.includes('--browser')) {

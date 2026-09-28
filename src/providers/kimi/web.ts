@@ -7,6 +7,7 @@ export const KIMI_CHAT_SITE: ChatSite = {
   inputSelector: '[contenteditable="true"], textarea',
   responseUrl: /kimi\.gateway\.chat\.v1\.ChatService\/Chat(?:\?|$)/,
   verificationText: /security verification|verify you are human|captcha/i,
+  signIn: { storageKey: 'refresh_token', expiring: true },
 };
 
 const HEADER_BYTES = 5;

@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { SignInRecord } from '../accounts/sign-in-status.ts';
 import type { ModelStat } from '../models/stats.ts';
 
 const MIGRATIONS = [
@@ -66,6 +67,12 @@ const MIGRATIONS = [
     latency_ms INTEGER,
     last_outcome TEXT NOT NULL,
     updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE web_sign_in (
+    provider TEXT PRIMARY KEY,
+    signed_in INTEGER NOT NULL,
+    reason TEXT,
+    checked_at INTEGER NOT NULL
   )`,
 ];
 
@@ -140,4 +147,21 @@ export function saveModelStat(db: Database, stat: ModelStat) {
     lastOutcome: stat.lastOutcome,
     updatedAt: stat.updatedAt,
   });
+}
+
+export function saveSignIn(db: Database, record: SignInRecord) {
+  db.query(`INSERT INTO web_sign_in (provider, signed_in, reason, checked_at) VALUES ($provider, $signedIn, $reason, $checkedAt)
+    ON CONFLICT (provider) DO UPDATE SET signed_in = excluded.signed_in, reason = excluded.reason, checked_at = excluded.checked_at`).run({
+    provider: record.provider,
+    signedIn: record.signedIn ? 1 : 0,
+    reason: record.reason ?? null,
+    checkedAt: record.checkedAt,
+  });
+}
+
+export function loadSignIn(db: Database, provider: string): SignInRecord | undefined {
+  const row = db.query(`SELECT provider, signed_in AS signedIn, reason, checked_at AS checkedAt FROM web_sign_in
+    WHERE provider = $provider`).get({ provider }) as { provider: string; signedIn: number; reason: string | null; checkedAt: number } | null;
+  if (!row) return undefined;
+  return { provider: row.provider, signedIn: row.signedIn === 1, checkedAt: row.checkedAt, ...(row.reason ? { reason: row.reason } : {}) };
 }
