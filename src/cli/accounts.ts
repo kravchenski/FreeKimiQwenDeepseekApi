@@ -2,6 +2,7 @@ import type { ApiKeyCredential, BrowserSession, Credential } from '../core/accou
 import type { CapturedSession } from '../browser/site-session.ts';
 import type { SiteSignIn } from '../browser/sign-in-check.ts';
 import { notSignedIn } from '../browser/browser-chat.ts';
+import { formatOverview, type ProviderOverview } from './overview.ts';
 import type { QwenSession } from '../providers/qwen/auth.ts';
 
 export interface AccountsCliDeps {
@@ -22,6 +23,7 @@ export interface AccountsCliDeps {
   openWindow?: (url: string) => Promise<void>;
   verifyApiKey?: (provider: string, apiKey: string) => Promise<number>;
   checkSignIns?: (url?: string) => Promise<SiteSignIn[]>;
+  overview?: () => ProviderOverview[];
 }
 
 const PASSWORD_PROVIDERS = new Set(['qwen']);
@@ -30,6 +32,7 @@ const PROVIDERS = new Set([...PASSWORD_PROVIDERS, ...API_KEY_PROVIDERS]);
 
 export const ACCOUNTS_USAGE = `Usage: bun run account <command>
 
+  (no command) [--json]                           Show every provider and whether it is connected
   add <provider> [--email <email>] [--no-verify]  Save an account (password is always prompted)
   add <provider> --browser [--label <name>]       Sign in yourself in the browser; the session is captured
   add <provider> --api-key [--label <name>]       Save an API key (the key is always prompted)
@@ -70,6 +73,12 @@ function describeExpiry(session: QwenSession) {
 
 export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) {
   const [command, target] = args;
+
+  if ((command === undefined || command === '--json' || command === 'overview') && deps.overview) {
+    const rows = deps.overview();
+    deps.log(args.includes('--json') ? JSON.stringify(rows, null, 2) : formatOverview(rows));
+    return 0;
+  }
 
   if (command === 'google' && deps.listGoogleAccounts) {
     if (!args.includes('--list') && deps.openGoogleSignIn) {

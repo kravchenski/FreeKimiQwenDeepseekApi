@@ -13,10 +13,15 @@ import { notSignedIn } from '../src/browser/browser-chat.ts';
 import { WebSignInStatus } from '../src/core/accounts/sign-in-status.ts';
 import { loadSignIn, openDatabase, saveSignIn } from '../src/core/store/database.ts';
 import { siteForUrl, WEB_CHAT_SITES } from '../src/providers/web-chat-sites.ts';
+import { buildOverview } from '../src/cli/overview.ts';
+import { accountStates } from '../src/core/status.ts';
+import { loadDeepSeekAccounts } from '../src/providers/deepseek/accounts.ts';
+
+const store = openCredentialStore();
 
 try {
   process.exitCode = await runAccountsCommand(process.argv.slice(2), {
-    store: openCredentialStore(),
+    store,
     signIn: qwenLogin(),
     ask: question => prompt(question),
     askHidden,
@@ -24,6 +29,21 @@ try {
     openGoogleSignIn: () => openGoogleSignIn(),
     listGoogleAccounts: () => listGoogleAccounts(),
     openWindow: url => openProfileWindow(url),
+    overview: () => {
+      const db = openDatabase();
+      try {
+        return buildOverview({
+          env: process.env,
+          credentials: () => store.list(),
+          deepseekAccounts: loadDeepSeekAccounts,
+          accountStates: () => accountStates(db),
+          signIn: provider => loadSignIn(db, provider),
+          webSites: WEB_CHAT_SITES,
+        });
+      } finally {
+        db.close();
+      }
+    },
     checkSignIns: async url => {
       const sites = url ? [siteForUrl(url)].filter(site => site !== undefined) : WEB_CHAT_SITES;
       if (!sites.length) return [];
