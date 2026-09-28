@@ -46,26 +46,27 @@ describe('account overview', () => {
       signIn: provider => provider === 'glm-chat'
         ? { provider, signedIn: true, checkedAt: NOW - 5 * 60_000 }
         : { provider, signedIn: false, reason: 'www.kimi.ai: session expired; run: bun run account open https://www.kimi.ai/', checkedAt: NOW },
+      autoEnabled: provider => provider !== 'nvidia',
     }));
     expect(rows).toEqual([
-      { id: 'qwen', kind: 'account', state: 'degraded', detail: '2 accounts (1 quota exhausted)' },
-      { id: 'deepseek', kind: 'account', state: 'not-connected', detail: '1 account (1 signed out); 1 invalid', fix: 'bun run auth:deepseek' },
-      { id: 'glm-chat', kind: 'web', state: 'connected', detail: 'chat.z.ai: signed in (checked 5 min ago)' },
-      { id: 'kimi-chat', kind: 'web', state: 'not-connected', detail: 'www.kimi.ai: session expired; run: bun run account open https://www.kimi.ai/', fix: 'bun run account open https://www.kimi.ai/' },
-      { id: 'nvidia', kind: 'api-key', state: 'connected', detail: 'API key (saved)' },
+      { id: 'qwen', kind: 'account', state: 'degraded', detail: '2 accounts (1 quota exhausted)', auto: true },
+      { id: 'deepseek', kind: 'account', state: 'not-connected', detail: '1 account (1 signed out); 1 invalid', fix: 'bun run auth:deepseek', auto: true },
+      { id: 'glm-chat', kind: 'web', state: 'connected', detail: 'chat.z.ai: signed in (checked 5 min ago)', url: 'https://chat.z.ai/', auto: true },
+      { id: 'kimi-chat', kind: 'web', state: 'not-connected', detail: 'www.kimi.ai: session expired; run: bun run account open https://www.kimi.ai/', fix: 'bun run account open https://www.kimi.ai/', url: 'https://www.kimi.ai/', auto: true },
+      { id: 'nvidia', kind: 'api-key', state: 'connected', detail: 'API key (saved)', auto: false },
     ]);
   });
 
   test('counts environment tokens and keys as connected', () => {
     const rows = buildOverview(input({ env: { QWEN_TOKEN: 't', NVIDIA_API_KEY: 'k' } }));
-    expect(rows[0]).toEqual({ id: 'qwen', kind: 'account', state: 'connected', detail: 'QWEN_TOKEN' });
-    expect(rows[4]).toEqual({ id: 'nvidia', kind: 'api-key', state: 'connected', detail: 'API key (environment)' });
+    expect(rows[0]).toEqual({ id: 'qwen', kind: 'account', state: 'connected', detail: 'QWEN_TOKEN', auto: true });
+    expect(rows[4]).toEqual({ id: 'nvidia', kind: 'api-key', state: 'connected', detail: 'API key (environment)', auto: true });
   });
 
   test('explains a locked registry and survives failing sources', () => {
     const fail = () => { throw new Error('ACCOUNTS_SECRET is not set'); };
-    const rows = buildOverview(input({ credentials: fail, deepseekAccounts: fail, accountStates: fail, signIn: fail }));
-    expect(rows[0]).toEqual({ id: 'qwen', kind: 'account', state: 'unknown', detail: 'registry locked: ACCOUNTS_SECRET is not set', fix: 'bun run account init' });
+    const rows = buildOverview(input({ credentials: fail, deepseekAccounts: fail, accountStates: fail, signIn: fail, autoEnabled: fail }));
+    expect(rows[0]).toEqual({ id: 'qwen', kind: 'account', state: 'unknown', detail: 'registry locked: ACCOUNTS_SECRET is not set', fix: 'bun run account init', auto: true });
     expect(rows.map(row => row.state)).toEqual(['unknown', 'not-connected', 'unknown', 'unknown', 'not-connected']);
   });
 

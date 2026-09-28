@@ -4,10 +4,41 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GatewayStatus {
     pub providers: Vec<ProviderStatus>,
     pub accounts: Vec<AccountStatus>,
     pub requests: Vec<RequestLog>,
+    #[serde(default)]
+    pub models: Vec<ModelEntry>,
+    #[serde(default)]
+    pub model_stats: Vec<ModelStat>,
+    #[serde(default)]
+    pub auto_models: Vec<String>,
+    #[serde(default)]
+    pub unavailable_models: Vec<UnavailableModel>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct ModelEntry {
+    pub id: String,
+    pub provider: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelStat {
+    pub model: String,
+    pub successes: u32,
+    pub failures: u32,
+    pub latency_ms: Option<u64>,
+    pub last_outcome: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct UnavailableModel {
+    pub model: String,
+    pub reason: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]

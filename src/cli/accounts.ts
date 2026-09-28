@@ -26,6 +26,7 @@ export interface AccountsCliDeps {
   overview?: () => ProviderOverview[];
   initSecret?: () => Promise<string>;
   secretSource?: () => Promise<string>;
+  providerAuto?: (provider: string, auto?: boolean) => boolean;
 }
 
 const PASSWORD_PROVIDERS = new Set(['qwen']);
@@ -37,6 +38,7 @@ export const ACCOUNTS_USAGE = `Usage: bun run account <command>
   (no command) [--json]                           Show every provider and whether it is connected
   init                                            Create ACCOUNTS_SECRET in the system keyring (moves it out of .env)
   secret                                          Show where ACCOUNTS_SECRET is loaded from
+  provider <id> [--auto on|off]                   Show or change whether model=auto may use a provider
   add <provider> [--email <email>] [--no-verify]  Save an account (password is always prompted)
   add <provider> --browser [--label <name>]       Sign in yourself in the browser; the session is captured
   add <provider> --api-key [--label <name>]       Save an API key (the key is always prompted)
@@ -86,6 +88,14 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
 
   if (command === 'init' && deps.initSecret) {
     deps.log(await deps.initSecret());
+    return 0;
+  }
+
+  if (command === 'provider' && target && deps.providerAuto) {
+    const value = option(args, '--auto');
+    if (value !== undefined && value !== 'on' && value !== 'off') throw new Error('Use --auto on or --auto off');
+    const auto = deps.providerAuto(target, value === undefined ? undefined : value === 'on');
+    deps.log(`${target} auto: ${auto ? 'on' : 'off'}`);
     return 0;
   }
 

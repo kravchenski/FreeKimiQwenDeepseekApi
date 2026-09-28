@@ -37,6 +37,7 @@ enum Page {
     Providers,
     Accounts,
     Requests,
+    Provider,
 }
 
 impl Page {
@@ -45,6 +46,7 @@ impl Page {
             Page::Providers => "Providers",
             Page::Accounts => "Accounts",
             Page::Requests => "Requests",
+            Page::Provider => "Provider",
         }
     }
 
@@ -53,6 +55,7 @@ impl Page {
             Page::Providers => "See which AI providers are connected and connect the missing ones.",
             Page::Accounts => "Google accounts for web chats, saved accounts and API keys.",
             Page::Requests => "Recent requests routed through the gateway.",
+            Page::Provider => "Connection, routing and models of this provider.",
         }
     }
 }
@@ -70,6 +73,7 @@ struct Shell {
     api_key: Entity<InputState>,
     key_provider: Option<String>,
     request_filter: Option<String>,
+    selected_provider: Option<String>,
     busy: bool,
     running: bool,
     compact: bool,
@@ -134,6 +138,7 @@ impl Shell {
             api_key: cx.new(|cx| InputState::new(window, cx).placeholder("Paste the API key").masked(true)),
             key_provider: None,
             request_filter: None,
+            selected_provider: None,
             busy: false,
             running: false,
             compact: false,
@@ -288,6 +293,10 @@ impl Shell {
 
     fn add_api_key(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(provider) = self.selected_key_provider() else { return };
+        self.add_api_key_for(provider, window, cx);
+    }
+
+    fn add_api_key_for(&mut self, provider: String, window: &mut Window, cx: &mut Context<Self>) {
         let key = self.api_key.read(cx).value().to_string();
         self.api_key.update(cx, |input, cx| input.set_value("", window, cx));
         self.run_command(cx, move |cli| cli.add_api_key(&provider, &key));
@@ -295,6 +304,20 @@ impl Shell {
 
     fn live(&self, id: &str) -> Option<&ProviderStatus> {
         self.status.as_ref()?.providers.iter().find(|provider| provider.id == id)
+    }
+}
+
+fn model_rank(status: &GatewayStatus, model: &str) -> (usize, usize) {
+    if let Some(position) = status.auto_models.iter().position(|entry| entry == model) {
+        return (0, position);
+    }
+    if status.unavailable_models.iter().any(|entry| entry.model == model) {
+        return (3, 0);
+    }
+    match status.model_stats.iter().find(|stat| stat.model == model) {
+        Some(stat) if stat.last_outcome == "success" => (1, stat.latency_ms.unwrap_or(u64::MAX) as usize),
+        Some(_) => (3, 0),
+        None => (2, 0),
     }
 }
 
@@ -337,6 +360,7 @@ impl Render for Shell {
                                 Page::Providers => self.render_providers(cx),
                                 Page::Accounts => self.render_accounts(cx),
                                 Page::Requests => self.render_requests(cx),
+                                Page::Provider => self.render_provider_settings(window, cx),
                             }),
                     ),
             )
@@ -412,6 +436,8 @@ impl Shell {
                 let live = self.live(&row.id);
                 let state = activity(row, live);
                 let tip: SharedString = format!("{} · {}", state.label(), detail(row, live)).into();
+                let selected = self.page == Page::Provider && self.selected_provider.as_deref() == Some(row.id.as_str());
+                let id = row.id.clone();
                 div()
                     .id(SharedString::from(format!("side-{}", row.id)))
                     .flex()
@@ -423,16 +449,26 @@ impl Shell {
                     .cursor_pointer()
                     .text_sm()
                     .text_color(rgb(TEXT))
-                    .hover(|style| style.bg(rgb(0xf1f2f4)))
+                    .when(selected, |this| this.bg(rgb(SURFACE)).border_1().border_color(rgb(BORDER)).shadow_sm().font_weight(FontWeight::MEDIUM))
+                    .when(!selected, |this| this.hover(|style| style.bg(rgb(0xf1f2f4))))
                     .child(provider_mark(&row.id, 22.))
                     .child(div().flex_1().child(display_name(&row.id).to_string()))
                     .child(status_dot(state))
                     .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
-                    .on_click(cx.listener(|shell, _, _, cx| {
-                        shell.page = Page::Providers;
+                    .on_click(cx.listener(move |shell, _, _, cx| {
+                        shell.selected_provider = Some(id.clone());
+                        shell.page = Page::Provider;
+                        shell.message = None;
                         cx.notify();
                     }))
             }))
+    }
+
+    fn page_title(&self) -> String {
+        match (self.page, self.selected_provider.as_deref()) {
+            (Page::Provider, Some(id)) => display_name(id).to_string(),
+            (page, _) => page.title().to_string(),
+        }
     }
 
     fn render_header(&self) -> Div {
@@ -450,7 +486,7 @@ impl Shell {
                     .flex()
                     .flex_col()
                     .gap_1()
-                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(self.page.title()))
+                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(self.page_title()))
                     .child(muted(self.page.subtitle()).text_xs()),
             )
     }
@@ -550,6 +586,217 @@ impl Shell {
                 muted("Check sign-ins opens the browser profile, which the running API is using. Stop the API to check sign-ins.").text_xs()
             }))
             .into_any_element()
+    }
+
+    fn render_provider_settings(&self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(row) = self.selected_provider.as_ref().and_then(|id| self.overview.iter().find(|row| &row.id == id)).cloned() else {
+            return card().p_6().child(muted("Pick a provider in the sidebar.")).into_any_element();
+        };
+        let live = self.live(&row.id);
+        let state = activity(&row, live);
+        let blocked = self.browser_blocked();
+
+        let summary = card()
+            .p_4()
+            .flex()
+            .items_center()
+            .gap_3()
+            .child(provider_mark(&row.id, 44.))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(display_name(&row.id).to_string()))
+                            .child(status_badge(state)),
+                    )
+                    .child(muted(format!("{} · {}", kind_label(&row.kind), row.id)).text_xs())
+                    .child(muted(detail(&row, live))),
+            );
+
+        let connection = card().p_4().flex().flex_col().gap_3().child(div().font_weight(FontWeight::SEMIBOLD).child("Connection"));
+        let connection = match (row.kind.as_str(), row.url.clone()) {
+            ("web", Some(url)) => {
+                let open_url = url.clone();
+                connection
+                    .child(muted(format!("Messages are sent from your signed-in session on {}.", url.trim_start_matches("https://").trim_end_matches('/'))).text_xs())
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap_2()
+                            .child(button("provider-sign-in", "Sign in in the browser", Some(IconName::LogIn), Tone::Primary, !blocked).when(!blocked, |this| {
+                                this.on_click(cx.listener(move |shell, _, _, cx| {
+                                    let url = open_url.clone();
+                                    shell.run_command(cx, move |cli| cli.open_site(&url));
+                                    cx.notify();
+                                }))
+                            }))
+                            .child(button("provider-check", "Check sign-in", Some(IconName::RefreshCw), Tone::Outline, !blocked).when(!blocked, |this| {
+                                this.on_click(cx.listener(move |shell, _, _, cx| {
+                                    let url = url.clone();
+                                    shell.run_command(cx, move |cli| cli.check_site(&url));
+                                    cx.notify();
+                                }))
+                            })),
+                    )
+            }
+            ("api-key", _) => {
+                let provider = row.id.clone();
+                let keys: Vec<SavedAccount> = self.saved.iter().filter(|account| account.provider == row.id).cloned().collect();
+                connection
+                    .child(muted("Keys are checked against the provider and stored encrypted. An environment variable overrides saved keys.").text_xs())
+                    .children(keys.into_iter().map(|account| {
+                        let id = account.id.clone();
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_3()
+                            .py_1()
+                            .child(div().flex().items_center().gap_2().child(div().text_size(px(15.)).child(IconName::KeyRound)).child(account.email.clone()).child(muted(account.id.clone()).text_xs()))
+                            .child(button(SharedString::from(format!("remove-key-{}", account.id)), "Remove", Some(IconName::Trash), Tone::Danger, !self.busy).when(!self.busy, |this| {
+                                this.on_click(cx.listener(move |shell, _, _, cx| {
+                                    let id = id.clone();
+                                    shell.run_command(cx, move |cli| cli.remove(&id));
+                                    cx.notify();
+                                }))
+                            }))
+                    }))
+                    .child(Input::new(&self.api_key))
+                    .child(div().flex().justify_end().child(button("provider-save-key", if self.busy { "Working…" } else { "Save key" }, Some(IconName::KeyRound), Tone::Primary, !self.busy).when(!self.busy, |this| {
+                        this.on_click(cx.listener(move |shell, _, window, cx| {
+                            shell.add_api_key_for(provider.clone(), window, cx);
+                            cx.notify();
+                        }))
+                    })))
+            }
+            _ if row.id == "qwen" => connection
+                .child(muted("Sign in to Qwen in the browser; the session is captured and stored encrypted.").text_xs())
+                .child(div().flex().child(button("provider-capture", "Add account via browser", Some(IconName::LogIn), Tone::Primary, !blocked).when(!blocked, |this| {
+                    this.on_click(cx.listener(|shell, _, _, cx| {
+                        shell.run_command(cx, |cli| cli.capture_qwen());
+                        cx.notify();
+                    }))
+                }))),
+            _ => connection.child(muted(match row.fix.as_deref() {
+                Some(fix) => format!("Connect it from a terminal: {fix}"),
+                None => "Connected. Manage its accounts from a terminal.".to_string(),
+            })),
+        }
+        .children((blocked && (row.kind == "web" || row.id == "qwen")).then(|| muted("Browser actions are paused while the API runs, because it uses the same browser profile.").text_xs()));
+
+        let provider = row.id.clone();
+        let auto = row.auto;
+        let routing = card()
+            .p_4()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap_4()
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child("Use in auto"))
+                    .child(muted("When off, model=auto skips this provider. Requests that name its models still work.").text_xs()),
+            )
+            .child(
+                div()
+                    .id("provider-auto")
+                    .w(px(44.))
+                    .h(px(24.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .px(px(3.))
+                    .rounded_full()
+                    .bg(rgb(if auto { PRIMARY } else { 0xd1d5db }))
+                    .when(auto, |this| this.justify_end())
+                    .when(self.busy, |this| this.opacity(0.5))
+                    .when(!self.busy, |this| {
+                        this.cursor_pointer().on_click(cx.listener(move |shell, _, _, cx| {
+                            let provider = provider.clone();
+                            shell.run_command(cx, move |cli| cli.set_auto(&provider, !auto));
+                            cx.notify();
+                        }))
+                    })
+                    .child(div().size(px(18.)).rounded_full().bg(rgb(SURFACE)).shadow_sm()),
+            );
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(summary)
+            .child(
+                div()
+                    .flex()
+                    .items_start()
+                    .when(self.compact, |this| this.flex_col().items_stretch())
+                    .gap_4()
+                    .child(connection.flex_1().min_w_0())
+                    .child(div().flex_1().min_w_0().flex().flex_col().gap_4().child(routing)),
+            )
+            .child(self.render_provider_models(&row.id, row.auto))
+            .into_any_element()
+    }
+
+    fn render_provider_models(&self, provider: &str, provider_auto: bool) -> Div {
+        let heading = div().flex().items_center().justify_between().child(div().font_weight(FontWeight::SEMIBOLD).child("Models"));
+        let Some(status) = &self.status else {
+            return card().p_4().flex().flex_col().gap_2().child(heading).child(muted("Run the API to see this provider's models."));
+        };
+        let mut models: Vec<&str> = status.models.iter().filter(|model| model.provider == provider).map(|model| model.id.as_str()).collect();
+        models.sort_by_key(|model| model_rank(status, model));
+        let columns: Vec<(&'static str, f32)> = if self.compact {
+            vec![("Model", 0.), ("Status", 140.)]
+        } else {
+            vec![("Model", 0.), ("First answer", 130.), ("In auto", 100.), ("Status", 150.)]
+        };
+        let rows = models.iter().take(100).map(|model| {
+            let stat = status.model_stats.iter().find(|stat| stat.model == *model);
+            let hidden = status.unavailable_models.iter().any(|entry| entry.model == *model);
+            let (state, label) = if hidden {
+                (Activity::Inactive, "Unavailable")
+            } else {
+                match stat.map(|stat| stat.last_outcome.as_str()) {
+                    Some("success") => (Activity::Active, "Working"),
+                    Some(_) => (Activity::Degraded, "Failing"),
+                    None => (Activity::Unknown, "Not used yet"),
+                }
+            };
+            let in_auto = provider_auto && status.auto_models.iter().any(|entry| entry == model);
+            table_row()
+                .child(cell(0.).child(model.to_string()))
+                .when(!self.compact, |this| {
+                    this.child(cell(130.).text_color(rgb(MUTED)).child(stat.and_then(|stat| stat.latency_ms).map(|ms| format!("{:.1} s", ms as f64 / 1000.)).unwrap_or_else(|| "—".into())))
+                        .child(cell(100.).text_color(rgb(MUTED)).child(if in_auto { "Yes" } else { "—" }))
+                })
+                .child(cell(if self.compact { 140. } else { 150. }).flex().child(labeled_badge(state, label)))
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(heading.child(muted(format!("{} model{}", models.len(), if models.len() == 1 { "" } else { "s" })).text_xs()))
+            .child(
+                card()
+                    .overflow_hidden()
+                    .child(table_header(&columns))
+                    .children(rows)
+                    .children(models.is_empty().then(|| table_row().child(muted("No models listed for this provider")))),
+            )
     }
 
     fn render_accounts(&self, cx: &mut Context<Self>) -> AnyElement {

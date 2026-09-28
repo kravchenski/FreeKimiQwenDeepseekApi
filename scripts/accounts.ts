@@ -11,7 +11,8 @@ import { prompt } from '../src/utils/prompt.ts';
 import { checkSignIns } from '../src/browser/sign-in-check.ts';
 import { notSignedIn } from '../src/browser/browser-chat.ts';
 import { WebSignInStatus } from '../src/core/accounts/sign-in-status.ts';
-import { loadSignIn, openDatabase, saveSignIn } from '../src/core/store/database.ts';
+import { loadProviderSetting, loadSignIn, openDatabase, saveProviderSetting, saveSignIn } from '../src/core/store/database.ts';
+import { ProviderSettings } from '../src/core/providers/settings.ts';
 import { siteForUrl, WEB_CHAT_SITES } from '../src/providers/web-chat-sites.ts';
 import { buildOverview } from '../src/cli/overview.ts';
 import { INIT_MESSAGES, initAccountsSecret } from '../src/cli/accounts-secret.ts';
@@ -35,6 +36,17 @@ try {
     openWindow: url => openProfileWindow(url),
     initSecret: async () => INIT_MESSAGES[await initAccountsSecret({ envFile: '.env', env: { ACCOUNTS_SECRET: environmentSecret }, keyring: systemKeyring })],
     secretSource: async () => secretSource,
+    providerAuto: (provider, auto) => {
+      const known = new Set(['qwen', 'deepseek', 'nvidia', ...WEB_CHAT_SITES.map(site => site.id)]);
+      if (!known.has(provider)) throw new Error(`Unknown provider: ${provider}`);
+      const db = openDatabase();
+      try {
+        const settings = new ProviderSettings({ load: id => loadProviderSetting(db, id), save: setting => saveProviderSetting(db, setting) });
+        return auto === undefined ? settings.autoEnabled(provider) : settings.setAuto(provider, auto).auto;
+      } finally {
+        db.close();
+      }
+    },
     overview: () => {
       const db = openDatabase();
       try {
@@ -45,6 +57,7 @@ try {
           accountStates: () => accountStates(db),
           signIn: provider => loadSignIn(db, provider),
           webSites: WEB_CHAT_SITES,
+          autoEnabled: provider => loadProviderSetting(db, provider)?.auto ?? true,
         });
       } finally {
         db.close();

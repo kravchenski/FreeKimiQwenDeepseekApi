@@ -21,8 +21,9 @@ import { ProviderError, toHttpError } from '../core/providers/errors.ts';
 import { buildAutoChain } from '../core/router/auto-chain.ts';
 import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
 import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
-import { loadModelStats, loadSignIn, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
+import { loadModelStats, loadProviderSetting, loadSignIn, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
 import { WebSignInStatus } from '../core/accounts/sign-in-status.ts';
+import { ProviderSettings } from '../core/providers/settings.ts';
 import { WEB_CHAT_SITES } from '../providers/web-chat-sites.ts';
 import { gatewayStatus } from '../core/status.ts';
 import { Metrics, requestIdFrom } from '../observability/metrics.ts';
@@ -108,8 +109,14 @@ registry.register(createBrowserChatProvider({
     parse: parseKimiStream,
 }));
 
+const providerSettings = new ProviderSettings({
+    load: provider => loadProviderSetting(db(), provider),
+    save: setting => saveProviderSetting(db(), setting),
+});
+
 export const router = new SmartRouter(registry, parseAutoModels(config.AUTO_MODELS), Date.now, {
     firstChunkTimeoutMs: config.AUTO_FIRST_CHUNK_TIMEOUT_MS,
+    autoEnabled: provider => providerSettings.autoEnabled(provider),
 });
 
 let database: Database | undefined;
@@ -318,7 +325,15 @@ function handleProviderStream(
     });
 }
 
-app.get('/v1/gateway/status', (c) => c.json({ ...gatewayStatus(registry, db()), autoModels: router.autoChain(), modelStats: registry.stats.list() }));
+app.get('/v1/gateway/status', (c) => c.json({
+    ...gatewayStatus(registry, db()),
+    autoModels: router.autoChain(),
+    modelStats: registry.stats.list(),
+    models: allModels.flatMap(entry => {
+        const provider = registry.resolve(entry.id);
+        return provider ? [{ id: entry.id, provider: provider.id }] : [];
+    }),
+}));
 
 app.get('/metrics', (c) => {
     let accounts: Array<{ provider: string; status: string }> = [];

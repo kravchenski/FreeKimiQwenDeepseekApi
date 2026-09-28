@@ -9,6 +9,13 @@ pub struct ProviderOverview {
     pub state: String,
     pub detail: String,
     pub fix: Option<String>,
+    #[serde(default = "enabled")]
+    pub auto: bool,
+    pub url: Option<String>,
+}
+
+fn enabled() -> bool {
+    true
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -80,7 +87,7 @@ mod tests {
     use super::*;
 
     fn row(id: &str, kind: &str, state: &str, fix: Option<&str>) -> ProviderOverview {
-        ProviderOverview { id: id.into(), kind: kind.into(), state: state.into(), detail: "d".into(), fix: fix.map(Into::into) }
+        ProviderOverview { id: id.into(), kind: kind.into(), state: state.into(), detail: "d".into(), fix: fix.map(Into::into), auto: true, url: None }
     }
 
     fn live(available: bool, reason: Option<&str>) -> ProviderStatus {
@@ -89,14 +96,19 @@ mod tests {
 
     #[test]
     fn parses_cli_json_after_the_script_banner() {
-        let output = "$ bun run scripts/accounts.ts --json\n[{\"id\":\"nvidia\",\"kind\":\"api-key\",\"state\":\"connected\",\"detail\":\"API key (environment)\"}]";
-        assert_eq!(parse_overview(output).unwrap(), vec![ProviderOverview {
+        let output = "$ bun run scripts/accounts.ts --json\n[{\"id\":\"nvidia\",\"kind\":\"api-key\",\"state\":\"connected\",\"detail\":\"API key (environment)\",\"auto\":false},{\"id\":\"glm-chat\",\"kind\":\"web\",\"state\":\"unknown\",\"detail\":\"d\",\"url\":\"https://chat.z.ai/\"}]";
+        let rows = parse_overview(output).unwrap();
+        assert_eq!(rows[0], ProviderOverview {
             id: "nvidia".into(),
             kind: "api-key".into(),
             state: "connected".into(),
             detail: "API key (environment)".into(),
             fix: None,
-        }]);
+            auto: false,
+            url: None,
+        });
+        assert!(rows[1].auto);
+        assert_eq!(rows[1].url.as_deref(), Some("https://chat.z.ai/"));
         assert!(parse_overview("no json").is_err());
     }
 
