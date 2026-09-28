@@ -37,6 +37,8 @@ bun run start
 
 All models are free. NVIDIA is the fallback and requires an API key.
 
+Run `bun run account` to see every provider, whether it is connected and the command that connects it (`--json` for scripts).
+
 To see which models actually answer for your keys and accounts, run `bun run models:probe` while the gateway is running (`--provider all` includes web chats, `--help` for options). The gateway remembers every measurement in `data/gateway.db`, so a probe run also reorders `auto` with the fastest working models first.
 
 ```bash
