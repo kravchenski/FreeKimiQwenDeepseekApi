@@ -1,5 +1,45 @@
 # Changelog
 
+## [2.0.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.10.0...v2.0.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **qwen:** qwen* models, QWEN_TOKEN, QWEN_API_BASE_URL, bun run account add qwen and /v1/images/* are removed.
+
+### Features
+
+* **accounts:** sign web chats in with several browser accounts and rotate between them ([deba4d5](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/deba4d5e382af5f87ae0549365c99e5cc7ec73c1))
+* **desktop:** add a settings page with theme, auto focus and race mode, and reorder the menu ([6dbdf42](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/6dbdf42b7a395008ed4a37dbcb1aa185f61f4c87))
+* **desktop:** add a settings page with theme, auto focus and race mode, and reorder the menu ([e799ce6](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/e799ce6440cf198e22905985bf1b5f4c773dd0bc))
+* **desktop:** add Get API key buttons that open the provider's key page ([7036c00](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/7036c003ee030a726784ac3f0b345127e22ce2d2))
+* **desktop:** drop the hover tooltip from sidebar providers ([3047120](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/3047120417a490cd84217e29b1633b26c3ed97fb))
+* **desktop:** manage browser accounts and connect them to every web chat ([61161aa](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/61161aac23ba835f647e2235abddbafec8969a91))
+* **desktop:** move API keys to their own page ([6895652](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/6895652ff5cf2b16686a62e03beb0987b28a9d2f))
+* **desktop:** open a settings page for each provider with connection, auto routing and models ([69d747f](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/69d747f4478bfe39b1b81d67d15ee5402f2ee25e))
+* **desktop:** remove the providers overview page in favour of the sidebar list ([02b9ebb](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/02b9ebbca6656fc0957e3d2753f7c525001a29d1))
+* **desktop:** show saved accounts on the Accounts page and only keys on the API keys page ([1b5da45](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/1b5da451672911c10221b924beb177aa7bbf99ae))
+* **desktop:** simplify the providers table to provider, type and status ([9ab721d](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/9ab721de9ab352e11f82f7b12c9c80efeecc552d))
+* **providers:** add OpenRouter, Groq, Gemini, Cerebras, Mistral and SambaNova free API providers ([ff61f03](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/ff61f03ac428d568122bab84d1ab977b65155bea))
+* **providers:** add OpenRouter, Groq, Gemini, Cerebras, Mistral and SambaNova free API providers ([841b135](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/841b135929f8220b40a016685aaed9591e231567))
+* **qwen:** serve qwen-chat through the signed-in Qwen web chat and wait out site challenges ([6e78399](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/6e78399e2643b9d4faa3085e6c02b88de6c9cbc9))
+* **qwen:** serve qwen-chat through the signed-in Qwen web chat and wait out site challenges ([ce82213](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/ce82213ff05245d03d840ab2fd76519388d56a89))
+* **router:** tune model=auto for a task focus and race routes in parallel ([25170fd](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/25170fd45517be525c1867dfe87cb78b74368c11))
+* **router:** tune model=auto for a task focus and race routes in parallel ([67a4b20](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/67a4b20da398bbcc70d0ad270f78bf1893b99f52))
+
+
+### Bug Fixes
+
+* **desktop:** keep both account cards inside the window and drop Qwen from the Google hint ([a6ddfdb](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/a6ddfdb81445206e847dbdf410551d5557a7bc51))
+* **providers:** fail on error events inside OpenAI-compatible streams instead of returning an empty answer ([9a7a90a](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/9a7a90a0c4c8667664953ea5f50b4ab65395fd1a))
+* **providers:** fail on error events inside OpenAI-compatible streams instead of returning an empty answer ([ae9e49f](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/ae9e49ffc0c34e5266013b215677dedb691faa1c))
+
+
+### Chores
+
+* **qwen:** remove the Qwen API proxy provider, its accounts and the image endpoints ([d2c0740](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/d2c0740ad268e6510e80dd72573be631b3d378bd))
+* **qwen:** remove the Qwen API proxy provider, its accounts and the image endpoints ([9903cde](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/9903cdeec91b5c332b5bd1c3f4d81cf0aa821fb0))
+
 ## [1.10.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.9.0...v1.10.0) (2026-09-28)
 
 
