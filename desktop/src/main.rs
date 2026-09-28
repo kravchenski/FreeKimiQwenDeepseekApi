@@ -425,7 +425,6 @@ impl Shell {
             .children(self.overview.iter().map(|row| {
                 let live = self.live(&row.id);
                 let state = activity(row, live);
-                let tip: SharedString = format!("{} · {}", state.label(), detail(row, live)).into();
                 let selected = self.page == Page::Provider && self.selected_provider.as_deref() == Some(row.id.as_str());
                 let id = row.id.clone();
                 div()
@@ -444,7 +443,6 @@ impl Shell {
                     .child(provider_mark(&row.id, 22.))
                     .child(div().flex_1().child(display_name(&row.id).to_string()))
                     .child(status_dot(state))
-                    .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
                     .on_click(cx.listener(move |shell, _, _, cx| {
                         shell.selected_provider = Some(id.clone());
                         shell.page = Page::Provider;
