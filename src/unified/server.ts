@@ -15,6 +15,7 @@ import { AnthropicStreamTranslator } from '../api/anthropic/stream.ts';
 import { readLines } from '../core/streaming/sse.ts';
 import type { ProviderStream } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
+import { checkProviderModels } from '../core/models/model-check.ts';
 import { collectChunks } from '../core/streaming/sse.ts';
 import { ProviderError, toHttpError } from '../core/providers/errors.ts';
 import { buildAutoChain } from '../core/router/auto-chain.ts';
@@ -22,7 +23,7 @@ import { focusPreference, type AutoFocus } from '../core/router/focus.ts';
 import { GatewaySettings } from '../core/settings/gateway-settings.ts';
 import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
 import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
-import { listBrowserProfiles, loadGatewaySetting, loadModelStats, loadProviderSetting, loadSignIn, saveGatewaySetting, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
+import { listBrowserProfiles, loadGatewaySetting, loadModelStats, loadUnavailableModels, replaceUnavailableModels, loadProviderSetting, loadSignIn, saveGatewaySetting, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
 import { WebSignInStatus } from '../core/accounts/sign-in-status.ts';
 import { ProviderSettings } from '../core/providers/settings.ts';
 import { WEB_CHAT_SITES } from '../providers/web-chat-sites.ts';
@@ -211,12 +212,20 @@ function rebuildAutoChain() {
 function loadModelStatistics() {
     try {
         registry.stats.load(loadModelStats(db()));
+        registry.availability.load(loadUnavailableModels(db()));
     } catch (error) {
         console.error('Model statistics unavailable:', errorText(error));
     }
 }
 
-registry.availability.onChange(rebuildAutoChain);
+registry.availability.onChange(() => {
+    try {
+        replaceUnavailableModels(db(), registry.availability.list());
+    } catch (error) {
+        console.error('Failed to save unavailable models:', errorText(error));
+    }
+    rebuildAutoChain();
+});
 registry.stats.onChange(stat => {
     try {
         saveModelStat(db(), stat);
@@ -231,6 +240,7 @@ function visibleModels() {
 }
 
 const AVAILABILITY_CHECK_MS = 30_000;
+const MODEL_CHECK_TIMEOUT_MS = 30_000;
 
 function providerAvailability() {
     return registry.list().map(provider => `${provider.id}:${provider.health().available}`).join(',');
@@ -376,6 +386,18 @@ function handleProviderStream(
         headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', ...extraHeaders }
     });
 }
+
+app.post('/v1/gateway/providers/:id/check', async (c) => {
+    const provider = registry.list().find(entry => entry.id === c.req.param('id'));
+    if (!provider) return c.json({ error: { message: 'Unknown provider', type: 'invalid_request_error' } }, 404);
+    forgetSavedKeys();
+    const health = provider.health();
+    if (!health.available) return c.json({ error: { message: health.reason ?? 'Provider is not available', type: 'provider_unavailable' } }, 409);
+    const models = await provider.listModels();
+    const report = await checkProviderModels(provider, models, registry, { timeoutMs: MODEL_CHECK_TIMEOUT_MS });
+    await refreshModelLists();
+    return c.json(report);
+});
 
 app.post('/v1/gateway/refresh', async (c) => {
     forgetSavedKeys();

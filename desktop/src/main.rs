@@ -18,7 +18,7 @@ use accounts::{AccountProfile, AccountsCli, SavedAccount};
 use settings::{AutoSettings, DesktopSettings, ThemeChoice};
 use gateway::{check_health, open_in_browser, stop_external, Gateway, GatewayConfig};
 use overview::{activity, detail, display_name, kind_label, Activity, ProviderOverview};
-use status::{fetch_status, now_ms, read_api_key, refresh_models, relative_time, GatewayStatus, ProviderStatus};
+use status::{check_models, fetch_status, now_ms, read_api_key, refresh_models, relative_time, GatewayStatus, ProviderStatus};
 use ui::*;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -258,14 +258,22 @@ impl Shell {
     }
 
     fn run_command(&mut self, cx: &mut Context<Self>, command: impl FnOnce(AccountsCli) -> Result<String, String> + Send + 'static) {
-        self.run_command_then(cx, command, false);
+        self.run_command_then(cx, command, false, None);
     }
 
     fn run_key_command(&mut self, cx: &mut Context<Self>, command: impl FnOnce(AccountsCli) -> Result<String, String> + Send + 'static) {
-        self.run_command_then(cx, command, true);
+        self.run_command_then(cx, command, true, None);
     }
 
-    fn run_command_then(&mut self, cx: &mut Context<Self>, command: impl FnOnce(AccountsCli) -> Result<String, String> + Send + 'static, reload_models: bool) {
+    fn check_provider_models(&mut self, provider: String, cx: &mut Context<Self>) {
+        if self.health != Health::Online {
+            self.message = Some((false, "Start the API first, then check the models.".into()));
+            return;
+        }
+        self.run_command_then(cx, |_| Ok(String::new()), false, Some(provider));
+    }
+
+    fn run_command_then(&mut self, cx: &mut Context<Self>, command: impl FnOnce(AccountsCli) -> Result<String, String> + Send + 'static, reload_models: bool, check: Option<String>) {
         let cli = self.accounts.clone();
         let base_url = self.gateway.config.base_url();
         let gateway_key = read_api_key(&self.gateway.config.root);
@@ -277,12 +285,19 @@ impl Shell {
                 .background_executor()
                 .spawn(async move {
                     let result = command(cli);
-                    match (&result, reload_models && online) {
+                    let result = match (&result, reload_models && online) {
                         (Ok(output), true) => match refresh_models(&base_url, gateway_key.as_deref()) {
                             Ok(count) => Ok(format!("{}\nModels reloaded: {count} available.", output.trim_end())),
                             Err(error) => Ok(format!("{}\nSaved, but the models could not be reloaded yet: {error}", output.trim_end())),
                         },
                         _ => result,
+                    };
+                    match (result, check.filter(|_| online)) {
+                        (Ok(output), Some(provider)) => match check_models(&base_url, gateway_key.as_deref(), &provider) {
+                            Ok(summary) => Ok(format!("{}\n{summary}", output.trim_end())),
+                            Err(error) => Err(format!("{}\nModel check failed: {error}", output.trim_end())),
+                        },
+                        (result, _) => result,
                     }
                 })
                 .await;
@@ -318,7 +333,8 @@ impl Shell {
         let key = if account.is_empty() || key.is_empty() { key } else { format!("{account}:{key}") };
         self.api_key.update(cx, |input, cx| input.set_value("", window, cx));
         self.account_id.update(cx, |input, cx| input.set_value("", window, cx));
-        self.run_key_command(cx, move |cli| cli.add_api_key(&provider, &key));
+        let check = provider.clone();
+        self.run_command_then(cx, move |cli| cli.add_api_key(&provider, &key), true, Some(check));
     }
 
     fn open_link(&mut self, url: &str) {
@@ -713,12 +729,25 @@ impl Shell {
                     .child(connection.flex_1().min_w_0())
                     .child(div().flex_1().min_w_0().flex().flex_col().gap_4().child(routing)),
             )
-            .child(self.render_provider_models(&row.id, row.auto))
+            .child(self.render_provider_models(&row.id, row.auto, row.kind == "api-key", cx))
             .into_any_element()
     }
 
-    fn render_provider_models(&self, provider: &str, provider_auto: bool) -> Div {
-        let heading = div().flex().items_center().justify_between().child(div().font_weight(FontWeight::SEMIBOLD).child("Models"));
+    fn render_provider_models(&self, provider: &str, provider_auto: bool, checkable: bool, cx: &mut Context<Self>) -> Div {
+        let check_id = provider.to_string();
+        let heading = div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .child(div().font_weight(FontWeight::SEMIBOLD).child("Models"))
+            .when(checkable, |this| {
+                this.child(button("provider-check-models", if self.busy { "Working…" } else { "Check models" }, Some(IconName::RefreshCw), Tone::Outline, !self.busy).when(!self.busy, |this| {
+                    this.on_click(cx.listener(move |shell, _, _, cx| {
+                        shell.check_provider_models(check_id.clone(), cx);
+                        cx.notify();
+                    }))
+                }))
+            });
         let Some(status) = &self.status else {
             return card().p_4().flex().flex_col().gap_2().child(heading).child(muted("Run the API to see this provider's models."));
         };

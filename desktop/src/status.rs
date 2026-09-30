@@ -118,6 +118,66 @@ pub fn refresh_models(base_url: &str, api_key: Option<&str>) -> Result<usize, St
         .map_err(|error| error.to_string())
 }
 
+#[derive(Debug, Deserialize)]
+struct ModelCheckResult {
+    ok: bool,
+    #[serde(default)]
+    hidden: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelCheckReport {
+    results: Vec<ModelCheckResult>,
+    stopped: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ErrorBody {
+    error: ErrorMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct ErrorMessage {
+    message: String,
+}
+
+pub fn summarize_model_check(body: &str) -> Result<String, String> {
+    if let Ok(error) = serde_json::from_str::<ErrorBody>(body) {
+        return Err(error.error.message);
+    }
+    let report: ModelCheckReport = serde_json::from_str(body).map_err(|error| format!("Unexpected check answer: {error}"))?;
+    let working = report.results.iter().filter(|result| result.ok).count();
+    let hidden = report.results.iter().filter(|result| result.hidden).count();
+    let mut summary = format!("Checked {} models: {working} work with this key", report.results.len());
+    if hidden > 0 {
+        summary.push_str(&format!(", {hidden} not available for it and hidden"));
+    }
+    summary.push('.');
+    if let Some(reason) = report.stopped {
+        summary.push_str(&format!(" Stopped early: {reason}"));
+    }
+    Ok(summary)
+}
+
+pub fn check_models(base_url: &str, api_key: Option<&str>, provider: &str) -> Result<String, String> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(900)))
+        .http_status_as_error(false)
+        .build()
+        .into();
+    let mut request = agent.post(format!("{base_url}/v1/gateway/providers/{provider}/check"));
+    if let Some(key) = api_key {
+        request = request.header("authorization", format!("Bearer {key}"));
+    }
+    let body = request
+        .send_empty()
+        .map_err(|error| error.to_string())?
+        .body_mut()
+        .read_to_string()
+        .map_err(|error| error.to_string())?;
+    summarize_model_check(&body)
+}
+
 pub fn api_key_from(env_value: Option<String>, dotenv: &str) -> Option<String> {
     setting_from("GATEWAY_API_KEY", env_value, dotenv)
 }
@@ -168,6 +228,13 @@ mod tests {
         assert_eq!(api_key_from(None, "GATEWAY_API_KEY=\n"), None);
         assert_eq!(setting_from("ACCOUNTS_SECRET", None, "GATEWAY_API_KEY=x\nACCOUNTS_SECRET=\"s\"\n").as_deref(), Some("s"));
         assert_eq!(setting_from("ACCOUNTS_SECRET", None, "ACCOUNTS_SECRET=\n"), None);
+    }
+
+    #[test]
+    fn summarizes_a_model_check() {
+        let body = r#"{"provider":"nvidia","results":[{"model":"a","ok":true},{"model":"b","ok":false,"hidden":true},{"model":"c","ok":false}],"stopped":"rate limited"}"#;
+        assert_eq!(summarize_model_check(body).unwrap(), "Checked 3 models: 1 work with this key, 1 not available for it and hidden. Stopped early: rate limited");
+        assert_eq!(summarize_model_check(r#"{"error":{"message":"KEY is not set","type":"provider_unavailable"}}"#).unwrap_err(), "KEY is not set");
     }
 
     #[test]

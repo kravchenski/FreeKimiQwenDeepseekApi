@@ -123,10 +123,11 @@ export class OpenAICompatibleProvider implements Provider {
   }
 
   async listModels() {
+    if (!this.config.optionalKey && !this.envApiKey && this.config.hasApiKey && !this.config.hasApiKey()) return [];
     if (!this.config.upstreamModels) return this.config.models;
     try {
       const apiKey = await this.apiKey();
-      if (!apiKey && !this.config.optionalKey) return this.config.models;
+      if (!apiKey && !this.config.optionalKey) return [];
       const response = await (this.config.fetch ?? fetch)(this.config.modelsUrl ?? `${this.config.baseUrl}/models`, {
         headers: this.headers(apiKey),
         signal: AbortSignal.timeout(10_000),

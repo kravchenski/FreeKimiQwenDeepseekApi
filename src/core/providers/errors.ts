@@ -3,6 +3,7 @@ export type ProviderErrorKind = 'rate_limit' | 'quota_exhausted' | 'auth' | 'una
 const MAX_DETAIL_LENGTH = 500;
 const QUOTA_PATTERN = /quota|insufficient|exceeded your|billing|balance|credit/i;
 const MODEL_MISSING_PATTERN = /not found for account|page not found|function .* not found|model .*(?:not found|does not exist)|no such model|unknown model/i;
+const MODEL_DENIED_PATTERN = /model is (?:unavailable|not available|not supported)|invalid model|model .*not (?:available|allowed|enabled|supported)|(?:no|not have|don't have|do not have) access to (?:the |this )?model|model_not_found|model_not_supported|unsupported model|no endpoints found|not included in your|is only available|not available (?:on|in|for) (?:your|the free)/i;
 const EXPIRED_AUTH_PATTERN = /token (?:has )?expired|log ?in again|invalid (?:access )?token|not authenticated/i;
 
 export class ProviderError extends Error {
@@ -18,6 +19,7 @@ export class ProviderError extends Error {
 }
 
 export function classifyStatus(status: number, body: string): ProviderErrorKind {
+  if ([400, 402, 403, 404].includes(status) && MODEL_DENIED_PATTERN.test(body)) return 'model_unavailable';
   if (status === 402) return 'quota_exhausted';
   if (status === 429) return QUOTA_PATTERN.test(body) ? 'quota_exhausted' : 'rate_limit';
   if (status === 401 || status === 403 || EXPIRED_AUTH_PATTERN.test(body)) return 'auth';
