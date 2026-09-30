@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.1.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.0.1...v2.1.0) (2026-09-30)
+
+
+### Features
+
+* **arena:** add the arena.ai web chat as arena-chat ([ad4409a](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/ad4409a85f581c5358e7d893c77f60d963921ead))
+* **cloudflare:** add Cloudflare Workers AI with an Account ID field ([437e005](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/437e00538979f39fbab63b6edf49ae47b1765500))
+* **decisions:** log how long each routing decision took and why it failed ([9c92ccd](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/9c92ccd4c7970024f044879c87c72cfae6d5a6d3))
+* **decisions:** serve a Jev-style decision API and a decide mode for auto ([b5d4883](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/b5d48837eb53767866c79ecfc41edd6b555f36a6))
+* **images:** generate images through Qwen Chat, Cloudflare Workers AI and Pollinations ([d8571dd](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/d8571dda2c160d659f73b3cba3d6c863c193f82f))
+* **images:** generate images through Qwen Chat, Cloudflare Workers AI and Pollinations ([e833be0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/e833be04982b50f6e2c8870c3ac5ae53b62f2e32))
+* **models:** show only the models a provider key can use ([dfdd3b0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/dfdd3b036ff4a177584b0bb187b491816dfe4013))
+* **models:** show only the models a provider key can use ([38499bc](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/38499bc5153187b1530ae20ee8fae3b1d60b946c))
+* **providers:** add GitHub Models, Hugging Face, Zhipu BigModel, Cohere, Aion Labs, OVHcloud and LLM7 ([ba16ace](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/ba16ace5cbd8a5e3fc0f9011553e9459366d7cdd))
+* **providers:** add xKiro with its free models only, off in auto by default ([2f944f6](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/2f944f6badc997b7421af76757af5dc87fcede48))
+* **providers:** add Z.AI, Ollama Cloud, OpenCode Zen and Kilo Gateway ([5612c51](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/5612c51ecff70da35f5095a8269d9e20f9cbf3fa))
+* **router:** expose routing decisions at /v1/decisions ([401e531](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/401e5311c5d75a352f64225bf974f5a2b778ba73))
+* **router:** record every routing decision ([94ff56b](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/94ff56b145098267af15add1413e29ebfcd50926))
+* **web-chat:** list and pick the models each web chat offers ([aa845f4](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/aa845f45bbfc6efe3e130577b41162d781b70267))
+
+
+### Bug Fixes
+
+* **gateway:** list providers in the startup banner from the catalog ([acb504e](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/acb504e8f37270e9ec0a57d0892b81dd71e32ddd))
+
 ## [2.0.1](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.0.0...v2.0.1) (2026-09-30)
 
 
