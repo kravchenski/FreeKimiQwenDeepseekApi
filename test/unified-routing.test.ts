@@ -330,7 +330,9 @@ describe('unified server routing', () => {
 
   test('reloads model lists on demand so a newly added key shows its models', async () => {
     const saved = process.env.NVIDIA_API_KEY;
+    const realFetch = globalThis.fetch;
     process.env.NVIDIA_API_KEY = '';
+    globalThis.fetch = (async () => { throw new Error('offline in tests'); }) as unknown as typeof fetch;
     try {
       const listed = async () => ((await (await server.app.fetch(new Request('http://local/v1/models', { headers: { authorization: `Bearer ${key}` } }))).json()) as any).data.map((model: any) => model.id);
       lateModels = [];
@@ -344,6 +346,7 @@ describe('unified server routing', () => {
       expect((await server.app.fetch(new Request('http://local/v1/gateway/refresh', { method: 'POST' }))).status).toBe(401);
     } finally {
       process.env.NVIDIA_API_KEY = saved;
+      globalThis.fetch = realFetch;
     }
   });
 });

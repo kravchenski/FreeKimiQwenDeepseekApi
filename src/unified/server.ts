@@ -18,6 +18,7 @@ import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts
 import { checkProviderModels } from '../core/models/model-check.ts';
 import { DecisionLog } from '../core/router/decisions.ts';
 import { compactToolResults } from '../core/agents/compact.ts';
+import { TOOL_SELECTION_THRESHOLD, ToolSelector } from '../core/agents/tools.ts';
 import { decide, readDecisionRequest, type DecisionAnswer, type DecisionRequest } from '../core/decisions/engine.ts';
 import { rankModels } from '../core/models/stats.ts';
 import type { ImageProvider } from '../core/images/images.ts';
@@ -512,13 +513,26 @@ app.post('/api/chat/completions', async (c) => {
         const combinedTools = tools || (Array.isArray(functions)
             ? functions.map((fn: Record<string, unknown>) => ({ type: 'function', function: fn }))
             : null);
-        const toolPrompt = toolsToPrompt(combinedTools);
+        let promptTools = combinedTools;
+        let toolDetails: Record<string, unknown> | undefined;
+        if (Array.isArray(combinedTools) && combinedTools.length > TOOL_SELECTION_THRESHOLD && gatewaySettings.agentOption('tools')) {
+            try {
+                const selection = await toolSelector.select(combinedTools, messages);
+                promptTools = selection.tools;
+                if (selection.dropped.length) toolDetails = { before: selection.before, after: selection.after, dropped: selection.dropped, ...(selection.cached ? { cached: true } : {}) };
+            } catch (error) {
+                toolDetails = { error: errorText(error) };
+            }
+        }
+        const toolPrompt = toolsToPrompt(promptTools);
         const compaction = gatewaySettings.agentOption('compact') ? compactToolResults(messages) : undefined;
         const agentMessages = compaction?.messages ?? messages;
         const upstreamMessages = toolPrompt
             ? [{ role: 'system', content: toolPrompt }, ...agentMessages]
             : agentMessages;
-        const details = compaction?.stats.results ? { compaction: compaction.stats } : undefined;
+        const details = compaction?.stats.results || toolDetails
+            ? { ...(compaction?.stats.results ? { compaction: compaction.stats } : {}), ...(toolDetails ? { tools: toolDetails } : {}) }
+            : undefined;
         const id = `chatcmpl-${crypto.randomUUID().replaceAll('-', '').slice(0, 24)}`;
         const created = Math.floor(Date.now() / 1000);
         const captureToolCalls = Array.isArray(combinedTools) && combinedTools.length > 0;
@@ -544,7 +558,8 @@ app.post('/api/chat/completions', async (c) => {
         const open = () => provider.stream({ model: routedModel, messages: upstreamMessages, conversationId });
         const routeHeaders: Record<string, string> = {
             'x-gateway-route': `${provider.id}/${routedModel}`,
-            ...(details ? { 'x-gateway-compacted': `${details.compaction.charsBefore}->${details.compaction.charsAfter}` } : {}),
+            ...(compaction?.stats.results ? { 'x-gateway-compacted': `${compaction.stats.charsBefore}->${compaction.stats.charsAfter}` } : {}),
+            ...(toolDetails?.dropped ? { 'x-gateway-tools': `${toolDetails.before}->${toolDetails.after}` } : {}),
         };
 
         if (stream) {
@@ -672,6 +687,9 @@ async function chooseRoute(prompt: string, routes: Route[]) {
     const answer = answers.which;
     return answer && 'choice' in answer ? answer.choice : undefined;
 }
+
+const toolSelector = new ToolSelector((request, questions) =>
+    decide({ state: { request: request.slice(0, 4_000) }, questions }, (messages, read) => completeDecision(messages, read)).then(result => result.answers));
 
 async function handleDecision(c: Context) {
     let request: DecisionRequest;
