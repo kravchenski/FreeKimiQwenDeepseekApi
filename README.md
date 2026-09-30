@@ -90,6 +90,7 @@ curl http://localhost:3260/v1/chat/completions \
 |--------|----------|-------------|
 | `GET` | `/v1/models` | List models |
 | `POST` | `/v1/chat/completions` | Chat Completions (streaming + non-streaming) |
+| `GET` | `/v1/decisions` | Recent routing decisions, newest first: requested model, mode (`direct`, `fallback`, `race`), skipped candidates with the reason, every attempt with its outcome and latency, and the chosen route (`?limit=`, `?model=`) |
 | `GET` | `/v1/images/models` | List image models |
 | `POST` | `/v1/images/generations` | OpenAI Images API: `prompt`, optional `model`, `size` (`WIDTHxHEIGHT`), `n` (1–4), `response_format` (`url` or `b64_json`) |
 | `GET` | `/health` | Server status |
