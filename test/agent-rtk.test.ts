@@ -1,7 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { restoreShellCalls, rewriteShellCalls, rtkPath, rtkRewriter } from '../src/core/agents/rtk.ts';
 
@@ -53,15 +50,27 @@ describe('rtk rewriting', () => {
   });
 
   test('follows the rtk rewrite exit codes: 0 and 3 rewrite, 1 and 2 pass through', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'rtk-'));
-    const binary = join(dir, 'rtk');
-    writeFileSync(binary, '#!/bin/sh\ncase "$2" in\n  "git status") echo "rtk git status"; exit 3;;\n  "ls") echo "rtk ls"; exit 0;;\n  "rm -rf /") echo "rtk rm -rf /"; exit 2;;\n  *) exit 1;;\nesac\n');
-    chmodSync(binary, 0o755);
-    const rewrite = rtkRewriter(binary)!;
+    const answers: Record<string, { exitCode: number; stdout: string }> = {
+      'git status': { exitCode: 3, stdout: 'rtk git status\n' },
+      ls: { exitCode: 0, stdout: 'rtk ls\n' },
+      'rm -rf /': { exitCode: 2, stdout: 'rtk rm -rf /\n' },
+      'npm test': { exitCode: 1, stdout: '' },
+    };
+    const rewrite = rtkRewriter('rtk', (_binary, command) => answers[command] ?? { exitCode: 1, stdout: '' })!;
     expect(rewrite('git status')).toBe('rtk git status');
     expect(rewrite('ls')).toBe('rtk ls');
     expect(rewrite('rm -rf /')).toBeUndefined();
     expect(rewrite('npm test')).toBeUndefined();
+  });
+
+  test('does not pass RTK_REWRITE_HOST on to rtk', () => {
+    if (process.platform === 'win32' || !rtkPath()) return;
+    process.env.RTK_REWRITE_HOST = 'openclaw';
+    try {
+      expect(rtkRewriter()!('git status')).toBe('rtk git status');
+    } finally {
+      delete process.env.RTK_REWRITE_HOST;
+    }
   });
 
   test('uses the installed rtk when there is one', () => {
