@@ -95,6 +95,7 @@ pub fn display_name(id: &str) -> &str {
         "opencode-zen" => "OpenCode Zen",
         "kilo" => "Kilo Gateway",
         "cloudflare" => "Cloudflare Workers AI",
+        "xkiro" => "xKiro",
         other => other,
     }
 }

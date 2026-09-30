@@ -17,17 +17,18 @@ export class ProviderSettings {
   constructor(
     private readonly store: ProviderSettingsStore,
     private readonly now: () => number = Date.now,
+    private readonly defaultAuto: (provider: string) => boolean = () => true,
   ) {}
 
   autoEnabled(provider: string) {
     const cached = this.cache.get(provider);
-    if (cached && this.now() - cached.readAt < CACHE_MS) return cached.setting?.auto ?? true;
+    if (cached && this.now() - cached.readAt < CACHE_MS) return cached.setting?.auto ?? this.defaultAuto(provider);
     let setting: ProviderSetting | undefined;
     try {
       setting = this.store.load(provider);
     } catch {}
     this.cache.set(provider, { setting, readAt: this.now() });
-    return setting?.auto ?? true;
+    return setting?.auto ?? this.defaultAuto(provider);
   }
 
   setAuto(provider: string, auto: boolean) {

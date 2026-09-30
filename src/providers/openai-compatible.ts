@@ -28,7 +28,7 @@ export interface OpenAICompatibleConfig {
   fallback?: boolean;
   accountHint?: string;
   acceptListedModels?: boolean;
-  modelFilter?: (model: string) => boolean;
+  modelFilter?: (model: string, entry?: Record<string, unknown>) => boolean;
   optionalKey?: boolean;
   modelsUrl?: string;
   headers?: Record<string, string>;
@@ -106,9 +106,9 @@ export class OpenAICompatibleProvider implements Provider {
     return Boolean(this.listed?.has(model)) || this.config.prefixes.some(prefix => model.startsWith(prefix));
   }
 
-  private accepts(model: string) {
+  private accepts(model: string, entry?: Record<string, unknown>) {
     const known = this.config.namespace || this.config.acceptListedModels || this.config.prefixes.some(prefix => model.startsWith(prefix));
-    return Boolean(known) && (this.config.modelFilter?.(model) ?? true);
+    return Boolean(known) && (this.config.modelFilter?.(model, entry) ?? true);
   }
 
   private publicId(model: string) {
@@ -133,9 +133,9 @@ export class OpenAICompatibleProvider implements Provider {
         signal: AbortSignal.timeout(10_000),
       });
       if (!response.ok) return this.config.models;
-      const body = await response.json() as Array<{ id?: unknown }> | { data?: Array<{ id?: unknown }> };
+      const body = await response.json() as Array<Record<string, unknown>> | { data?: Array<Record<string, unknown>> };
       const listed = Array.isArray(body) ? body : body.data ?? [];
-      const ids = [...new Set(listed.map(model => model.id).filter((id): id is string => typeof id === 'string' && this.accepts(id)).map(id => this.publicId(id)))];
+      const ids = [...new Set(listed.filter(model => typeof model.id === 'string' && this.accepts(model.id, model)).map(model => this.publicId(model.id as string)))];
       if (!ids.length) return this.config.models;
       if (this.config.acceptListedModels) this.listed = new Set(ids);
       return ids;

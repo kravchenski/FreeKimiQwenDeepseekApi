@@ -31,7 +31,7 @@ import { parseQwenStream, QWEN_CHAT_SITE } from '../providers/qwen/web.ts';
 import { gatewayStatus } from '../core/status.ts';
 import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
-import { API_KEY_PROVIDERS, createApiProvider, createNvidiaProvider, forgetSavedKeys, FREE_API_PROVIDERS } from '../providers/catalog.ts';
+import { API_KEY_PROVIDERS, createApiProvider, createNvidiaProvider, defaultAuto, forgetSavedKeys, FREE_API_PROVIDERS } from '../providers/catalog.ts';
 import { openCredentialStore } from '../core/accounts/credential-store.ts';
 import { loadAccountsSecret } from '../core/secrets/accounts-secret.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
@@ -169,7 +169,7 @@ registerWebChat('arena-chat', 'arena-web', ARENA_CHAT_SITE, parseArenaStream);
 const providerSettings = new ProviderSettings({
     load: provider => loadProviderSetting(db(), provider),
     save: setting => saveProviderSetting(db(), setting),
-});
+}, Date.now, defaultAuto);
 
 const gatewaySettings = new GatewaySettings({
     load: key => loadGatewaySetting(db(), key),

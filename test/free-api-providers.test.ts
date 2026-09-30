@@ -4,7 +4,7 @@ import { runAccountsCommand, type AccountsCliDeps } from '../src/cli/accounts.ts
 import { buildOverview } from '../src/cli/overview.ts';
 import type { Credential } from '../src/core/accounts/credential-store.ts';
 import { collectChunks } from '../src/core/streaming/sse.ts';
-import { accountEndpoint, API_KEY_PROVIDERS, apiKeyProvider, createApiProvider, FREE_API_PROVIDERS, verifyProviderKey } from '../src/providers/catalog.ts';
+import { accountEndpoint, API_KEY_PROVIDERS, apiKeyProvider, createApiProvider, defaultAuto, FREE_API_PROVIDERS, verifyProviderKey } from '../src/providers/catalog.ts';
 
 function upstream(ids: string[]) {
   const calls: Array<{ url: string; body?: any; auth?: string }> = [];
@@ -66,7 +66,7 @@ describe('free API providers', () => {
   test('every provider has a unique id, an env variable and a key page', () => {
     const ids = API_KEY_PROVIDERS.map(provider => provider.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toEqual(['nvidia', 'openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'sambanova', 'github-models', 'huggingface', 'bigmodel', 'cohere', 'aion', 'ovhcloud', 'llm7', 'zai', 'ollama-cloud', 'opencode-zen', 'kilo', 'cloudflare']);
+    expect(ids).toEqual(['nvidia', 'openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'sambanova', 'github-models', 'huggingface', 'bigmodel', 'cohere', 'aion', 'ovhcloud', 'llm7', 'zai', 'ollama-cloud', 'opencode-zen', 'kilo', 'cloudflare', 'xkiro']);
     for (const provider of FREE_API_PROVIDERS) {
       expect(provider.apiKeyEnv).toMatch(/^[A-Z0-9_]+_API_KEY$/);
       expect(provider.keyUrl).toStartWith('https://');
@@ -230,5 +230,18 @@ describe('more free providers', () => {
     expect(saved).toEqual(['acc123:token', 'acc9:token9']);
     const rows = buildOverview({ env: {}, credentials: () => [], deepseekAccounts: () => [], accountStates: () => [], signIn: () => undefined, webSites: [], apiKeyProviders: API_KEY_PROVIDERS });
     expect(rows.find(row => row.id === 'cloudflare')).toMatchObject({ accountLabel: 'Account ID', state: 'not-connected' });
+  });
+
+  test('xKiro lists only its free chat models and stays out of auto until enabled', async () => {
+    const fetchFn = (async () => Response.json({ data: [
+      { id: 'deepseek/deepseek-v4.1-flash:free', access_tier: 'free', modality: 'chat' },
+      { id: 'cohere/command-a', access_tier: 'free', modality: 'chat' },
+      { id: 'openai/gpt-6.1-sol', access_tier: 'paid', modality: 'chat' },
+      { id: 'black-forest-labs/flux-3', access_tier: 'free', modality: 'image' },
+    ] })) as unknown as typeof fetch;
+    const provider = createApiProvider(definition('xkiro'), { env: { XKIRO_API_KEY: 'k' }, fetch: fetchFn });
+    expect(await provider.listModels()).toEqual(['xkiro/deepseek/deepseek-v4.1-flash:free', 'xkiro/cohere/command-a']);
+    expect(defaultAuto('xkiro')).toBeFalse();
+    expect(defaultAuto('groq')).toBeTrue();
   });
 });
