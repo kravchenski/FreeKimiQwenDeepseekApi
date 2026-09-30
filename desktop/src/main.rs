@@ -75,6 +75,7 @@ struct Shell {
     profiles: Vec<AccountProfile>,
     profile_name: Entity<InputState>,
     api_key: Entity<InputState>,
+    account_id: Entity<InputState>,
     key_provider: Option<String>,
     request_filter: Option<String>,
     selected_provider: Option<String>,
@@ -145,6 +146,7 @@ impl Shell {
             profiles: Vec::new(),
             profile_name: cx.new(|cx| InputState::new(window, cx).placeholder("Account name, e.g. Work")),
             api_key: cx.new(|cx| InputState::new(window, cx).placeholder("Paste the API key").masked(true)),
+            account_id: cx.new(|cx| InputState::new(window, cx).placeholder("Account ID")),
             key_provider: None,
             request_filter: None,
             selected_provider: None,
@@ -311,8 +313,11 @@ impl Shell {
     }
 
     fn add_api_key_for(&mut self, provider: String, window: &mut Window, cx: &mut Context<Self>) {
-        let key = self.api_key.read(cx).value().to_string();
+        let key = self.api_key.read(cx).value().trim().to_string();
+        let account = self.account_id.read(cx).value().trim().to_string();
+        let key = if account.is_empty() || key.is_empty() { key } else { format!("{account}:{key}") };
         self.api_key.update(cx, |input, cx| input.set_value("", window, cx));
+        self.account_id.update(cx, |input, cx| input.set_value("", window, cx));
         self.run_key_command(cx, move |cli| cli.add_api_key(&provider, &key));
     }
 
@@ -637,6 +642,7 @@ impl Shell {
                                 }))
                             }))
                     }))
+                    .when(row.account_label.is_some(), |this| this.child(Input::new(&self.account_id)))
                     .child(Input::new(&self.api_key))
                     .child(div().flex().justify_end().child(button("provider-save-key", if self.busy { "Working…" } else { "Save key" }, Some(IconName::KeyRound), Tone::Primary, !self.busy).when(!self.busy, |this| {
                         this.on_click(cx.listener(move |shell, _, window, cx| {

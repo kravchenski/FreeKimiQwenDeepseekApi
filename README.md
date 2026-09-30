@@ -37,6 +37,7 @@ bun run start
 | **Groq, Google Gemini, Cerebras, Mistral, SambaNova** | every chat model on their free tiers, as `groq/<model>`, `gemini/<model>`, `cerebras/<model>`, `mistral/<model>`, `sambanova/<model>` | `<PROVIDER>_API_KEY` or `bun run account add <provider> --api-key` |
 | **GitHub Models, Hugging Face, Zhipu BigModel, Cohere, Aion Labs, LLM7.io** | their free tier models, as `github-models/<model>`, `huggingface/<model>`, `bigmodel/<flash model>`, `cohere/<model>`, `aion/<model>`, `llm7/<model>` | `<PROVIDER>_API_KEY` or `bun run account add <provider> --api-key` |
 | **Z.AI, Ollama Cloud, OpenCode Zen** | free flash GLM models as `zai/<model>`, Ollama Cloud models as `ollama-cloud/<model>`, free Zen models as `opencode-zen/<model>-free` | `<PROVIDER>_API_KEY` or `bun run account add <provider> --api-key` |
+| **Cloudflare Workers AI** | Workers AI models as `cloudflare/@cf/<model>` (10,000 free neurons a day) | `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`, or `bun run account add cloudflare --api-key` (asks for the Account ID) |
 | **Kilo Gateway** | free models only, as `kilo/<model>:free` and `kilo/kilo-auto/free`; works without a key | optional `KILO_API_KEY` |
 | **OVHcloud AI Endpoints** | open-weight models hosted in the EU, as `ovhcloud/<model>`; works without a key at 2 requests per minute | optional `OVHCLOUD_API_KEY` |
 

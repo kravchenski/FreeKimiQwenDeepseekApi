@@ -1,5 +1,5 @@
 import { savedApiKey, type CredentialSource } from '../core/accounts/credential-store.ts';
-import { upstreamError } from '../core/providers/errors.ts';
+import { ProviderError, upstreamError } from '../core/providers/errors.ts';
 import { OpenAICompatibleProvider, type OpenAICompatibleConfig } from './openai-compatible.ts';
 
 type Overrides = Pick<OpenAICompatibleConfig, 'env' | 'fetch'>;
@@ -11,6 +11,7 @@ export interface ApiProviderDefinition {
   apiKeyEnv: string;
   keyUrl: string;
   keyOptional?: boolean;
+  account?: { env: string; label: string };
   modelsUrl?: string;
   headers?: Record<string, string>;
   namespace?: boolean;
@@ -207,6 +208,29 @@ export const FREE_API_PROVIDERS: ApiProviderDefinition[] = [
     namespace: true,
     modelFilter: model => /(:free|\/free)$/.test(model) && isApiChatModel(model),
   },
+  {
+    id: 'cloudflare',
+    label: 'Cloudflare Workers AI',
+    baseUrl: 'https://api.cloudflare.com/client/v4/accounts/{account}/ai/v1',
+    modelsUrl: 'https://api.cloudflare.com/client/v4/accounts/{account}/ai/models/search?task=Text%20Generation&per_page=100',
+    apiKeyEnv: 'CLOUDFLARE_API_KEY',
+    account: { env: 'CLOUDFLARE_ACCOUNT_ID', label: 'Account ID' },
+    keyUrl: 'https://dash.cloudflare.com/profile/api-tokens',
+    namespace: true,
+    config: {
+      upstreamModels: false,
+      models: [
+        '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+        '@cf/moonshotai/kimi-k2.6',
+        '@cf/zai-org/glm-4.7-flash',
+        '@cf/google/gemma-4-26b-a4b-it',
+        '@cf/qwen/qwen2.5-coder-32b-instruct',
+        '@cf/qwen/qwq-32b',
+        '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
+        '@cf/meta/llama-3.2-3b-instruct',
+      ].map(model => `cloudflare/${model}`),
+    },
+  },
 ];
 
 export const API_KEY_PROVIDERS: ApiProviderDefinition[] = [NVIDIA_PROVIDER, ...FREE_API_PROVIDERS];
@@ -236,14 +260,27 @@ function savedKeyReader(credentials: CredentialSource, provider: string, now: ()
   };
 }
 
+export function accountEndpoint(definition: ApiProviderDefinition, apiKey: string, env: Record<string, string | undefined> = process.env) {
+  if (!definition.account) return { baseUrl: definition.baseUrl, modelsUrl: definition.modelsUrl, apiKey };
+  const separator = apiKey.indexOf(':');
+  const account = separator > 0 ? apiKey.slice(0, separator).trim() : env[definition.account.env];
+  const token = separator > 0 ? apiKey.slice(separator + 1).trim() : apiKey;
+  if (!account) {
+    throw new ProviderError(`${definition.label} needs the ${definition.account.label}: save the key as <${definition.account.label}>:<token> or set ${definition.account.env}`, 'unavailable');
+  }
+  const fill = (url: string) => url.replace('{account}', encodeURIComponent(account));
+  return { baseUrl: fill(definition.baseUrl), modelsUrl: definition.modelsUrl ? fill(definition.modelsUrl) : undefined, apiKey: token };
+}
+
 export async function verifyProviderKey(definition: ApiProviderDefinition, apiKey: string, fetchFn: typeof fetch = fetch) {
-  const response = await fetchFn(definition.modelsUrl ?? `${definition.baseUrl}/models`, {
-    headers: { ...definition.headers, Authorization: `Bearer ${apiKey}` },
+  const target = accountEndpoint(definition, apiKey);
+  const response = await fetchFn(target.modelsUrl ?? `${target.baseUrl}/models`, {
+    headers: { ...definition.headers, Authorization: `Bearer ${target.apiKey}` },
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw await upstreamError(`${definition.label} key check`, response);
-  const body = await response.json() as unknown[] | { data?: unknown[] };
-  return (Array.isArray(body) ? body : body.data)?.length ?? 0;
+  const body = await response.json() as unknown[] | { data?: unknown[]; result?: unknown[] };
+  return (Array.isArray(body) ? body : body.data ?? body.result)?.length ?? 0;
 }
 
 export function verifyNvidiaKey(apiKey: string, fetchFn: typeof fetch = fetch) {
@@ -269,6 +306,7 @@ export function createApiProvider(definition: ApiProviderDefinition, overrides: 
     ...(definition.keyOptional ? { optionalKey: true } : {}),
     ...(definition.modelsUrl ? { modelsUrl: definition.modelsUrl } : {}),
     ...(definition.headers ? { headers: definition.headers } : {}),
+    ...(definition.account ? { endpoint: (apiKey: string | undefined) => accountEndpoint(definition, apiKey ?? '', overrides.env ?? process.env) } : {}),
     ...definition.config,
     ...(savedKey ? {
       resolveApiKey: async () => savedKey(),

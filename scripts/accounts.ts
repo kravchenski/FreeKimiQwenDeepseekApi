@@ -119,6 +119,7 @@ try {
       if (!definition) throw new Error(`API keys are not supported for ${provider}`);
       return verifyProviderKey(definition, apiKey);
     },
+    accountLabel: provider => apiKeyProvider(provider)?.account?.label,
   });
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);

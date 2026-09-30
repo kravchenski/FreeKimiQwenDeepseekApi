@@ -17,6 +17,7 @@ export interface AccountsCliDeps {
   listGoogleAccounts?: (profile: string) => Promise<string[]>;
   openWindow?: (urls: string[], profile: string) => Promise<void>;
   verifyApiKey?: (provider: string, apiKey: string) => Promise<number>;
+  accountLabel?: (provider: string) => string | undefined;
   checkSignIns?: (url: string | undefined, profile?: string) => Promise<ProfileSignIn[]>;
   profiles?: {
     list(): BrowserProfile[];
@@ -190,8 +191,14 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
   if (command === 'add' && args.includes('--api-key')) {
     const provider = requireProvider(target);
     const label = option(args, '--label') ?? 'default';
-    const apiKey = (await deps.askHidden('API key: ')).trim();
+    let apiKey = (await deps.askHidden('API key: ')).trim();
     if (!apiKey) throw new Error('API key is required');
+    const accountLabel = deps.accountLabel?.(provider);
+    if (accountLabel && !apiKey.includes(':')) {
+      const account = (await deps.askHidden(`${accountLabel}: `)).trim();
+      if (!account) throw new Error(`${accountLabel} is required`);
+      apiKey = `${account}:${apiKey}`;
+    }
     if (!args.includes('--no-verify') && deps.verifyApiKey) {
       deps.log(`Key works: ${await deps.verifyApiKey(provider, apiKey)} models available`);
     }

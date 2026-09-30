@@ -32,6 +32,7 @@ export interface OpenAICompatibleConfig {
   optionalKey?: boolean;
   modelsUrl?: string;
   headers?: Record<string, string>;
+  endpoint?: (apiKey: string | undefined) => { baseUrl: string; apiKey?: string };
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
 }
@@ -156,9 +157,10 @@ export class OpenAICompatibleProvider implements Provider {
     const apiKey = await this.apiKey();
     if (!apiKey && !this.config.optionalKey) throw new ProviderError(this.missingKey(), 'unavailable');
     const model = this.upstreamId(request.model);
-    const response = await (this.config.fetch ?? fetch)(`${this.config.baseUrl}/chat/completions`, {
+    const target = this.config.endpoint?.(apiKey) ?? { baseUrl: this.config.baseUrl, apiKey };
+    const response = await (this.config.fetch ?? fetch)(`${target.baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...this.headers(apiKey) },
+      headers: { 'Content-Type': 'application/json', ...this.headers(target.apiKey) },
       body: JSON.stringify({ ...this.config.extraBody, model, messages: request.messages, stream: true }),
       signal: context.signal,
     });

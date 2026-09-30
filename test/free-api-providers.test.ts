@@ -4,7 +4,7 @@ import { runAccountsCommand, type AccountsCliDeps } from '../src/cli/accounts.ts
 import { buildOverview } from '../src/cli/overview.ts';
 import type { Credential } from '../src/core/accounts/credential-store.ts';
 import { collectChunks } from '../src/core/streaming/sse.ts';
-import { API_KEY_PROVIDERS, apiKeyProvider, createApiProvider, FREE_API_PROVIDERS, verifyProviderKey } from '../src/providers/catalog.ts';
+import { accountEndpoint, API_KEY_PROVIDERS, apiKeyProvider, createApiProvider, FREE_API_PROVIDERS, verifyProviderKey } from '../src/providers/catalog.ts';
 
 function upstream(ids: string[]) {
   const calls: Array<{ url: string; body?: any; auth?: string }> = [];
@@ -66,7 +66,7 @@ describe('free API providers', () => {
   test('every provider has a unique id, an env variable and a key page', () => {
     const ids = API_KEY_PROVIDERS.map(provider => provider.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toEqual(['nvidia', 'openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'sambanova', 'github-models', 'huggingface', 'bigmodel', 'cohere', 'aion', 'ovhcloud', 'llm7', 'zai', 'ollama-cloud', 'opencode-zen', 'kilo']);
+    expect(ids).toEqual(['nvidia', 'openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'sambanova', 'github-models', 'huggingface', 'bigmodel', 'cohere', 'aion', 'ovhcloud', 'llm7', 'zai', 'ollama-cloud', 'opencode-zen', 'kilo', 'cloudflare']);
     for (const provider of FREE_API_PROVIDERS) {
       expect(provider.apiKeyEnv).toMatch(/^[A-Z0-9_]+_API_KEY$/);
       expect(provider.keyUrl).toStartWith('https://');
@@ -184,5 +184,51 @@ describe('more free providers', () => {
     expect(await zen.listModels()).toEqual(['opencode-zen/deepseek-v4-flash-free']);
     const zai = createApiProvider(definition('zai'), { env: { ZAI_API_KEY: 'k' }, fetch: upstream(['glm-4.7-flash', 'glm-5.3', 'glm-5.3-flash']).fetchFn });
     expect(await zai.listModels()).toEqual(['zai/glm-4.7-flash', 'zai/glm-5.3-flash']);
+  });
+
+  test('Cloudflare puts the Account ID from the saved key or the environment into the URL', async () => {
+    const calls: Array<{ url: string; auth?: string }> = [];
+    const fetchFn = (async (url: string, init: RequestInit = {}) => {
+      calls.push({ url, auth: (init.headers as Record<string, string>)?.Authorization });
+      if (url.includes('/models/search')) return Response.json({ success: true, result: [{ name: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' }] });
+      return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: 'pong' } }] })}\n\ndata: [DONE]\n\n`);
+    }) as unknown as typeof fetch;
+    const cloudflare = definition('cloudflare');
+    const saved = createApiProvider(cloudflare, { env: { CLOUDFLARE_API_KEY: 'acc123:token' }, fetch: fetchFn });
+    expect(await saved.listModels()).toContain('cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    await collectChunks((await saved.stream({ model: 'cloudflare/@cf/moonshotai/kimi-k2.6', messages: [{ role: 'user', content: 'hi' }] })).chunks);
+    expect(calls.at(-1)).toEqual({ url: 'https://api.cloudflare.com/client/v4/accounts/acc123/ai/v1/chat/completions', auth: 'Bearer token' });
+    const fromEnv = createApiProvider(cloudflare, { env: { CLOUDFLARE_API_KEY: 'token2', CLOUDFLARE_ACCOUNT_ID: 'acc9' }, fetch: fetchFn });
+    await collectChunks((await fromEnv.stream({ model: 'cloudflare/@cf/qwen/qwq-32b', messages: [] })).chunks);
+    expect(calls.at(-1)).toEqual({ url: 'https://api.cloudflare.com/client/v4/accounts/acc9/ai/v1/chat/completions', auth: 'Bearer token2' });
+    const missing = createApiProvider(cloudflare, { env: { CLOUDFLARE_API_KEY: 'token3' }, fetch: fetchFn });
+    await expect(missing.stream({ model: 'cloudflare/@cf/qwen/qwq-32b', messages: [] })).rejects.toThrow('needs the Account ID');
+    expect(await verifyProviderKey(cloudflare, 'acc123:token', fetchFn)).toBe(1);
+    expect(calls.at(-1)!.url).toStartWith('https://api.cloudflare.com/client/v4/accounts/acc123/ai/models/search');
+    expect(accountEndpoint(definition('groq'), 'a:b').apiKey).toBe('a:b');
+  });
+
+  test('asks for the Account ID when adding a Cloudflare key and shows it in the overview', async () => {
+    const saved: string[] = [];
+    const answers = ['token', 'acc123'];
+    const deps: AccountsCliDeps = {
+      store: {
+        list: () => [],
+        addApiKey: input => {
+          saved.push(input.apiKey);
+          return { id: `${input.provider}-1`, provider: input.provider, email: input.label, password: '', method: 'api-key', token: input.apiKey };
+        },
+        remove: () => false,
+      },
+      askHidden: async () => answers.shift() ?? '',
+      log: () => {},
+      accountLabel: provider => apiKeyProvider(provider)?.account?.label,
+    };
+    await runAccountsCommand(['add', 'cloudflare', '--api-key'], deps);
+    answers.push('acc9:token9');
+    await runAccountsCommand(['add', 'cloudflare', '--api-key'], deps);
+    expect(saved).toEqual(['acc123:token', 'acc9:token9']);
+    const rows = buildOverview({ env: {}, credentials: () => [], deepseekAccounts: () => [], accountStates: () => [], signIn: () => undefined, webSites: [], apiKeyProviders: API_KEY_PROVIDERS });
+    expect(rows.find(row => row.id === 'cloudflare')).toMatchObject({ accountLabel: 'Account ID', state: 'not-connected' });
   });
 });

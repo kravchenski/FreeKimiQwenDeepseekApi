@@ -12,6 +12,8 @@ pub struct ProviderOverview {
     #[serde(default = "enabled")]
     pub auto: bool,
     pub url: Option<String>,
+    #[serde(default, rename = "accountLabel")]
+    pub account_label: Option<String>,
 }
 
 fn enabled() -> bool {
@@ -92,6 +94,7 @@ pub fn display_name(id: &str) -> &str {
         "ollama-cloud" => "Ollama Cloud",
         "opencode-zen" => "OpenCode Zen",
         "kilo" => "Kilo Gateway",
+        "cloudflare" => "Cloudflare Workers AI",
         other => other,
     }
 }
@@ -109,7 +112,7 @@ mod tests {
     use super::*;
 
     fn row(id: &str, kind: &str, state: &str, fix: Option<&str>) -> ProviderOverview {
-        ProviderOverview { id: id.into(), kind: kind.into(), state: state.into(), detail: "d".into(), fix: fix.map(Into::into), auto: true, url: None }
+        ProviderOverview { id: id.into(), kind: kind.into(), state: state.into(), detail: "d".into(), fix: fix.map(Into::into), auto: true, url: None, account_label: None }
     }
 
     fn live(available: bool, reason: Option<&str>) -> ProviderStatus {
@@ -128,6 +131,7 @@ mod tests {
             fix: None,
             auto: false,
             url: None,
+            account_label: None,
         });
         assert!(rows[1].auto);
         assert_eq!(rows[1].url.as_deref(), Some("https://chat.z.ai/"));
