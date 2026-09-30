@@ -4,6 +4,13 @@ import { ProviderError } from '../core/providers/errors.ts';
 import { launchCdpBrowser, type CdpBrowser, type LaunchOptions } from './cdp.ts';
 import { googleProfileDir } from './google-profile.ts';
 import { readSignIn, type SignInResult, type SignInRule } from './sign-in.ts';
+import type { ChatMessage } from '../core/providers/provider.ts';
+
+export interface SendContext {
+  conversationId?: string;
+  messages?: ChatMessage[];
+  toPrompt?: (messages: ChatMessage[]) => string;
+}
 
 export interface ChatSite {
   id: string;
@@ -42,6 +49,24 @@ export interface BrowserChatOptions {
 
 const BINDING = '__freeapiStreamChunk';
 const CHALLENGE_GRACE_MS = 120_000;
+const THREAD_IDLE_MS = 30 * 60_000;
+const MAX_THREADS_PER_SITE = 3;
+
+interface ChatThread {
+  page: Page;
+  model?: string;
+  conversationId?: string;
+  sent: ChatMessage[];
+  lastUsed: number;
+}
+
+function isHistoryPrefix(sent: ChatMessage[], incoming?: ChatMessage[]) {
+  if (!incoming || !sent.length || sent.length > incoming.length) return false;
+  for (let index = 0; index < sent.length; index++) {
+    if (JSON.stringify(sent[index]) !== JSON.stringify(incoming[index])) return false;
+  }
+  return true;
+}
 
 function teeScript({ pattern, binding, fields }: { pattern: string; binding: string; fields?: Record<string, unknown> }) {
   const matcher = new RegExp(pattern);
@@ -141,6 +166,8 @@ export class BrowserChatSession {
   private browser?: Promise<CdpBrowser>;
   private closing?: Promise<void>;
   private readonly queues = new Map<string, Promise<unknown>>();
+  private readonly pageQueues = new Map<Page, ChunkQueue>();
+  private readonly threads = new Map<string, ChatThread[]>();
 
   constructor(private readonly options: BrowserChatOptions = {}) {}
 
@@ -149,7 +176,7 @@ export class BrowserChatSession {
     const launch = this.options.launch ?? launchCdpBrowser;
     const launched: Promise<CdpBrowser> = (this.closing ?? Promise.resolve()).then(() => launch({
       profileDir: this.options.profileDir ?? googleProfileDir(),
-      headless: this.options.headless ?? false,
+      headless: this.options.headless ?? true,
     })).then(cdp => {
       const forget = () => this.forget(launched, cdp);
       cdp.browser.on('disconnected', forget);
@@ -184,23 +211,111 @@ export class BrowserChatSession {
   async close() {
     const browser = await this.browser?.catch(() => undefined);
     this.browser = undefined;
+    this.threads.clear();
+    this.pageQueues.clear();
     await browser?.close();
   }
 
-  send(site: ChatSite, prompt: string, model?: string): Promise<AsyncGenerator<Uint8Array>> {
+  send(site: ChatSite, prompt: string, model?: string, conversation?: SendContext): Promise<AsyncGenerator<Uint8Array>> {
     const previous = this.queues.get(site.id) ?? Promise.resolve();
     let release!: () => void;
     const done = new Promise<void>(resolve => { release = resolve; });
     this.queues.set(site.id, previous.then(() => done));
     return previous.then(async () => {
       try {
-        const { page, queue } = await this.openPage(site, prompt, model);
-        return this.stream(site, page, queue, release);
+        const { page, queue } = await this.prepare(site, prompt, model, conversation);
+        return this.stream(site, { page, queue }, release);
       } catch (error) {
         release();
         throw error;
       }
     });
+  }
+
+  private async prepare(site: ChatSite, prompt: string, model?: string, conversation?: SendContext) {
+    const thread = this.matchThread(site.id, model, conversation);
+    if (thread) {
+      try {
+        return await this.resumeThread(thread, site, conversation!);
+      } catch {
+        this.dropThread(site.id, thread);
+      }
+    }
+    return this.openPage(site, prompt, model, conversation);
+  }
+
+  private matchThread(siteId: string, model: string | undefined, conversation?: SendContext): ChatThread | undefined {
+    const list = this.threads.get(siteId) ?? [];
+    const alive: ChatThread[] = [];
+    const stale: ChatThread[] = [];
+    let matched: ChatThread | undefined;
+    for (const thread of list) {
+      if (thread.page.isClosed() || Date.now() - thread.lastUsed > THREAD_IDLE_MS) {
+        stale.push(thread);
+        continue;
+      }
+      alive.push(thread);
+      if (!matched && thread.model === model
+        && (!thread.conversationId || !conversation?.conversationId || thread.conversationId === conversation.conversationId)
+        && isHistoryPrefix(thread.sent, conversation?.messages)) {
+        matched = thread;
+      }
+    }
+    for (const thread of stale) {
+      this.pageQueues.delete(thread.page);
+      thread.page.close().catch(() => {});
+    }
+    this.threads.set(siteId, alive);
+    return matched;
+  }
+
+  private registerThread(siteId: string, thread: ChatThread) {
+    const list = this.threads.get(siteId) ?? [];
+    list.push(thread);
+    this.threads.set(siteId, list);
+    while (list.length > MAX_THREADS_PER_SITE) {
+      let oldest = list[0]!;
+      for (const entry of list) if (entry.lastUsed < oldest.lastUsed) oldest = entry;
+      this.dropThread(siteId, oldest);
+    }
+  }
+
+  private dropThread(siteId: string, thread: ChatThread) {
+    const list = this.threads.get(siteId) ?? [];
+    const index = list.indexOf(thread);
+    if (index >= 0) list.splice(index, 1);
+    this.pageQueues.delete(thread.page);
+    thread.page.close().catch(() => {});
+  }
+
+  private async resumeThread(thread: ChatThread, site: ChatSite, conversation: SendContext) {
+    const messages = conversation.messages!;
+    const delta = messages.slice(thread.sent.length);
+    if (thread.page.isClosed() || !delta.length || !conversation.toPrompt) {
+      throw new Error(`${site.id} thread cannot continue`);
+    }
+    const queue = new ChunkQueue();
+    this.pageQueues.set(thread.page, queue);
+    thread.sent = messages.slice();
+    thread.lastUsed = Date.now();
+    const input = thread.page.locator(site.inputSelector).first();
+    await input.waitFor({ timeout: 30_000 });
+    await input.fill('');
+    await input.click();
+    await thread.page.keyboard.insertText(conversation.toPrompt(delta));
+    await input.press('Enter');
+    return { page: thread.page, queue };
+  }
+
+  private finishThread(siteId: string, page: Page, clean: boolean) {
+    this.pageQueues.delete(page);
+    const thread = (this.threads.get(siteId) ?? []).find(entry => entry.page === page);
+    if (clean && thread) {
+      thread.lastUsed = Date.now();
+      return;
+    }
+    if (thread) this.dropThread(siteId, thread);
+    else page.close().catch(() => {});
   }
 
   private watchModels(site: ChatSite, page: Page) {
@@ -220,13 +335,20 @@ export class BrowserChatSession {
     };
   }
 
-  private async openPage(site: ChatSite, prompt: string, model?: string) {
+  private async openPage(site: ChatSite, prompt: string, model?: string, conversation?: SendContext) {
     const context = await this.context();
     const page = await context.newPage();
     const queue = new ChunkQueue();
-    await page.exposeFunction(BINDING, (chunk: string | null) => queue.push(chunk === null ? null : Buffer.from(chunk, 'base64')));
+    this.pageQueues.set(page, queue);
+    await page.exposeFunction(BINDING, (chunk: string | null) => {
+      this.pageQueues.get(page)?.push(chunk === null ? null : Buffer.from(chunk, 'base64'));
+    });
     const fields = model && site.modelFields ? site.modelFields(model) : undefined;
-    await page.addInitScript(teeScript, { pattern: site.responseUrl.source, binding: BINDING, ...(fields ? { fields } : {}) });
+    await page.addInitScript(teeScript, {
+      pattern: site.responseUrl.source,
+      binding: BINDING,
+      ...(fields ? { fields } : {}),
+    });
     const readPageModels = this.options.onModels ? this.watchModels(site, page) : () => {};
     try {
       await page.goto(site.url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
@@ -242,17 +364,30 @@ export class BrowserChatSession {
       await input.click();
       await page.keyboard.insertText(prompt);
       await input.press('Enter');
+      if (conversation?.messages?.length) {
+        this.registerThread(site.id, {
+          page,
+          model,
+          conversationId: conversation.conversationId,
+          sent: conversation.messages.slice(),
+          lastUsed: Date.now(),
+        });
+      }
       return { page, queue };
     } catch (error) {
+      this.pageQueues.delete(page);
       await page.close().catch(() => {});
       if (error instanceof ProviderError) throw error;
       throw new ProviderError(`${site.id} chat page is not ready: ${error instanceof Error ? error.message : error}`, 'unavailable');
     }
   }
 
-  private async *stream(site: ChatSite, page: Page, queue: ChunkQueue, release: () => void): AsyncGenerator<Uint8Array> {
+  private async *stream(site: ChatSite, prepared: { page: Page; queue: ChunkQueue }, release: () => void): AsyncGenerator<Uint8Array> {
+    const { page, queue } = prepared;
     let deadline = Date.now() + (this.options.firstChunkTimeoutMs ?? 60_000);
     let challenged = false;
+    let clean = false;
+    let failed = false;
     try {
       let first: Uint8Array | null | 'timeout' = 'timeout';
       while (first === 'timeout') {
@@ -271,23 +406,45 @@ export class BrowserChatSession {
           continue;
         }
         if (first instanceof Uint8Array && site.challengeResponse?.test(new TextDecoder().decode(first))) {
-          if (!challenged) deadline = Math.max(deadline, Date.now() + CHALLENGE_GRACE_MS);
-          challenged = true;
+          if (!challenged) {
+            challenged = true;
+            deadline = Math.max(deadline, Date.now() + CHALLENGE_GRACE_MS);
+          }
           await drainResponse(queue);
           first = 'timeout';
         }
       }
-      if (first === null) return;
+      if (first === null) {
+        clean = true;
+        return;
+      }
       yield first;
       for (;;) {
         const chunk = await queue.next(this.options.idleTimeoutMs ?? 120_000);
         if (chunk === 'timeout') throw new ProviderError(`${site.id} stopped streaming`, 'upstream');
-        if (chunk === null) return;
+        if (chunk === null) {
+          clean = true;
+          return;
+        }
         yield chunk;
       }
+    } catch (error) {
+      failed = true;
+      throw error;
     } finally {
+      if (!clean && !failed) {
+        const budget = Date.now() + 2_000;
+        while (Date.now() < budget) {
+          const tail = await queue.next(Math.max(1, budget - Date.now()));
+          if (tail === null) {
+            clean = true;
+            break;
+          }
+          if (tail === 'timeout') break;
+        }
+      }
       release();
-      await page.close().catch(() => {});
+      this.finishThread(site.id, page, clean);
     }
   }
 }

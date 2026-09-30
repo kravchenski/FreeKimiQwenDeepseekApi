@@ -52,7 +52,11 @@ export function createBrowserChatProvider(config: BrowserChatProviderConfig): Pr
       const failures: string[] = [];
       for (const candidate of candidates) {
         try {
-          const chunks = await primeChunks(config.parse(await candidate.session.send(config.site, prompt, model)));
+          const chunks = await primeChunks(config.parse(await candidate.session.send(config.site, prompt, model, {
+            conversationId: request.conversationId,
+            messages: request.messages,
+            toPrompt: messages => messagesToPrompt(messages),
+          })));
           config.onResult?.(candidate.profile, true);
           return { chunks };
         } catch (error) {

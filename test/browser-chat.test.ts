@@ -103,6 +103,32 @@ describe.skipIf(process.env.RUN_BROWSER_TESTS !== '1' || !findBrowserExecutable(
     }
   }, 90_000);
 
+  test('keeps one page per conversation and sends only the new turns', async () => {
+    const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });
+    const toPrompt = (messages: Array<{ role?: string; content?: string }>) =>
+      messages.map(message => `${message.role}: ${message.content}`).join('\n\n');
+    const pageCount = async () => (await (session as unknown as { context: () => Promise<{ pages(): unknown[] }> }).context()).pages().length;
+    try {
+      const base = await pageCount();
+      const first = [{ role: 'user', content: 'hello there' }];
+      expect(await collect(await session.send(site(), 'hello there', undefined, { messages: first, toPrompt }))).toContain('echo hello there');
+      expect(await pageCount()).toBe(base + 1);
+
+      const second = [...first, { role: 'assistant', content: 'reply' }, { role: 'user', content: 'second turn' }];
+      const resumed = await collect(await session.send(site(), 'stale full prompt', undefined, { messages: second, toPrompt }));
+      expect(resumed).toContain('user: second turn');
+      expect(resumed).not.toContain('stale full prompt');
+      expect(resumed).not.toContain('hello there');
+      expect(await pageCount()).toBe(base + 1);
+
+      const diverged = [{ role: 'user', content: 'different thread' }];
+      expect(await collect(await session.send(site(), 'fresh full', undefined, { messages: diverged, toPrompt }))).toContain('echo fresh full');
+      expect(await pageCount()).toBe(base + 2);
+    } finally {
+      await session.close();
+    }
+  }, 120_000);
+
   test('relaunches the browser after its window was closed', async () => {
     const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });
     try {
