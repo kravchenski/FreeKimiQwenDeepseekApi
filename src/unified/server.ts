@@ -300,6 +300,15 @@ function scheduleModelRefresh() {
     if (config.MODEL_REFRESH_MINUTES) setInterval(refresh, config.MODEL_REFRESH_MINUTES * 60_000).unref();
 }
 
+const EMPTY_REPLY_NUDGE = {
+    role: 'user',
+    content: 'Your last reply was empty. Continue the task now: call the next tool in the tool call format described above, or give the final answer.',
+};
+
+function needsNudge(content: string) {
+    return !content.trim() || isEmptyToolCallResponse(content);
+}
+
 function isCodebaseActionRequest(messages: Array<Record<string, any>>) {
     if (messages.at(-1)?.role !== 'user') return false;
     const lastUser = [...messages].reverse().find(message => message?.role === 'user');
@@ -408,7 +417,7 @@ function handleProviderStream(
             send(chunk.type === 'content' ? { content: chunk.text } : { reasoning_content: chunk.text });
         }
 
-        if (captureToolCalls && isEmptyToolCallResponse(content) && !isCodebaseActionRequest(messages)) {
+        if (captureToolCalls && needsNudge(content) && !isCodebaseActionRequest(messages)) {
             ({ content, reasoning } = await collectChunks((await retry()).chunks));
         }
 
@@ -561,7 +570,7 @@ app.post('/api/chat/completions', async (c) => {
             latencyMs: Date.now() - startedAt,
             ...(error === undefined ? {} : { error: errorText(error) }),
         });
-        const open = () => provider.stream({ model: routedModel, messages: upstreamMessages, conversationId });
+        const open = (nudge = false) => provider.stream({ model: routedModel, messages: nudge ? [...upstreamMessages, EMPTY_REPLY_NUDGE] : upstreamMessages, conversationId });
         const routeHeaders: Record<string, string> = {
             'x-gateway-route': `${provider.id}/${routedModel}`,
             ...(compaction?.stats.results ? { 'x-gateway-compacted': `${compaction.stats.charsBefore}->${compaction.stats.charsAfter}` } : {}),
@@ -569,7 +578,7 @@ app.post('/api/chat/completions', async (c) => {
         };
 
         if (stream) {
-            return handleProviderStream(id, created, routedModel, captureToolCalls, combinedTools, messages, first, open, routeHeaders, finish);
+            return handleProviderStream(id, created, routedModel, captureToolCalls, combinedTools, messages, first, () => open(true), routeHeaders, finish);
         }
 
         let content: string;
@@ -577,8 +586,8 @@ app.post('/api/chat/completions', async (c) => {
         let responseFields = first.responseFields;
         try {
             ({ content, reasoning } = await collectChunks(first.chunks));
-            if (captureToolCalls && isEmptyToolCallResponse(content) && !isCodebaseActionRequest(messages)) {
-                const retried = await open();
+            if (captureToolCalls && needsNudge(content) && !isCodebaseActionRequest(messages)) {
+                const retried = await open(true);
                 ({ content, reasoning } = await collectChunks(retried.chunks));
                 responseFields = retried.responseFields;
             }
