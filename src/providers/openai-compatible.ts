@@ -33,9 +33,12 @@ export interface OpenAICompatibleConfig {
   modelsUrl?: string;
   headers?: Record<string, string>;
   endpoint?: (apiKey: string | undefined) => { baseUrl: string; apiKey?: string };
+  nativeTools?: boolean;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
 }
+
+const TOOLS_REFUSED = /tool|function.?call/i;
 
 function streamError(error: unknown) {
   const details = typeof error === 'object' && error !== null ? error as Record<string, unknown> : { message: String(error) };
@@ -59,6 +62,15 @@ export function parseOpenAIEvent(line: string): ChatChunk[] | 'done' | null {
   const delta = event?.choices?.[0]?.delta;
   if (!delta) return null;
   const chunks: ChatChunk[] = [];
+  for (const call of Array.isArray(delta.tool_calls) ? delta.tool_calls : []) {
+    chunks.push({
+      type: 'tool_call',
+      index: Number.isInteger(call?.index) ? call.index : 0,
+      ...(typeof call?.id === 'string' ? { id: call.id } : {}),
+      ...(typeof call?.function?.name === 'string' ? { name: call.function.name } : {}),
+      ...(typeof call?.function?.arguments === 'string' ? { arguments: call.function.arguments } : {}),
+    });
+  }
   const reasoning = delta.reasoning_content ?? delta.reasoning;
   if (typeof reasoning === 'string' && reasoning) chunks.push({ type: 'reasoning', text: reasoning });
   if (typeof delta.content === 'string' && delta.content) chunks.push({ type: 'content', text: delta.content });
@@ -78,6 +90,7 @@ export class OpenAICompatibleProvider implements Provider {
   readonly ownedBy: string;
   readonly fallback: boolean;
   private listed?: Set<string>;
+  private readonly withoutTools = new Set<string>();
 
   constructor(private readonly config: OpenAICompatibleConfig) {
     this.id = config.id;
@@ -144,8 +157,9 @@ export class OpenAICompatibleProvider implements Provider {
     }
   }
 
-  capabilities(): ModelCapabilities {
-    return { nativeTools: false, reasoning: false, vision: false, ...this.config.capabilities };
+  capabilities(model?: string): ModelCapabilities {
+    const nativeTools = Boolean(this.config.nativeTools) && !(model && this.withoutTools.has(model));
+    return { reasoning: false, vision: false, ...this.config.capabilities, nativeTools };
   }
 
   health() {
@@ -159,13 +173,19 @@ export class OpenAICompatibleProvider implements Provider {
     if (!apiKey && !this.config.optionalKey) throw new ProviderError(this.missingKey(), 'unavailable');
     const model = this.upstreamId(request.model);
     const target = this.config.endpoint?.(apiKey) ?? { baseUrl: this.config.baseUrl, apiKey };
+    const tools = request.tools?.length && this.capabilities(request.model).nativeTools ? request.tools : undefined;
     const response = await (this.config.fetch ?? fetch)(`${target.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...this.headers(target.apiKey) },
-      body: JSON.stringify({ ...this.config.extraBody, model, messages: request.messages, stream: true }),
+      body: JSON.stringify({ ...this.config.extraBody, model, messages: request.messages, stream: true, ...(tools ? { tools, tool_choice: 'auto' } : {}) }),
       signal: context.signal,
     });
-    if (!response.ok) throw await upstreamError(`${this.config.label} completion`, response);
+    if (!response.ok) {
+      if (tools && [400, 404, 422].includes(response.status) && TOOLS_REFUSED.test(await response.clone().text())) {
+        this.withoutTools.add(request.model);
+      }
+      throw await upstreamError(`${this.config.label} completion`, response);
+    }
     return { chunks: openAIChunks(response.body) };
   }
 }

@@ -4,11 +4,19 @@ export interface ChatRequest {
   model: string;
   messages: ChatMessage[];
   conversationId?: string;
+  tools?: ChatMessage[];
 }
 
 export type ChatChunk =
   | { type: 'content'; text: string }
-  | { type: 'reasoning'; text: string };
+  | { type: 'reasoning'; text: string }
+  | { type: 'tool_call'; index: number; id?: string; name?: string; arguments?: string };
+
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
 
 export interface ProviderStream {
   chunks: AsyncIterable<ChatChunk>;

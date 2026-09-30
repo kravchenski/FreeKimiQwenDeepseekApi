@@ -74,6 +74,7 @@ export function parseKimiEvent(payload: string): ChatChunk | 'done' | null {
 }
 
 export async function* parseKimiStream(bytes: AsyncIterable<Uint8Array>): AsyncGenerator<ChatChunk> {
+  let done = false;
   for await (const frame of connectFrames(bytes)) {
     if (frame.flags & END_STREAM_FLAG) {
       const failure = endStreamError(frame.payload);
@@ -81,7 +82,10 @@ export async function* parseKimiStream(bytes: AsyncIterable<Uint8Array>): AsyncG
       return;
     }
     const parsed = parseKimiEvent(frame.payload);
-    if (parsed === 'done') return;
-    if (parsed) yield parsed;
+    if (parsed === 'done') {
+      done = true;
+      continue;
+    }
+    if (parsed && !done) yield parsed;
   }
 }

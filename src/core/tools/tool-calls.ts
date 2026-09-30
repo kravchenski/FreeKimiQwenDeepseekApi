@@ -260,6 +260,34 @@ export function recoverBrokenBashToolCall(text: string) {
     return { name: match[1], arguments: { command } };
 }
 
+function unbalancedQuotes(text: string) {
+    return (text.replace(/\\./g, '').match(/"/g)?.length ?? 0) % 2 === 1;
+}
+
+const DSML = '[\\uff5c|]+\\s*DSML\\s*[\\uff5c|]+\\s*';
+
+export function recoverDsmlToolCalls(text: string) {
+    const invoke = new RegExp(`<${DSML}invoke\\s+name="([^"]+)"\\s*>([\\s\\S]*?)</${DSML}invoke>`, 'g');
+    const parameter = new RegExp(`<${DSML}parameter\\s+name="([^"]+)"([^>]*)>([\\s\\S]*?)</${DSML}parameter>`, 'g');
+    const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+    for (const [, name, body] of text.matchAll(invoke)) {
+        const args: Record<string, unknown> = {};
+        for (const [, key, attributes, raw] of body!.matchAll(parameter)) {
+            const value = raw!.trim();
+            let parsed: unknown = value;
+            if (!/string="true"/.test(attributes!) || key === 'arguments') {
+                try {
+                    parsed = JSON.parse(value);
+                } catch {}
+            }
+            if (key === 'arguments' && parsed && typeof parsed === 'object') Object.assign(args, parsed);
+            else args[key!] = parsed;
+        }
+        calls.push({ name: name!, arguments: args });
+    }
+    return calls.length ? calls : null;
+}
+
 export function recoverXmlStyleToolCall(text: string) {
     const outer = text.match(/<function=([A-Za-z0-9_-]+)>\s*([\s\S]*?)\s*<\/function>/i);
     if (outer) {
@@ -429,6 +457,9 @@ export function parseToolCallJson(content: unknown, tools: any = null): ParsedTo
     if (/^\s*\{\s*"tool_calls"\s*:\s*\[/.test(text) && !/\}\s*$/.test(text)) {
         parseAttempts.push(text + '}');
     }
+    const extraBraces = text.replace(/"\}\}(?=\s*(?:,\s*\{\s*"name"|\]\s*\}))/g, '"}');
+    if (extraBraces !== text) parseAttempts.push(extraBraces);
+    if (unbalancedQuotes(text)) parseAttempts.push(text.replace(/(\}+\s*\]\s*\}\s*)$/, '"$1'));
     const objTc = text.match(/^\s*\{\s*"tool_calls"\s*:\s*\{/);
     if (objTc) {
         const fixed = text.replace(/^\s*\{\s*"tool_calls"\s*:\s*\{/, '{"tool_calls":[{') + ']}';
@@ -472,6 +503,8 @@ export function parseToolCallJson(content: unknown, tools: any = null): ParsedTo
         } catch {
         }
     }
+    const recoveredDsml = recoverDsmlToolCalls(content);
+    if (recoveredDsml) return recoveredToolCalls(recoveredDsml, allowedNames);
     const recovered = recoverSimpleToolCalls(text);
     if (recovered) return recoveredToolCalls(recovered, allowedNames);
     const recoveredBash = recoverBrokenBashToolCall(text);

@@ -316,6 +316,7 @@ export function createApiProvider(definition: ApiProviderDefinition, overrides: 
     models: [],
     upstreamModels: true,
     fallback: true,
+    nativeTools: true,
     accountHint: `or run: bun run account add ${definition.id} --api-key`,
     ...(definition.namespace ? { namespace: definition.id } : {}),
     ...(definition.modelFilter ? { modelFilter: definition.modelFilter } : {}),

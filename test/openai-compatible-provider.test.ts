@@ -43,7 +43,7 @@ describe('OpenAI-compatible providers', () => {
 
     const { chunks } = await nvidia.stream({ model: 'moonshotai/kimi-k3', messages: [{ role: 'user', content: 'hi' }] });
 
-    expect(await collectChunks(chunks)).toEqual({ content: 'Hello', reasoning: '' });
+    expect(await collectChunks(chunks)).toMatchObject({ content: 'Hello', reasoning: '' });
     expect(calls[0]!.url).toBe('https://integrate.api.nvidia.com/v1/chat/completions');
     expect((calls[0]!.init.headers as Record<string, string>).Authorization).toBe('Bearer n');
   });

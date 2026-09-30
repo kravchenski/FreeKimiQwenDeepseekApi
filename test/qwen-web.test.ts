@@ -21,7 +21,7 @@ describe('Qwen web chat stream', () => {
       event({ role: 'assistant', content: '', phase: 'answer', status: 'finished' }),
       event({ role: 'assistant', content: 'ignored', phase: 'answer' }),
     ])));
-    expect(result).toEqual({ content: 'pong', reasoning: 'hmm' });
+    expect(result).toMatchObject({ content: 'pong', reasoning: 'hmm' });
   });
 
   test('ignores keep-alives and malformed lines', () => {

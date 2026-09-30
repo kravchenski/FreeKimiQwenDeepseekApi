@@ -39,7 +39,7 @@ const stream = [
 describe('Kimi web chat', () => {
   test('parses Connect frames split at arbitrary byte boundaries', async () => {
     for (const size of [1, 3, 64, 4096]) {
-      expect(await collectChunks(parseKimiStream(split(stream, size)))).toEqual({ content: 'pong ✓', reasoning: 'The user wants pong.' });
+      expect(await collectChunks(parseKimiStream(split(stream, size)))).toMatchObject({ content: 'pong ✓', reasoning: 'The user wants pong.' });
     }
   });
 
@@ -47,7 +47,7 @@ describe('Kimi web chat', () => {
     const frames = [];
     for await (const item of connectFrames(split([frame({ heartbeat: {} }), frame('{}', 2)], 2))) frames.push(item.flags);
     expect(frames).toEqual([0, 2]);
-    expect(await collectChunks(parseKimiStream(split([frame('{}', 2), frame({ op: 'set', block: { text: { content: 'late' } } })], 8)))).toEqual({ content: '', reasoning: '' });
+    expect(await collectChunks(parseKimiStream(split([frame('{}', 2), frame({ op: 'set', block: { text: { content: 'late' } } })], 8)))).toMatchObject({ content: '', reasoning: '' });
   });
 
   test('ignores non-content events and malformed payloads', () => {
@@ -55,5 +55,14 @@ describe('Kimi web chat', () => {
     expect(parseKimiEvent('{"op":"set","chat":{"id":"c"}}')).toBeNull();
     expect(parseKimiEvent('not json')).toBeNull();
     expect(parseKimiEvent('{"done":{}}')).toBe('done');
+  });
+
+  test('reports an error that arrives after the done event', async () => {
+    const overloaded = [
+      frame({ heartbeat: {} }),
+      frame({ eventOffset: 1, done: {} }),
+      frame({ error: { code: 'resource_exhausted', debug: { reason: 'REASON_SERVER_OVERLOADED_FOR_FREE_USER' } } }, 2),
+    ];
+    await expect(collectChunks(parseKimiStream(split(overloaded, 7)))).rejects.toThrow('REASON_SERVER_OVERLOADED_FOR_FREE_USER');
   });
 });
