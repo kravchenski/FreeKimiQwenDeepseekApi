@@ -18,6 +18,7 @@ import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts
 import { checkProviderModels } from '../core/models/model-check.ts';
 import { DecisionLog } from '../core/router/decisions.ts';
 import { compactToolResults } from '../core/agents/compact.ts';
+import { restoreShellCalls, rewriteShellCalls, rtkRewriter, type RtkRewrite } from '../core/agents/rtk.ts';
 import { TOOL_SELECTION_THRESHOLD, ToolSelector } from '../core/agents/tools.ts';
 import { decide, readDecisionRequest, type DecisionAnswer, type DecisionRequest } from '../core/decisions/engine.ts';
 import { rankModels } from '../core/models/stats.ts';
@@ -299,6 +300,15 @@ function scheduleModelRefresh() {
     if (config.MODEL_REFRESH_MINUTES) setInterval(refresh, config.MODEL_REFRESH_MINUTES * 60_000).unref();
 }
 
+const EMPTY_REPLY_NUDGE = {
+    role: 'user',
+    content: 'Your last reply was empty. Continue the task now: call the next tool in the tool call format described above, or give the final answer.',
+};
+
+function needsNudge(content: string) {
+    return !content.trim() || isEmptyToolCallResponse(content);
+}
+
 function isCodebaseActionRequest(messages: Array<Record<string, any>>) {
     if (messages.at(-1)?.role !== 'user') return false;
     const lastUser = [...messages].reverse().find(message => message?.role === 'user');
@@ -342,7 +352,12 @@ function processToolCalls(
             }];
         }
     }
-    return { content, toolCalls, conversationalText };
+    let rtkChanges: RtkRewrite[] = [];
+    if (toolCalls?.length && gatewaySettings.agentOption('rtk')) {
+        const rewrite = rtkRewriter();
+        if (rewrite) ({ toolCalls, changes: rtkChanges } = rewriteShellCalls(toolCalls, rewrite));
+    }
+    return { content, toolCalls, conversationalText, rtkChanges };
 }
 
 function streamChunk(
@@ -402,7 +417,7 @@ function handleProviderStream(
             send(chunk.type === 'content' ? { content: chunk.text } : { reasoning_content: chunk.text });
         }
 
-        if (captureToolCalls && isEmptyToolCallResponse(content) && !isCodebaseActionRequest(messages)) {
+        if (captureToolCalls && needsNudge(content) && !isCodebaseActionRequest(messages)) {
             ({ content, reasoning } = await collectChunks((await retry()).chunks));
         }
 
@@ -500,7 +515,8 @@ app.post('/api/chat/completions', async (c) => {
         return c.json({ error: { message: 'Invalid JSON body', type: 'invalid_request_error' } }, 400);
     }
     try {
-        const { messages, model = 'deepseek-default', stream = false, tools, functions } = body || {};
+        let { messages } = body || {};
+        const { model = 'deepseek-default', stream = false, tools, functions } = body || {};
         if (!Array.isArray(messages) || messages.length === 0) {
             return c.json({ error: { message: 'messages must be a non-empty array' } }, 400);
         }
@@ -509,6 +525,8 @@ app.post('/api/chat/completions', async (c) => {
             return c.json({ error: { message: `Unknown model: ${model}. Available: ${visibleModels().map(entry => entry.id).join(', ')}` } }, 400);
         }
 
+        const { messages: restoredMessages } = restoreShellCalls(messages);
+        messages = restoredMessages;
         const conversationId = body.conversation_id || body.chat_id || c.req.header('x-conversation-id') || undefined;
         const combinedTools = tools || (Array.isArray(functions)
             ? functions.map((fn: Record<string, unknown>) => ({ type: 'function', function: fn }))
@@ -555,7 +573,7 @@ app.post('/api/chat/completions', async (c) => {
             latencyMs: Date.now() - startedAt,
             ...(error === undefined ? {} : { error: errorText(error) }),
         });
-        const open = () => provider.stream({ model: routedModel, messages: upstreamMessages, conversationId });
+        const open = (nudge = false) => provider.stream({ model: routedModel, messages: nudge ? [...upstreamMessages, EMPTY_REPLY_NUDGE] : upstreamMessages, conversationId });
         const routeHeaders: Record<string, string> = {
             'x-gateway-route': `${provider.id}/${routedModel}`,
             ...(compaction?.stats.results ? { 'x-gateway-compacted': `${compaction.stats.charsBefore}->${compaction.stats.charsAfter}` } : {}),
@@ -563,7 +581,7 @@ app.post('/api/chat/completions', async (c) => {
         };
 
         if (stream) {
-            return handleProviderStream(id, created, routedModel, captureToolCalls, combinedTools, messages, first, open, routeHeaders, finish);
+            return handleProviderStream(id, created, routedModel, captureToolCalls, combinedTools, messages, first, () => open(true), routeHeaders, finish);
         }
 
         let content: string;
@@ -571,8 +589,8 @@ app.post('/api/chat/completions', async (c) => {
         let responseFields = first.responseFields;
         try {
             ({ content, reasoning } = await collectChunks(first.chunks));
-            if (captureToolCalls && isEmptyToolCallResponse(content) && !isCodebaseActionRequest(messages)) {
-                const retried = await open();
+            if (captureToolCalls && needsNudge(content) && !isCodebaseActionRequest(messages)) {
+                const retried = await open(true);
                 ({ content, reasoning } = await collectChunks(retried.chunks));
                 responseFields = retried.responseFields;
             }
@@ -581,8 +599,9 @@ app.post('/api/chat/completions', async (c) => {
             throw error;
         }
         finish();
-        const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
+        const { toolCalls, conversationalText, rtkChanges } = processToolCalls(content, captureToolCalls, combinedTools, messages);
         for (const [name, value] of Object.entries(routeHeaders)) c.header(name, value);
+        if (rtkChanges.length) c.header('x-gateway-rtk', String(rtkChanges.length));
         return c.json({
             id, object: 'chat.completion', created, model: routedModel,
             choices: [{

@@ -13,6 +13,29 @@ export interface CompactionStats {
   charsAfter: number;
 }
 
+const SIMILAR_RUN = 3;
+
+function shape(line: string) {
+  return line.replace(/\d+(?:\.\d+)?/g, '#');
+}
+
+function collapseSimilar(lines: string[]) {
+  const out: string[] = [];
+  for (let start = 0; start < lines.length;) {
+    let end = start + 1;
+    const pattern = shape(lines[start]!);
+    while (end < lines.length && lines[end] !== '' && shape(lines[end]!) === pattern && !IMPORTANT.test(lines[end]!)) end++;
+    const run = end - start;
+    if (run >= SIMILAR_RUN && lines[start] !== '' && pattern !== lines[start] && !IMPORTANT.test(lines[start]!)) {
+      out.push(lines[start]!, `\u2026 ${run - 2} similar lines \u2026`, lines[end - 1]!);
+    } else {
+      out.push(...lines.slice(start, end));
+    }
+    start = end;
+  }
+  return out;
+}
+
 function repeated(line: string, count: number) {
   return count > 1 && line !== '' ? `${line} (×${count})` : line;
 }
@@ -35,7 +58,7 @@ export function compactOutput(text: string, limits = RECENT_LIMITS) {
     count = 1;
   }
   if (previous !== undefined) collapsed.push(repeated(previous, count));
-  const tidy = collapsed.filter((line, index) => line !== '' || (index > 0 && collapsed[index - 1] !== ''));
+  const tidy = collapseSimilar(collapsed.filter((line, index) => line !== '' || (index > 0 && collapsed[index - 1] !== '')));
   if (tidy.length <= limits.head + limits.tail) return tidy.join('\n').trim();
   const middle = tidy.slice(limits.head, tidy.length - limits.tail);
   const kept = middle.filter(line => IMPORTANT.test(line)).slice(0, limits.important);

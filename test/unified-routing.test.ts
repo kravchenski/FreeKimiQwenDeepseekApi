@@ -293,6 +293,25 @@ describe('unified server routing', () => {
     expect(sent).not.toContain('\x1b[');
   });
 
+  test('asks again with a nudge when the model answers an agent with nothing', async () => {
+    const bash = [{ type: 'function', function: { name: 'bash', description: 'Run a shell command', parameters: { type: 'object', properties: { command: { type: 'string' } } } } }];
+    replies.push([{ type: 'reasoning', text: 'I should list the files.' }]);
+    replies.push([{ type: 'content', text: '{"tool_calls":[{"name":"bash","arguments":{"command":"ls"}}]}' }]);
+    const response = await chat({
+      model: 'fake-model',
+      tools: bash,
+      messages: [
+        { role: 'user', content: 'Fix the failing test.' },
+        { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'bash', arguments: '{"command":"bun test"}' } }] },
+        { role: 'tool', tool_call_id: 'c1', content: '2 fail' },
+      ],
+    });
+    const body = await response.json();
+    expect(JSON.parse(body.choices[0].message.tool_calls[0].function.arguments)).toEqual({ command: 'ls' });
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.messages.at(-1)!.content).toContain('Your last reply was empty');
+  });
+
   test('validates image generation requests', async () => {
     const images = (body: unknown) => server.app.fetch(new Request('http://local/v1/images/generations', {
       method: 'POST',

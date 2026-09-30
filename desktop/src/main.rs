@@ -371,6 +371,7 @@ fn agent_option_text(name: &str) -> (String, &'static str) {
     match name {
         "compact" => ("Trim tool output".into(), "Removes colours, progress bars and repeated lines from command output the agent sends back, and shortens very long output while keeping errors and warnings."),
         "tools" => ("Keep only the tools a request needs".into(), "When an agent sends more than 15 tools, the decision model drops the ones this task does not need. Core tools (read, edit, shell, search) and tools already used stay."),
+        "rtk" => ("Run shell commands through rtk".into(), "Rewrites the agent's shell commands with the installed rtk (git status -> rtk git status) so their output reaches the model already compact. Needs rtk on this machine."),
         other => (other.to_string(), ""),
     }
 }

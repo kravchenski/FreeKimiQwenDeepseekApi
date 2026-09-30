@@ -7,7 +7,7 @@ export interface SettingsStore {
 
 const CACHE_MS = 30_000;
 
-export const AGENT_OPTIONS = { compact: true, tools: true } as const;
+export const AGENT_OPTIONS = { compact: true, tools: true, rtk: false } as const;
 export type AgentOption = keyof typeof AGENT_OPTIONS;
 
 export function isAgentOption(value: string): value is AgentOption {
