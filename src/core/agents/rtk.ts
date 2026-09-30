@@ -18,7 +18,9 @@ export function rtkPath() {
 export function rtkRewriter(binary = rtkPath()): Rewriter | undefined {
   if (!binary) return undefined;
   return command => {
-    const result = Bun.spawnSync([binary, 'rewrite', command], { stdout: 'pipe', stderr: 'ignore', timeout: TIMEOUT_MS });
+    const { RTK_REWRITE_HOST: _host, ...env } = process.env;
+    const result = Bun.spawnSync([binary, 'rewrite', command], { stdout: 'pipe', stderr: 'ignore', timeout: TIMEOUT_MS, env });
+    if (result.exitCode !== 0 && result.exitCode !== 3) return undefined;
     const rewritten = result.stdout.toString().trim().split('\n').at(-1)?.trim() ?? '';
     return rewritten && rewritten !== command ? rewritten : undefined;
   };
