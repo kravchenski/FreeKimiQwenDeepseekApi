@@ -66,9 +66,9 @@ describe('free API providers', () => {
   test('every provider has a unique id, an env variable and a key page', () => {
     const ids = API_KEY_PROVIDERS.map(provider => provider.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toEqual(['nvidia', 'openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'sambanova']);
+    expect(ids).toEqual(['nvidia', 'openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'sambanova', 'github-models', 'huggingface', 'bigmodel', 'cohere', 'aion', 'ovhcloud', 'llm7']);
     for (const provider of FREE_API_PROVIDERS) {
-      expect(provider.apiKeyEnv).toMatch(/^[A-Z]+_API_KEY$/);
+      expect(provider.apiKeyEnv).toMatch(/^[A-Z0-9_]+_API_KEY$/);
       expect(provider.keyUrl).toStartWith('https://');
       expect(provider.namespace).toBeTrue();
     }
@@ -125,5 +125,48 @@ describe('saved key cache', () => {
     expect(groq.health().available).toBeFalse();
     forgetSavedKeys();
     expect(groq.health().available).toBeTrue();
+  });
+});
+
+describe('more free providers', () => {
+  test('OVHcloud works without a key and sends no Authorization header', async () => {
+    const calls: Array<{ url: string; auth?: string }> = [];
+    const fetchFn = (async (url: string, init: RequestInit = {}) => {
+      calls.push({ url, auth: (init.headers as Record<string, string>)?.Authorization });
+      if (url.endsWith('/models')) return Response.json({ data: [{ id: 'Mistral-Nemo-Instruct-2407' }, { id: 'Qwen3Guard-Gen-0.6B' }, { id: 'bge-m3' }, { id: 'stable-diffusion-xl-base-v10' }] });
+      return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Pong' } }] })}\n\ndata: [DONE]\n\n`);
+    }) as unknown as typeof fetch;
+    const provider = createApiProvider(definition('ovhcloud'), { env: {}, fetch: fetchFn });
+    expect(provider.health().available).toBeTrue();
+    expect(await provider.listModels()).toEqual(['ovhcloud/Mistral-Nemo-Instruct-2407']);
+    const { chunks } = await provider.stream({ model: 'ovhcloud/Mistral-Nemo-Instruct-2407', messages: [{ role: 'user', content: 'hi' }] });
+    expect((await collectChunks(chunks)).content).toBe('Pong');
+    expect(calls.every(call => call.auth === undefined)).toBeTrue();
+  });
+
+  test('GitHub Models reads its catalog URL, sends GitHub headers and needs a token', async () => {
+    const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+    const fetchFn = (async (url: string, init: RequestInit = {}) => {
+      calls.push({ url, headers: init.headers as Record<string, string> });
+      return Response.json([{ id: 'openai/gpt-4.1' }, { id: 'openai/text-embedding-3-large' }]);
+    }) as unknown as typeof fetch;
+    expect(createApiProvider(definition('github-models'), { env: {} }).health().available).toBeFalse();
+    const provider = createApiProvider(definition('github-models'), { env: { GITHUB_MODELS_API_KEY: 'ghp' }, fetch: fetchFn });
+    expect(await provider.listModels()).toEqual(['github-models/openai/gpt-4.1']);
+    expect(calls[0]!.url).toBe('https://models.github.ai/catalog/models');
+    expect(calls[0]!.headers).toMatchObject({ Accept: 'application/vnd.github+json', Authorization: 'Bearer ghp' });
+    expect(await verifyProviderKey(definition('github-models'), 'ghp', fetchFn)).toBe(2);
+  });
+
+  test('BigModel keeps only its free flash models', async () => {
+    const { fetchFn } = upstream(['glm-4-flash', 'glm-4.6', 'glm-4.5-flash', 'embedding-3']);
+    const provider = createApiProvider(definition('bigmodel'), { env: { BIGMODEL_API_KEY: 'k' }, fetch: fetchFn });
+    expect(await provider.listModels()).toEqual(['bigmodel/glm-4-flash', 'bigmodel/glm-4.5-flash']);
+  });
+
+  test('shows a provider with an optional key as connected in the overview', () => {
+    const rows = buildOverview({ env: {}, credentials: () => [], deepseekAccounts: () => [], accountStates: () => [], signIn: () => undefined, webSites: [], apiKeyProviders: API_KEY_PROVIDERS });
+    expect(rows.find(row => row.id === 'ovhcloud')).toMatchObject({ state: 'connected', detail: 'No key: anonymous limits; add a key for more' });
+    expect(rows.find(row => row.id === 'cohere')).toMatchObject({ state: 'not-connected' });
   });
 });

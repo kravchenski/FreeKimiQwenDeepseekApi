@@ -26,11 +26,11 @@ export interface OverviewInput {
   accountSignIns?: (provider: string) => SignInRecord[];
   webSites: ChatSite[];
   autoEnabled?: (provider: string) => boolean;
-  apiKeyProviders?: Array<{ id: string; apiKeyEnv: string; keyUrl?: string }>;
+  apiKeyProviders?: Array<{ id: string; apiKeyEnv: string; keyUrl?: string; keyOptional?: boolean }>;
   now?: number;
 }
 
-const DEFAULT_API_KEY_PROVIDERS: Array<{ id: string; apiKeyEnv: string; keyUrl?: string }> = [{ id: 'nvidia', apiKeyEnv: 'NVIDIA_API_KEY' }];
+const DEFAULT_API_KEY_PROVIDERS: Array<{ id: string; apiKeyEnv: string; keyUrl?: string; keyOptional?: boolean }> = [{ id: 'nvidia', apiKeyEnv: 'NVIDIA_API_KEY' }];
 
 const STATUS_LABELS: Record<Exclude<AccountStatus, 'healthy'>, string> = {
   cooldown: 'cooling down',
@@ -136,6 +136,8 @@ function collectRows(input: OverviewInput): Row[] {
     const url = provider.keyUrl ? { url: provider.keyUrl } : {};
     if (fromEnvironment || saved) {
       rows.push({ id: provider.id, kind: 'api-key', state: 'connected', detail: `API key (${fromEnvironment ? 'environment' : 'saved'})`, ...url });
+    } else if (provider.keyOptional) {
+      rows.push({ id: provider.id, kind: 'api-key', state: 'connected', detail: 'No key: anonymous limits; add a key for more', ...url });
     } else if (registryError) {
       rows.push({ id: provider.id, kind: 'api-key', state: 'unknown', detail: `registry locked: ${registryError}`, fix: 'bun run account init', ...url });
     } else {

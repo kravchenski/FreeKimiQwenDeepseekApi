@@ -10,6 +10,9 @@ export interface ApiProviderDefinition {
   baseUrl: string;
   apiKeyEnv: string;
   keyUrl: string;
+  keyOptional?: boolean;
+  modelsUrl?: string;
+  headers?: Record<string, string>;
   namespace?: boolean;
   modelFilter?: (model: string) => boolean;
   normalizeModel?: (model: string) => string;
@@ -17,7 +20,7 @@ export interface ApiProviderDefinition {
 }
 
 const NON_CHAT_MODEL = /embed|retriever|safety|guard|reward|parse|coder-6\.7b|translate|clip|detector|deplot/i;
-const NON_CHAT_API_MODEL = /embed|whisper|tts|guard|moderation|ocr|imagen|veo|rerank|transcri|orpheus|playai|-image|image-|audio|aqa|live/i;
+const NON_CHAT_API_MODEL = /embed|whisper|tts|guard|moderation|ocr|imagen|veo|rerank|transcri|orpheus|playai|-image|image-|audio|aqa|live|bge-|diffusion|flux/i;
 
 export function isNvidiaChatModel(model: string) {
   return !NON_CHAT_MODEL.test(model);
@@ -99,6 +102,73 @@ export const FREE_API_PROVIDERS: ApiProviderDefinition[] = [
     namespace: true,
     modelFilter: isApiChatModel,
   },
+  {
+    id: 'github-models',
+    label: 'GitHub Models',
+    baseUrl: 'https://models.github.ai/inference',
+    modelsUrl: 'https://models.github.ai/catalog/models',
+    headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+    apiKeyEnv: 'GITHUB_MODELS_API_KEY',
+    keyUrl: 'https://github.com/settings/personal-access-tokens/new',
+    namespace: true,
+    modelFilter: isApiChatModel,
+  },
+  {
+    id: 'huggingface',
+    label: 'Hugging Face',
+    baseUrl: 'https://router.huggingface.co/v1',
+    apiKeyEnv: 'HUGGINGFACE_API_KEY',
+    keyUrl: 'https://huggingface.co/settings/tokens',
+    namespace: true,
+    modelFilter: isApiChatModel,
+  },
+  {
+    id: 'bigmodel',
+    label: 'Zhipu BigModel',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    apiKeyEnv: 'BIGMODEL_API_KEY',
+    keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
+    namespace: true,
+    modelFilter: model => /flash/i.test(model) && isApiChatModel(model),
+    config: { models: ['bigmodel/glm-4-flash'] },
+  },
+  {
+    id: 'cohere',
+    label: 'Cohere',
+    baseUrl: 'https://api.cohere.com/compatibility/v1',
+    apiKeyEnv: 'COHERE_API_KEY',
+    keyUrl: 'https://dashboard.cohere.com/api-keys',
+    namespace: true,
+    modelFilter: isApiChatModel,
+  },
+  {
+    id: 'aion',
+    label: 'Aion Labs',
+    baseUrl: 'https://api.aionlabs.ai/v1',
+    apiKeyEnv: 'AION_API_KEY',
+    keyUrl: 'https://www.aionlabs.ai/app/api-keys/',
+    namespace: true,
+    modelFilter: isApiChatModel,
+  },
+  {
+    id: 'ovhcloud',
+    label: 'OVHcloud AI Endpoints',
+    baseUrl: 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1',
+    apiKeyEnv: 'OVHCLOUD_API_KEY',
+    keyUrl: 'https://www.ovhcloud.com/en/public-cloud/ai-endpoints/catalog/',
+    keyOptional: true,
+    namespace: true,
+    modelFilter: isApiChatModel,
+  },
+  {
+    id: 'llm7',
+    label: 'LLM7.io',
+    baseUrl: 'https://api.llm7.io/v1',
+    apiKeyEnv: 'LLM7_API_KEY',
+    keyUrl: 'https://token.llm7.io',
+    namespace: true,
+    modelFilter: isApiChatModel,
+  },
 ];
 
 export const API_KEY_PROVIDERS: ApiProviderDefinition[] = [NVIDIA_PROVIDER, ...FREE_API_PROVIDERS];
@@ -129,13 +199,13 @@ function savedKeyReader(credentials: CredentialSource, provider: string, now: ()
 }
 
 export async function verifyProviderKey(definition: ApiProviderDefinition, apiKey: string, fetchFn: typeof fetch = fetch) {
-  const response = await fetchFn(`${definition.baseUrl}/models`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
+  const response = await fetchFn(definition.modelsUrl ?? `${definition.baseUrl}/models`, {
+    headers: { ...definition.headers, Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw await upstreamError(`${definition.label} key check`, response);
-  const body = await response.json() as { data?: unknown[] };
-  return body.data?.length ?? 0;
+  const body = await response.json() as unknown[] | { data?: unknown[] };
+  return (Array.isArray(body) ? body : body.data)?.length ?? 0;
 }
 
 export function verifyNvidiaKey(apiKey: string, fetchFn: typeof fetch = fetch) {
@@ -158,6 +228,9 @@ export function createApiProvider(definition: ApiProviderDefinition, overrides: 
     ...(definition.namespace ? { namespace: definition.id } : {}),
     ...(definition.modelFilter ? { modelFilter: definition.modelFilter } : {}),
     ...(definition.normalizeModel ? { normalizeModel: definition.normalizeModel } : {}),
+    ...(definition.keyOptional ? { optionalKey: true } : {}),
+    ...(definition.modelsUrl ? { modelsUrl: definition.modelsUrl } : {}),
+    ...(definition.headers ? { headers: definition.headers } : {}),
     ...definition.config,
     ...(savedKey ? {
       resolveApiKey: async () => savedKey(),

@@ -81,6 +81,13 @@ pub fn display_name(id: &str) -> &str {
         "cerebras" => "Cerebras",
         "mistral" => "Mistral",
         "sambanova" => "SambaNova",
+        "github-models" => "GitHub Models",
+        "huggingface" => "Hugging Face",
+        "bigmodel" => "Zhipu BigModel",
+        "cohere" => "Cohere",
+        "aion" => "Aion Labs",
+        "ovhcloud" => "OVHcloud AI",
+        "llm7" => "LLM7.io",
         other => other,
     }
 }

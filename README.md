@@ -35,6 +35,8 @@ bun run start
 | **NVIDIA** | every chat model your key can see (`deepseek-ai/*`, `moonshotai/*`, `z-ai/*`, `meta/*`, `mistralai/*`, …); models missing for your account are hidden after the first 404 | `NVIDIA_API_KEY` or `bun run account add nvidia --api-key` |
 | **OpenRouter** | free models only, as `openrouter/<model>:free` | `OPENROUTER_API_KEY` or `bun run account add openrouter --api-key` |
 | **Groq, Google Gemini, Cerebras, Mistral, SambaNova** | every chat model on their free tiers, as `groq/<model>`, `gemini/<model>`, `cerebras/<model>`, `mistral/<model>`, `sambanova/<model>` | `<PROVIDER>_API_KEY` or `bun run account add <provider> --api-key` |
+| **GitHub Models, Hugging Face, Zhipu BigModel, Cohere, Aion Labs, LLM7.io** | their free tier models, as `github-models/<model>`, `huggingface/<model>`, `bigmodel/<flash model>`, `cohere/<model>`, `aion/<model>`, `llm7/<model>` | `<PROVIDER>_API_KEY` or `bun run account add <provider> --api-key` |
+| **OVHcloud AI Endpoints** | open-weight models hosted in the EU, as `ovhcloud/<model>`; works without a key at 2 requests per minute | optional `OVHCLOUD_API_KEY` |
 
 All models are free. The API providers are fallbacks after the web chats and each needs its own free API key; providers without a key are skipped.
 

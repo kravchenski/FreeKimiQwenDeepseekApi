@@ -29,6 +29,9 @@ export interface OpenAICompatibleConfig {
   accountHint?: string;
   acceptListedModels?: boolean;
   modelFilter?: (model: string) => boolean;
+  optionalKey?: boolean;
+  modelsUrl?: string;
+  headers?: Record<string, string>;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
 }
@@ -89,6 +92,10 @@ export class OpenAICompatibleProvider implements Provider {
     return this.envApiKey || (await this.config.resolveApiKey?.());
   }
 
+  private headers(apiKey: string | undefined): Record<string, string> {
+    return { ...this.config.headers, ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) };
+  }
+
   private missingKey() {
     return `${this.config.apiKeyEnv} is not set${this.config.accountHint ? `; ${this.config.accountHint}` : ''}`;
   }
@@ -118,14 +125,15 @@ export class OpenAICompatibleProvider implements Provider {
     if (!this.config.upstreamModels) return this.config.models;
     try {
       const apiKey = await this.apiKey();
-      if (!apiKey) return this.config.models;
-      const response = await (this.config.fetch ?? fetch)(`${this.config.baseUrl}/models`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
+      if (!apiKey && !this.config.optionalKey) return this.config.models;
+      const response = await (this.config.fetch ?? fetch)(this.config.modelsUrl ?? `${this.config.baseUrl}/models`, {
+        headers: this.headers(apiKey),
         signal: AbortSignal.timeout(10_000),
       });
       if (!response.ok) return this.config.models;
-      const body = await response.json() as { data?: Array<{ id?: unknown }> };
-      const ids = [...new Set((body.data ?? []).map(model => model.id).filter((id): id is string => typeof id === 'string' && this.accepts(id)).map(id => this.publicId(id)))];
+      const body = await response.json() as Array<{ id?: unknown }> | { data?: Array<{ id?: unknown }> };
+      const listed = Array.isArray(body) ? body : body.data ?? [];
+      const ids = [...new Set(listed.map(model => model.id).filter((id): id is string => typeof id === 'string' && this.accepts(id)).map(id => this.publicId(id)))];
       if (!ids.length) return this.config.models;
       if (this.config.acceptListedModels) this.listed = new Set(ids);
       return ids;
@@ -139,18 +147,18 @@ export class OpenAICompatibleProvider implements Provider {
   }
 
   health() {
-    return this.envApiKey || this.config.hasApiKey?.()
+    return this.config.optionalKey || this.envApiKey || this.config.hasApiKey?.()
       ? { available: true }
       : { available: false, reason: this.missingKey() };
   }
 
   async stream(request: ChatRequest, context: ProviderContext = {}): Promise<ProviderStream> {
     const apiKey = await this.apiKey();
-    if (!apiKey) throw new ProviderError(this.missingKey(), 'unavailable');
+    if (!apiKey && !this.config.optionalKey) throw new ProviderError(this.missingKey(), 'unavailable');
     const model = this.upstreamId(request.model);
     const response = await (this.config.fetch ?? fetch)(`${this.config.baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      headers: { 'Content-Type': 'application/json', ...this.headers(apiKey) },
       body: JSON.stringify({ ...this.config.extraBody, model, messages: request.messages, stream: true }),
       signal: context.signal,
     });
