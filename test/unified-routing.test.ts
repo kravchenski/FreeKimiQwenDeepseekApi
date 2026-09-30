@@ -320,6 +320,14 @@ describe('unified server routing', () => {
     const body = await response.json();
     expect(JSON.parse(body.choices[0].message.tool_calls[0].function.arguments)).toEqual({ command: 'bun test' });
     expect(requests).toHaveLength(2);
+    replies.push([{ type: 'content', text: `Found it: commit 9b3a687 changed the SAVE20 rate from 0.2 to 0.02. ${'The history shows it clearly. '.repeat(20)}Let me check the current file:` }]);
+    replies.push([{ type: 'content', text: '{"tool_calls":[{"name":"bash","arguments":{"command":"cat src/cart.ts"}}]}' }]);
+    const late = await (await chat({ model: 'fake-model', tools: bash, messages: [{ role: 'user', content: 'The build is red, find out why.' }] })).json();
+    expect(JSON.parse(late.choices[0].message.tool_calls[0].function.arguments)).toEqual({ command: 'cat src/cart.ts' });
+    replies.push([{ type: 'content', text: 'The rate was wrong and is fixed now. Let me know if you need anything else.' }]);
+    const done = await (await chat({ model: 'fake-model', tools: bash, messages: [{ role: 'user', content: 'The build is red, find out why.' }] })).json();
+    expect(done.choices[0].message.content).toContain('fixed now');
+    expect(requests).toHaveLength(1);
   });
 
   test('passes tools natively to providers that take them and returns their tool calls', async () => {

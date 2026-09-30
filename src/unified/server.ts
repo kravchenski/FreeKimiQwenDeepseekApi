@@ -313,7 +313,10 @@ const ANNOUNCEMENT = /^(?:i'?ll|i will|i'm going to|let me|let's|first,? i|now i
 
 function announcesAction(content: string, tools: Array<Record<string, any>> | null) {
     const text = content.trim();
-    return text.length > 0 && text.length < 400 && ANNOUNCEMENT.test(text) && !parseToolCallJson(text, tools);
+    if (!text || /let me know/i.test(text.slice(-200)) || parseToolCallJson(text, tools)) return false;
+    if (text.length < 400 && ANNOUNCEMENT.test(text)) return true;
+    const last = text.split(/\n+|(?<=[.!?])\s+/).map(sentence => sentence.trim()).filter(Boolean).at(-1) ?? '';
+    return last.endsWith(':') && ANNOUNCEMENT.test(last);
 }
 
 function isCodebaseActionRequest(messages: Array<Record<string, any>>) {
