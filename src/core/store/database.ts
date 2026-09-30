@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { DEFAULT_PROFILE, type SignInRecord } from '../accounts/sign-in-status.ts';
 import type { ProviderSetting } from '../providers/settings.ts';
+import type { UnavailableModel } from '../models/availability.ts';
 import type { ModelStat } from '../models/stats.ts';
 
 const MIGRATIONS = [
@@ -102,6 +103,11 @@ const MIGRATIONS = [
     value TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE unavailable_models (
+    model TEXT PRIMARY KEY,
+    reason TEXT NOT NULL,
+    until INTEGER NOT NULL
+  )`,
 ];
 
 export function defaultDatabaseFile() {
@@ -175,6 +181,18 @@ export function saveModelStat(db: Database, stat: ModelStat) {
     lastOutcome: stat.lastOutcome,
     updatedAt: stat.updatedAt,
   });
+}
+
+export function loadUnavailableModels(db: Database, now = Date.now()): UnavailableModel[] {
+  return db.query('SELECT model, reason, until FROM unavailable_models WHERE until > $now').all({ now }) as UnavailableModel[];
+}
+
+export function replaceUnavailableModels(db: Database, entries: UnavailableModel[]) {
+  db.transaction(() => {
+    db.run('DELETE FROM unavailable_models');
+    const insert = db.query('INSERT INTO unavailable_models (model, reason, until) VALUES ($model, $reason, $until)');
+    for (const entry of entries) insert.run({ model: entry.model, reason: entry.reason, until: entry.until });
+  })();
 }
 
 export function saveSignIn(db: Database, record: SignInRecord) {

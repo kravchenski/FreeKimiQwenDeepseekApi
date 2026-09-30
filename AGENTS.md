@@ -22,6 +22,7 @@
   - `deepseek-*` — DeepSeek web (default, reasoner, expert, search)
   - `glm-chat` — GLM through the signed-in chat.z.ai web chat (browser)
   - `kimi-chat` — Kimi through the signed-in kimi.ai web chat (browser)
+  - `arena-chat` — Arena (arena.ai) direct chat with its `max` router (browser, sign-in optional)
   - `moonshotai/*`, `z-ai/*`, `deepseek-ai/*`, `nvidia/*` — NVIDIA API fallback
 - **Configure OpenCode**:
   ```bash

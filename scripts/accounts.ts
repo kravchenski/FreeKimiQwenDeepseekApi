@@ -55,7 +55,7 @@ try {
       remove: id => withDb(db => deleteProfile(profileStore(db), id)),
       summary: () => withDb(db => listProfiles(profileStore(db)).map(profile => ({
         ...profile,
-        chats: WEB_CHAT_SITES.map(site => {
+        chats: WEB_CHAT_SITES.filter(site => site.signIn).map(site => {
           const record = loadSignIn(db, site.id, profile.id);
           return { id: site.id, signedIn: record?.signedIn ?? null, checkedAt: record?.checkedAt ?? null, reason: record?.reason ?? null };
         }),
@@ -119,6 +119,7 @@ try {
       if (!definition) throw new Error(`API keys are not supported for ${provider}`);
       return verifyProviderKey(definition, apiKey);
     },
+    accountLabel: provider => apiKeyProvider(provider)?.account?.label,
   });
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);

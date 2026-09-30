@@ -31,10 +31,15 @@ bun run start
 |----------|--------|-----|
 | **Auto** | `auto` — web chats first, then discovered NVIDIA models, each ordered by measured response time; override with `AUTO_MODELS` | — |
 | **DeepSeek** | `deepseek-default`, `deepseek-reasoner`, `deepseek-expert`, `deepseek-search` | `bun run auth:deepseek` |
-| **Qwen / GLM / Kimi web chat** | `qwen-chat` (chat.qwen.ai), `glm-chat` (chat.z.ai), `kimi-chat` (kimi.ai) — sent through your signed-in browser; `bun run account status` shows which chats are signed in | `bun run account open <url>` |
+| **Qwen / GLM / Kimi / Arena web chat** | `qwen-chat` (chat.qwen.ai), `glm-chat` (chat.z.ai), `kimi-chat` (kimi.ai), `arena-chat` (arena.ai, sign-in optional) — sent through your signed-in browser; `bun run account status` shows which chats are signed in | `bun run account open <url>` |
 | **NVIDIA** | every chat model your key can see (`deepseek-ai/*`, `moonshotai/*`, `z-ai/*`, `meta/*`, `mistralai/*`, …); models missing for your account are hidden after the first 404 | `NVIDIA_API_KEY` or `bun run account add nvidia --api-key` |
 | **OpenRouter** | free models only, as `openrouter/<model>:free` | `OPENROUTER_API_KEY` or `bun run account add openrouter --api-key` |
 | **Groq, Google Gemini, Cerebras, Mistral, SambaNova** | every chat model on their free tiers, as `groq/<model>`, `gemini/<model>`, `cerebras/<model>`, `mistral/<model>`, `sambanova/<model>` | `<PROVIDER>_API_KEY` or `bun run account add <provider> --api-key` |
+| **GitHub Models, Hugging Face, Zhipu BigModel, Cohere, Aion Labs, LLM7.io** | their free tier models, as `github-models/<model>`, `huggingface/<model>`, `bigmodel/<flash model>`, `cohere/<model>`, `aion/<model>`, `llm7/<model>` | `<PROVIDER>_API_KEY` or `bun run account add <provider> --api-key` |
+| **Z.AI, Ollama Cloud, OpenCode Zen** | free flash GLM models as `zai/<model>`, Ollama Cloud models as `ollama-cloud/<model>`, free Zen models as `opencode-zen/<model>-free` | `<PROVIDER>_API_KEY` or `bun run account add <provider> --api-key` |
+| **Cloudflare Workers AI** | Workers AI models as `cloudflare/@cf/<model>` (10,000 free neurons a day) | `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`, or `bun run account add cloudflare --api-key` (asks for the Account ID) |
+| **Kilo Gateway** | free models only, as `kilo/<model>:free` and `kilo/kilo-auto/free`; works without a key | optional `KILO_API_KEY` |
+| **OVHcloud AI Endpoints** | open-weight models hosted in the EU, as `ovhcloud/<model>`; works without a key at 2 requests per minute | optional `OVHCLOUD_API_KEY` |
 
 All models are free. The API providers are fallbacks after the web chats and each needs its own free API key; providers without a key are skipped.
 

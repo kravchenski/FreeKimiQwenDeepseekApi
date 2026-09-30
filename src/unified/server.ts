@@ -15,6 +15,7 @@ import { AnthropicStreamTranslator } from '../api/anthropic/stream.ts';
 import { readLines } from '../core/streaming/sse.ts';
 import type { ProviderStream } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
+import { checkProviderModels } from '../core/models/model-check.ts';
 import { collectChunks } from '../core/streaming/sse.ts';
 import { ProviderError, toHttpError } from '../core/providers/errors.ts';
 import { buildAutoChain } from '../core/router/auto-chain.ts';
@@ -22,7 +23,7 @@ import { focusPreference, type AutoFocus } from '../core/router/focus.ts';
 import { GatewaySettings } from '../core/settings/gateway-settings.ts';
 import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
 import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
-import { listBrowserProfiles, loadGatewaySetting, loadModelStats, loadProviderSetting, loadSignIn, saveGatewaySetting, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
+import { listBrowserProfiles, loadGatewaySetting, loadModelStats, loadUnavailableModels, replaceUnavailableModels, loadProviderSetting, loadSignIn, saveGatewaySetting, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
 import { WebSignInStatus } from '../core/accounts/sign-in-status.ts';
 import { ProviderSettings } from '../core/providers/settings.ts';
 import { WEB_CHAT_SITES } from '../providers/web-chat-sites.ts';
@@ -30,7 +31,7 @@ import { parseQwenStream, QWEN_CHAT_SITE } from '../providers/qwen/web.ts';
 import { gatewayStatus } from '../core/status.ts';
 import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
-import { createApiProvider, createNvidiaProvider, forgetSavedKeys, FREE_API_PROVIDERS } from '../providers/catalog.ts';
+import { API_KEY_PROVIDERS, createApiProvider, createNvidiaProvider, forgetSavedKeys, FREE_API_PROVIDERS } from '../providers/catalog.ts';
 import { openCredentialStore } from '../core/accounts/credential-store.ts';
 import { loadAccountsSecret } from '../core/secrets/accounts-secret.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
@@ -38,6 +39,7 @@ import { BrowserChatSession, notSignedIn, type ChatSite } from '../browser/brows
 import { listProfiles, profileDir } from '../browser/profiles.ts';
 import { ProfileRotation } from '../core/accounts/profile-rotation.ts';
 import { DEFAULT_PROFILE } from '../core/accounts/sign-in-status.ts';
+import { ARENA_CHAT_SITE, parseArenaStream } from '../providers/arena/web.ts';
 import { createBrowserChatProvider, type BrowserChatProviderConfig } from '../providers/browser-chat-provider.ts';
 import { parseZaiStream, ZAI_CHAT_SITE } from '../providers/glm/web.ts';
 import { KIMI_CHAT_SITE, parseKimiStream } from '../providers/kimi/web.ts';
@@ -135,6 +137,7 @@ function registerWebChat(id: string, ownedBy: string, site: ChatSite, parse: Bro
 registerWebChat('qwen-chat', 'qwen-web', QWEN_CHAT_SITE, parseQwenStream);
 registerWebChat('glm-chat', 'z-ai-web', ZAI_CHAT_SITE, parseZaiStream);
 registerWebChat('kimi-chat', 'kimi-web', KIMI_CHAT_SITE, parseKimiStream);
+registerWebChat('arena-chat', 'arena-web', ARENA_CHAT_SITE, parseArenaStream);
 
 const providerSettings = new ProviderSettings({
     load: provider => loadProviderSetting(db(), provider),
@@ -209,12 +212,20 @@ function rebuildAutoChain() {
 function loadModelStatistics() {
     try {
         registry.stats.load(loadModelStats(db()));
+        registry.availability.load(loadUnavailableModels(db()));
     } catch (error) {
         console.error('Model statistics unavailable:', errorText(error));
     }
 }
 
-registry.availability.onChange(rebuildAutoChain);
+registry.availability.onChange(() => {
+    try {
+        replaceUnavailableModels(db(), registry.availability.list());
+    } catch (error) {
+        console.error('Failed to save unavailable models:', errorText(error));
+    }
+    rebuildAutoChain();
+});
 registry.stats.onChange(stat => {
     try {
         saveModelStat(db(), stat);
@@ -229,6 +240,7 @@ function visibleModels() {
 }
 
 const AVAILABILITY_CHECK_MS = 30_000;
+const MODEL_CHECK_TIMEOUT_MS = 30_000;
 
 function providerAvailability() {
     return registry.list().map(provider => `${provider.id}:${provider.health().available}`).join(',');
@@ -374,6 +386,18 @@ function handleProviderStream(
         headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', ...extraHeaders }
     });
 }
+
+app.post('/v1/gateway/providers/:id/check', async (c) => {
+    const provider = registry.list().find(entry => entry.id === c.req.param('id'));
+    if (!provider) return c.json({ error: { message: 'Unknown provider', type: 'invalid_request_error' } }, 404);
+    forgetSavedKeys();
+    const health = provider.health();
+    if (!health.available) return c.json({ error: { message: health.reason ?? 'Provider is not available', type: 'provider_unavailable' } }, 409);
+    const models = await provider.listModels();
+    const report = await checkProviderModels(provider, models, registry, { timeoutMs: MODEL_CHECK_TIMEOUT_MS });
+    await refreshModelLists();
+    return c.json(report);
+});
 
 app.post('/v1/gateway/refresh', async (c) => {
     forgetSavedKeys();
@@ -689,7 +713,7 @@ export async function startUnifiedServer() {
   Endpoint: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}
   Models:   ${modelCount} total (fetched from upstream APIs)
 
-  Providers: deepseek qwen-chat glm-chat kimi-chat (browser); nvidia openrouter groq gemini cerebras mistral sambanova (API keys, fallback)
+  Providers: deepseek ${WEB_CHAT_SITES.map(site => site.id).join(' ')} (browser); ${API_KEY_PROVIDERS.map(provider => provider.id).join(' ')} (API keys, fallback)
   API providers need a key in .env or: bun run account add <provider> --api-key
 
   ${apiKey ? 'API key required (GATEWAY_API_KEY).' : 'No API key required. Set GATEWAY_API_KEY to protect the API.'} Configure OpenCode:

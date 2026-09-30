@@ -15,9 +15,19 @@ export class ModelAvailability {
     private readonly now: () => number = Date.now,
   ) {}
 
+  load(entries: UnavailableModel[]) {
+    for (const entry of entries) this.unavailable.set(entry.model, { ...entry });
+  }
+
   markUnavailable(model: string, reason: string) {
     this.unavailable.set(model, { model, reason: reason.slice(0, 200), until: this.now() + this.ttlMs });
     for (const listener of this.listeners) listener();
+  }
+
+  clear(models: string[]) {
+    let changed = false;
+    for (const model of models) changed = this.unavailable.delete(model) || changed;
+    if (changed) for (const listener of this.listeners) listener();
   }
 
   isAvailable(model: string) {

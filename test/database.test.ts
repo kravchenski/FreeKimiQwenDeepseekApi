@@ -15,7 +15,7 @@ describe('gateway database', () => {
 
     const reopened = openDatabase(file);
     const tables = reopened.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
-    expect(tables).toEqual([{ name: 'account_state' }, { name: 'browser_profiles' }, { name: 'conversation_routes' }, { name: 'gateway_settings' }, { name: 'model_stats' }, { name: 'provider_settings' }, { name: 'quota_events' }, { name: 'request_logs' }, { name: 'web_sign_in' }]);
+    expect(tables).toEqual([{ name: 'account_state' }, { name: 'browser_profiles' }, { name: 'conversation_routes' }, { name: 'gateway_settings' }, { name: 'model_stats' }, { name: 'provider_settings' }, { name: 'quota_events' }, { name: 'request_logs' }, { name: 'unavailable_models' }, { name: 'web_sign_in' }]);
     expect(recentRequests(reopened)).toHaveLength(1);
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600);
     reopened.close();
