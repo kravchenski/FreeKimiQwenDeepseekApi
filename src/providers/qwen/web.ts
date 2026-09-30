@@ -15,6 +15,7 @@ export const QWEN_CHAT_SITE: ChatSite = {
   signIn: { storageKey: 'token', claim: 'id' },
   challengeResponse: /FAIL_SYS_USER_VALIDATE|\/punish\?/,
   ignoredResponse: /^\{"code":0,[^\n]*"sig":"from bx"/,
+  captcha: { slider: true },
   modelFields: model => ({ model, 'messages.*.models': [model] }),
   pageModels: page => readOpenWebUiModels(page),
   defaultModels: [

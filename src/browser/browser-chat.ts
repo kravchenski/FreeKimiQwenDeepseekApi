@@ -1,5 +1,6 @@
 import type { Page } from 'playwright-core';
 
+import { autoSolveCaptcha, type CaptchaHints } from './captcha/index.ts';
 import { ProviderError } from '../core/providers/errors.ts';
 import { launchCdpBrowser, type CdpBrowser, type LaunchOptions } from './cdp.ts';
 import { googleProfileDir } from './google-profile.ts';
@@ -21,6 +22,7 @@ export interface ChatSite {
   signIn?: SignInRule;
   challengeResponse?: RegExp;
   ignoredResponse?: RegExp;
+  captcha?: CaptchaHints;
   modelFields?: (model: string) => Record<string, unknown>;
   modelsResponse?: RegExp;
   parseModels?: (body: unknown) => WebChatModel[];
@@ -358,6 +360,12 @@ export class BrowserChatSession {
         this.options.onSignIn?.(site.id, signIn);
         if (!signIn.signedIn) throw new ProviderError(notSignedIn(site, signIn), 'auth');
       }
+      const captcha = await autoSolveCaptcha(page, site.captcha);
+      if (captcha === 'solved') await Bun.sleep(500);
+      if (captcha === 'failed' && site.verificationText
+        && await page.getByText(site.verificationText).first().isVisible().catch(() => false)) {
+        throw new ProviderError(`${site.id} asks for a security verification; complete it in the browser window`, 'unavailable');
+      }
       const input = page.locator(site.inputSelector).first();
       await input.waitFor({ timeout: 30_000 });
       await input.fill('');
@@ -386,8 +394,10 @@ export class BrowserChatSession {
     const { page, queue } = prepared;
     let deadline = Date.now() + (this.options.firstChunkTimeoutMs ?? 60_000);
     let challenged = false;
+    let verificationAttempted = false;
     let clean = false;
     let failed = false;
+    const verification = site.verificationText;
     try {
       let first: Uint8Array | null | 'timeout' = 'timeout';
       while (first === 'timeout') {
@@ -396,7 +406,16 @@ export class BrowserChatSession {
             ? `${site.id} asked for a security verification that was not completed in time; complete it in the browser window and retry`
             : `${site.id} did not answer in time`, 'unavailable');
         }
-        if (site.verificationText && await page.getByText(site.verificationText).first().isVisible().catch(() => false)) {
+        if (verification && await page.getByText(verification).first().isVisible().catch(() => false)) {
+          if (!verificationAttempted) {
+            verificationAttempted = true;
+            const outcome = await autoSolveCaptcha(page, site.captcha);
+            if (outcome === 'solved') {
+              deadline = Math.max(deadline, Date.now() + 30_000);
+              await Bun.sleep(1_000);
+              if (!(await page.getByText(verification).first().isVisible().catch(() => false))) continue;
+            }
+          }
           throw new ProviderError(`${site.id} asks for a security verification; complete it in the browser window`, 'unavailable');
         }
         first = await queue.next(500);
@@ -409,6 +428,7 @@ export class BrowserChatSession {
           if (!challenged) {
             challenged = true;
             deadline = Math.max(deadline, Date.now() + CHALLENGE_GRACE_MS);
+            await autoSolveCaptcha(page, site.captcha);
           }
           await drainResponse(queue);
           first = 'timeout';

@@ -12,6 +12,7 @@ export const ARENA_CHAT_SITE: ChatSite = {
   responseUrl: /\/nextjs-api\/stream\/(?:create|post-to)-evaluation/,
   verificationText: /verify you are human|security verification/i,
   modelFields: model => ({ modelAId: model }),
+  captcha: { checkbox: true },
   pageModels: page => page.evaluate(() => {
     const flight = [...document.querySelectorAll('script')].map(script => {
       const literal = /self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/.exec(script.textContent ?? '')?.[1];
