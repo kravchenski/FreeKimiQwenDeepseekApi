@@ -30,7 +30,7 @@ import { parseQwenStream, QWEN_CHAT_SITE } from '../providers/qwen/web.ts';
 import { gatewayStatus } from '../core/status.ts';
 import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
-import { createApiProvider, createNvidiaProvider, forgetSavedKeys, FREE_API_PROVIDERS } from '../providers/catalog.ts';
+import { API_KEY_PROVIDERS, createApiProvider, createNvidiaProvider, forgetSavedKeys, FREE_API_PROVIDERS } from '../providers/catalog.ts';
 import { openCredentialStore } from '../core/accounts/credential-store.ts';
 import { loadAccountsSecret } from '../core/secrets/accounts-secret.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
@@ -691,7 +691,7 @@ export async function startUnifiedServer() {
   Endpoint: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}
   Models:   ${modelCount} total (fetched from upstream APIs)
 
-  Providers: deepseek qwen-chat glm-chat kimi-chat arena-chat (browser); nvidia openrouter groq gemini cerebras mistral sambanova (API keys, fallback)
+  Providers: deepseek ${WEB_CHAT_SITES.map(site => site.id).join(' ')} (browser); ${API_KEY_PROVIDERS.map(provider => provider.id).join(' ')} (API keys, fallback)
   API providers need a key in .env or: bun run account add <provider> --api-key
 
   ${apiKey ? 'API key required (GATEWAY_API_KEY).' : 'No API key required. Set GATEWAY_API_KEY to protect the API.'} Configure OpenCode:
