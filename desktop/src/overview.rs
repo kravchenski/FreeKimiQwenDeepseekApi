@@ -88,6 +88,10 @@ pub fn display_name(id: &str) -> &str {
         "aion" => "Aion Labs",
         "ovhcloud" => "OVHcloud AI",
         "llm7" => "LLM7.io",
+        "zai" => "Z.AI",
+        "ollama-cloud" => "Ollama Cloud",
+        "opencode-zen" => "OpenCode Zen",
+        "kilo" => "Kilo Gateway",
         other => other,
     }
 }

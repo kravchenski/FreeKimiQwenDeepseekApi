@@ -9,7 +9,7 @@ icon_assets!(AppIcons, [
 
 pub struct AppAssets;
 
-const LOGOS: [(&str, &[u8]); 19] = [
+const LOGOS: [(&str, &[u8]); 23] = [
     ("logos/qwen.svg", include_bytes!("../assets/logos/qwen.svg")),
     ("logos/qwen-chat.svg", include_bytes!("../assets/logos/qwen.svg")),
     ("logos/deepseek.svg", include_bytes!("../assets/logos/deepseek.svg")),
@@ -21,6 +21,10 @@ const LOGOS: [(&str, &[u8]); 19] = [
     ("logos/bigmodel.svg", include_bytes!("../assets/logos/bigmodel.svg")),
     ("logos/cohere.svg", include_bytes!("../assets/logos/cohere.svg")),
     ("logos/aion.svg", include_bytes!("../assets/logos/aion.svg")),
+    ("logos/zai.svg", include_bytes!("../assets/logos/zai.svg")),
+    ("logos/ollama-cloud.svg", include_bytes!("../assets/logos/ollama-cloud.svg")),
+    ("logos/opencode-zen.svg", include_bytes!("../assets/logos/opencode-zen.svg")),
+    ("logos/kilo.svg", include_bytes!("../assets/logos/kilo.svg")),
     ("logos/nvidia.svg", include_bytes!("../assets/logos/nvidia.svg")),
     ("logos/google.svg", include_bytes!("../assets/logos/google.svg")),
     ("logos/openrouter.svg", include_bytes!("../assets/logos/openrouter.svg")),
@@ -81,7 +85,7 @@ mod tests {
 
     #[test]
     fn serves_a_logo_for_every_provider() {
-        for provider in ["qwen", "qwen-chat", "deepseek", "glm-chat", "kimi-chat", "arena-chat", "nvidia", "google", "openrouter", "groq", "gemini", "cerebras", "mistral", "sambanova", "github-models", "huggingface", "bigmodel", "cohere", "aion"] {
+        for provider in ["qwen", "qwen-chat", "deepseek", "glm-chat", "kimi-chat", "arena-chat", "nvidia", "google", "openrouter", "groq", "gemini", "cerebras", "mistral", "sambanova", "github-models", "huggingface", "bigmodel", "cohere", "aion", "zai", "ollama-cloud", "opencode-zen", "kilo"] {
             let path = logo_path(provider).unwrap();
             let bytes = AppAssets.load(path).unwrap().unwrap();
             assert!(std::str::from_utf8(&bytes).unwrap().contains("width=\"64\""), "{path}");

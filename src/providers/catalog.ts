@@ -20,7 +20,7 @@ export interface ApiProviderDefinition {
 }
 
 const NON_CHAT_MODEL = /embed|retriever|safety|guard|reward|parse|coder-6\.7b|translate|clip|detector|deplot/i;
-const NON_CHAT_API_MODEL = /embed|whisper|tts|guard|moderation|ocr|imagen|veo|rerank|transcri|orpheus|playai|-image|image-|audio|aqa|live|bge-|diffusion|flux/i;
+const NON_CHAT_API_MODEL = /embed|whisper|tts|guard|moderation|ocr|imagen|veo|rerank|transcri|orpheus|playai|-image|image-|audio|aqa|live|bge-|diffusion|flux|safety|lyria/i;
 
 export function isNvidiaChatModel(model: string) {
   return !NON_CHAT_MODEL.test(model);
@@ -168,6 +168,44 @@ export const FREE_API_PROVIDERS: ApiProviderDefinition[] = [
     keyUrl: 'https://token.llm7.io',
     namespace: true,
     modelFilter: isApiChatModel,
+  },
+  {
+    id: 'zai',
+    label: 'Z.AI',
+    baseUrl: 'https://api.z.ai/api/paas/v4',
+    apiKeyEnv: 'ZAI_API_KEY',
+    keyUrl: 'https://z.ai/manage-apikey/apikey-list',
+    namespace: true,
+    modelFilter: model => /flash/i.test(model) && isApiChatModel(model),
+    config: { models: ['zai/glm-4.7-flash'] },
+  },
+  {
+    id: 'ollama-cloud',
+    label: 'Ollama Cloud',
+    baseUrl: 'https://ollama.com/v1',
+    apiKeyEnv: 'OLLAMA_API_KEY',
+    keyUrl: 'https://ollama.com/settings/keys',
+    namespace: true,
+    modelFilter: isApiChatModel,
+  },
+  {
+    id: 'opencode-zen',
+    label: 'OpenCode Zen',
+    baseUrl: 'https://opencode.ai/zen/v1',
+    apiKeyEnv: 'OPENCODE_ZEN_API_KEY',
+    keyUrl: 'https://opencode.ai/auth',
+    namespace: true,
+    modelFilter: model => model.endsWith('-free') && isApiChatModel(model),
+  },
+  {
+    id: 'kilo',
+    label: 'Kilo Gateway',
+    baseUrl: 'https://api.kilo.ai/api/gateway',
+    apiKeyEnv: 'KILO_API_KEY',
+    keyUrl: 'https://app.kilo.ai/profile',
+    keyOptional: true,
+    namespace: true,
+    modelFilter: model => /(:free|\/free)$/.test(model) && isApiChatModel(model),
   },
 ];
 

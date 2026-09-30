@@ -66,7 +66,7 @@ describe('free API providers', () => {
   test('every provider has a unique id, an env variable and a key page', () => {
     const ids = API_KEY_PROVIDERS.map(provider => provider.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toEqual(['nvidia', 'openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'sambanova', 'github-models', 'huggingface', 'bigmodel', 'cohere', 'aion', 'ovhcloud', 'llm7']);
+    expect(ids).toEqual(['nvidia', 'openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'sambanova', 'github-models', 'huggingface', 'bigmodel', 'cohere', 'aion', 'ovhcloud', 'llm7', 'zai', 'ollama-cloud', 'opencode-zen', 'kilo']);
     for (const provider of FREE_API_PROVIDERS) {
       expect(provider.apiKeyEnv).toMatch(/^[A-Z0-9_]+_API_KEY$/);
       expect(provider.keyUrl).toStartWith('https://');
@@ -168,5 +168,21 @@ describe('more free providers', () => {
     const rows = buildOverview({ env: {}, credentials: () => [], deepseekAccounts: () => [], accountStates: () => [], signIn: () => undefined, webSites: [], apiKeyProviders: API_KEY_PROVIDERS });
     expect(rows.find(row => row.id === 'ovhcloud')).toMatchObject({ state: 'connected', detail: 'No key: anonymous limits; add a key for more' });
     expect(rows.find(row => row.id === 'cohere')).toMatchObject({ state: 'not-connected' });
+  });
+
+  test('Kilo Gateway lists only free models and works without a key', async () => {
+    const { fetchFn, calls } = upstream(['kilo-auto/free', 'kilo-auto/frontier', 'qwen/qwen3.8-27b:free', 'anthropic/claude-opus-5', 'nvidia/nemotron-3.5-content-safety:free']);
+    const provider = createApiProvider(definition('kilo'), { env: {}, fetch: fetchFn });
+    expect(provider.health().available).toBeTrue();
+    expect(await provider.listModels()).toEqual(['kilo/kilo-auto/free', 'kilo/qwen/qwen3.8-27b:free']);
+    await collectChunks((await provider.stream({ model: 'kilo/kilo-auto/free', messages: [{ role: 'user', content: 'hi' }] })).chunks);
+    expect(calls.at(-1)).toMatchObject({ url: 'https://api.kilo.ai/api/gateway/chat/completions', auth: undefined, body: { model: 'kilo-auto/free' } });
+  });
+
+  test('OpenCode Zen and Z.AI keep only their free models', async () => {
+    const zen = createApiProvider(definition('opencode-zen'), { env: { OPENCODE_ZEN_API_KEY: 'k' }, fetch: upstream(['deepseek-v4-flash-free', 'claude-opus-5', 'big-pickle']).fetchFn });
+    expect(await zen.listModels()).toEqual(['opencode-zen/deepseek-v4-flash-free']);
+    const zai = createApiProvider(definition('zai'), { env: { ZAI_API_KEY: 'k' }, fetch: upstream(['glm-4.7-flash', 'glm-5.3', 'glm-5.3-flash']).fetchFn });
+    expect(await zai.listModels()).toEqual(['zai/glm-4.7-flash', 'zai/glm-5.3-flash']);
   });
 });
