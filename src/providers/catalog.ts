@@ -15,7 +15,8 @@ export interface ApiProviderDefinition {
   modelsUrl?: string;
   headers?: Record<string, string>;
   namespace?: boolean;
-  modelFilter?: (model: string) => boolean;
+  modelFilter?: (model: string, entry?: Record<string, unknown>) => boolean;
+  autoByDefault?: boolean;
   normalizeModel?: (model: string) => string;
   config?: Partial<OpenAICompatibleConfig>;
 }
@@ -45,6 +46,17 @@ export const NVIDIA_PROVIDER: ApiProviderDefinition = {
     extraBody: { temperature: 1, top_p: 0.95, max_tokens: 8192 },
     capabilities: { reasoning: true },
   },
+};
+
+export const XKIRO_PROVIDER: ApiProviderDefinition = {
+  id: 'xkiro',
+  label: 'xKiro',
+  baseUrl: 'https://api.xkiro.com/v1',
+  apiKeyEnv: 'XKIRO_API_KEY',
+  keyUrl: 'https://xkiro.com/dashboard/keys',
+  namespace: true,
+  autoByDefault: false,
+  modelFilter: (model, entry) => entry?.access_tier === 'free' && (entry.modality ?? 'chat') === 'chat' && isApiChatModel(model),
 };
 
 export const FREE_API_PROVIDERS: ApiProviderDefinition[] = [
@@ -231,12 +243,17 @@ export const FREE_API_PROVIDERS: ApiProviderDefinition[] = [
       ].map(model => `cloudflare/${model}`),
     },
   },
+  XKIRO_PROVIDER,
 ];
 
 export const API_KEY_PROVIDERS: ApiProviderDefinition[] = [NVIDIA_PROVIDER, ...FREE_API_PROVIDERS];
 
 export function apiKeyProvider(id: string) {
   return API_KEY_PROVIDERS.find(provider => provider.id === id);
+}
+
+export function defaultAuto(id: string) {
+  return apiKeyProvider(id)?.autoByDefault ?? true;
 }
 
 const SAVED_KEY_TTL_MS = 60_000;

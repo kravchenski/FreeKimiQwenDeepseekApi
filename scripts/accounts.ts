@@ -2,7 +2,7 @@
 
 import { runAccountsCommand, type ProfileSignIn } from '../src/cli/accounts.ts';
 import { openCredentialStore } from '../src/core/accounts/credential-store.ts';
-import { API_KEY_PROVIDERS, apiKeyProvider, verifyProviderKey } from '../src/providers/catalog.ts';
+import { API_KEY_PROVIDERS, apiKeyProvider, defaultAuto, verifyProviderKey } from '../src/providers/catalog.ts';
 import { askHidden } from '../src/utils/hiddenPrompt.ts';
 import { listGoogleAccounts, openGoogleSignIn, openProfileWindow } from '../src/browser/google-profile.ts';
 import { checkSignIns } from '../src/browser/sign-in-check.ts';
@@ -74,7 +74,7 @@ try {
       if (!known.has(provider)) throw new Error(`Unknown provider: ${provider}`);
       const db = openDatabase();
       try {
-        const settings = new ProviderSettings({ load: id => loadProviderSetting(db, id), save: setting => saveProviderSetting(db, setting) });
+        const settings = new ProviderSettings({ load: id => loadProviderSetting(db, id), save: setting => saveProviderSetting(db, setting) }, Date.now, defaultAuto);
         return auto === undefined ? settings.autoEnabled(provider) : settings.setAuto(provider, auto).auto;
       } finally {
         db.close();
@@ -92,7 +92,7 @@ try {
           accountSignIns: provider => loadSignIns(db, provider),
           webSites: WEB_CHAT_SITES,
           apiKeyProviders: API_KEY_PROVIDERS,
-          autoEnabled: provider => loadProviderSetting(db, provider)?.auto ?? true,
+          autoEnabled: provider => loadProviderSetting(db, provider)?.auto ?? defaultAuto(provider),
         });
       } finally {
         db.close();
