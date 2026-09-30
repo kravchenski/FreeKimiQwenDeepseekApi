@@ -16,6 +16,7 @@ import { readLines } from '../core/streaming/sse.ts';
 import type { ProviderStream } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
 import { checkProviderModels } from '../core/models/model-check.ts';
+import { DecisionLog } from '../core/router/decisions.ts';
 import type { ImageProvider } from '../core/images/images.ts';
 import { generateImages, listImageModels } from '../api/images.ts';
 import { createCloudflareImages } from '../providers/images/cloudflare.ts';
@@ -181,7 +182,10 @@ const gatewaySettings = new GatewaySettings({
     save: (key, value) => saveGatewaySetting(db(), key, value),
 });
 
+const decisions = new DecisionLog();
+
 export const router = new SmartRouter(registry, parseAutoModels(config.AUTO_MODELS), Date.now, {
+    onDecision: decision => decisions.add(decision),
     firstChunkTimeoutMs: config.AUTO_FIRST_CHUNK_TIMEOUT_MS,
     autoEnabled: provider => providerSettings.autoEnabled(provider),
     autoMode: () => gatewaySettings.autoMode(),
@@ -588,6 +592,11 @@ const imageProviders: ImageProvider[] = [
     createCloudflareImages(apiKeyProvider('cloudflare')!, () => process.env.CLOUDFLARE_API_KEY || savedApiKey(credentialStore, 'cloudflare')),
     createPollinationsImages(),
 ];
+
+app.get('/v1/decisions', (c) => {
+    const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50) || 50, 1), 200);
+    return c.json({ object: 'list', data: decisions.list(limit, c.req.query('model') || undefined) });
+});
 
 app.get('/v1/images/models', async (c) => {
     const models = await listImageModels(imageProviders);
