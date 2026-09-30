@@ -7,6 +7,13 @@ export interface SettingsStore {
 
 const CACHE_MS = 30_000;
 
+export const AGENT_OPTIONS = { compact: true } as const;
+export type AgentOption = keyof typeof AGENT_OPTIONS;
+
+export function isAgentOption(value: string): value is AgentOption {
+  return Object.hasOwn(AGENT_OPTIONS, value);
+}
+
 export class GatewaySettings {
   private readonly cache = new Map<string, { value?: string; readAt: number }>();
 
@@ -44,6 +51,17 @@ export class GatewaySettings {
   setAutoFocus(focus: string) {
     if (!isAutoFocus(focus)) throw new Error(`Unknown focus: ${focus}. Use general, coding, reasoning or fast`);
     this.write('auto.focus', focus);
+  }
+
+  agentOption(name: AgentOption) {
+    const value = this.read(`agents.${name}`);
+    return value === 'on' ? true : value === 'off' ? false : AGENT_OPTIONS[name];
+  }
+
+  setAgentOption(name: string, value: string) {
+    if (!isAgentOption(name)) throw new Error(`Unknown agent option: ${name}`);
+    if (value !== 'on' && value !== 'off') throw new Error(`Use on or off for ${name}`);
+    this.write(`agents.${name}`, value);
   }
 
   setAutoMode(mode: string) {

@@ -110,6 +110,23 @@ pub fn labeled_badge(activity: Activity, label: impl Into<SharedString>) -> Div 
         .child(label.into())
 }
 
+pub fn switch(id: impl Into<SharedString>, on: bool, enabled: bool) -> Stateful<Div> {
+    div()
+        .id(id.into())
+        .w(px(44.))
+        .h(px(24.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .px(px(3.))
+        .rounded_full()
+        .bg(col(if on { PRIMARY } else { SWITCH_OFF }))
+        .when(on, |this| this.justify_end())
+        .when(!enabled, |this| this.opacity(0.5))
+        .when(enabled, |this| this.cursor_pointer())
+        .child(div().size(px(18.)).rounded_full().bg(col(SURFACE)).shadow_sm())
+}
+
 pub fn card() -> Div {
     div().rounded_lg().border_1().border_color(col(BORDER)).bg(col(SURFACE))
 }

@@ -21,6 +21,7 @@ export interface RoutingDecision {
   picked?: string;
   decisionMs?: number;
   decisionError?: string;
+  details?: Record<string, unknown>;
   preferredModel?: string;
   skipped: SkippedRoute[];
   attempts: RouteAttempt[];

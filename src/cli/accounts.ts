@@ -30,7 +30,7 @@ export interface AccountsCliDeps {
   initSecret?: () => Promise<string>;
   secretSource?: () => Promise<string>;
   providerAuto?: (provider: string, auto?: boolean) => boolean;
-  autoSettings?: (change: { focus?: string; mode?: string }) => { focus: string; mode: string };
+  autoSettings?: (change: { focus?: string; mode?: string; agents?: Record<string, string | undefined> }) => { focus: string; mode: string; agents?: Record<string, boolean> };
 }
 
 const API_KEY_PROVIDERS = new Set(API_KEY_DEFINITIONS.map(provider => provider.id));
@@ -46,7 +46,9 @@ export const ACCOUNTS_USAGE = `Usage: bun run account <command>
   init                                            Create ACCOUNTS_SECRET in the system keyring (moves it out of .env)
   secret                                          Show where ACCOUNTS_SECRET is loaded from
   provider <id> [--auto on|off]                   Show or change whether model=auto may use a provider
-  auto [--focus <f>] [--mode <m>]                 Show or change model=auto: focus general|coding|reasoning|fast, mode fallback|race
+  auto [--focus <f>] [--mode <m>] [--compact on|off]
+                                                  Show or change model=auto (focus general|coding|reasoning|fast, mode fallback|race|decide)
+                                                  and coding agent requests (--compact trims tool output)
   add <provider> --api-key [--label <name>]       Save an API key (the key is always prompted)
   list [provider]                                 List saved API keys
   remove <id>                                     Delete a saved API key
@@ -113,9 +115,10 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
   }
 
   if (command === 'auto' && deps.autoSettings) {
-    const current = deps.autoSettings({ focus: option(args, '--focus'), mode: option(args, '--mode') });
+    const current = deps.autoSettings({ focus: option(args, '--focus'), mode: option(args, '--mode'), agents: { compact: option(args, '--compact') } });
     deps.log(`auto focus: ${current.focus}`);
     deps.log(`auto mode: ${current.mode}`);
+    for (const [name, on] of Object.entries(current.agents ?? {})) deps.log(`agents ${name}: ${on ? 'on' : 'off'}`);
     return 0;
   }
 

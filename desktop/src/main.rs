@@ -367,6 +367,13 @@ fn model_rank(status: &GatewayStatus, model: &str) -> (usize, usize) {
     }
 }
 
+fn agent_option_text(name: &str) -> (String, &'static str) {
+    match name {
+        "compact" => ("Trim tool output".into(), "Removes colours, progress bars and repeated lines from command output the agent sends back, and shortens very long output while keeping errors and warnings."),
+        other => (other.to_string(), ""),
+    }
+}
+
 fn last_line(text: &str, fallback: &str) -> String {
     text.lines().rev().find(|line| !line.trim().is_empty() && !line.starts_with('$')).unwrap_or(fallback).trim().to_string()
 }
@@ -692,28 +699,13 @@ impl Shell {
                     .child(div().font_weight(FontWeight::SEMIBOLD).child("Use in auto"))
                     .child(muted("When off, model=auto skips this provider. Requests that name its models still work.").text_xs()),
             )
-            .child(
-                div()
-                    .id("provider-auto")
-                    .w(px(44.))
-                    .h(px(24.))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .px(px(3.))
-                    .rounded_full()
-                    .bg(col(if auto { PRIMARY } else { SWITCH_OFF }))
-                    .when(auto, |this| this.justify_end())
-                    .when(self.busy, |this| this.opacity(0.5))
-                    .when(!self.busy, |this| {
-                        this.cursor_pointer().on_click(cx.listener(move |shell, _, _, cx| {
-                            let provider = provider.clone();
-                            shell.run_command(cx, move |cli| cli.set_auto(&provider, !auto));
-                            cx.notify();
-                        }))
-                    })
-                    .child(div().size(px(18.)).rounded_full().bg(col(SURFACE)).shadow_sm()),
-            );
+            .child(switch("provider-auto", auto, !self.busy).when(!self.busy, |this| {
+                this.on_click(cx.listener(move |shell, _, _, cx| {
+                    let provider = provider.clone();
+                    shell.run_command(cx, move |cli| cli.set_auto(&provider, !auto));
+                    cx.notify();
+                }))
+            }));
 
         div()
             .flex()
@@ -850,6 +842,22 @@ impl Shell {
             ("race", "All at once", "Sends each request to the first three models at the same time and keeps the first answer. Faster, but uses the limits of several providers."),
             ("decide", "Decision model", "A fast model reads each request and picks the model that suits it best; the rest of the chain stays as backup. Adds a few seconds per request. Images are not affected."),
         ];
+        let agent_rows: Vec<Div> = auto.as_ref().map(|auto| auto.agents.clone()).unwrap_or_default().into_iter().map(|(name, on)| {
+            let (title, description) = agent_option_text(&name);
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_4()
+                .child(div().flex().flex_col().gap_0p5().child(div().text_sm().font_weight(FontWeight::MEDIUM).child(title)).child(muted(description).text_xs()))
+                .child(switch(SharedString::from(format!("agent-{name}")), on, !self.busy).when(!self.busy, |this| {
+                    this.on_click(cx.listener(move |shell, _, _, cx| {
+                        let name = name.clone();
+                        shell.run_command(cx, move |cli| cli.set_agent_option(&name, !on));
+                        cx.notify();
+                    }))
+                }))
+        }).collect();
         let current_mode = auto.as_ref().map(|auto| auto.mode.clone()).unwrap_or_default();
         let mode_hint = modes.iter().find(|(value, _, _)| *value == current_mode).map(|(_, _, hint)| *hint).unwrap_or("Loading…");
         let mode_row = div().flex().flex_wrap().gap_2().children(modes.into_iter().map(|(value, label, _)| {
@@ -867,6 +875,7 @@ impl Shell {
             .child(section("Theme", "Light, dark, or follow the system appearance.").child(theme_row))
             .child(section("Auto focus", "Which models model=auto prefers. Applies within about 30 seconds.").child(focus_row).child(muted(focus_hint).text_xs()))
             .child(section("Auto mode", "How model=auto sends a request.").child(mode_row).child(muted(mode_hint).text_xs()))
+            .child(section("Coding agents", "Applied to requests from Claude Code, Codex, pi, OpenCode and other agents that send tools.").children(agent_rows))
             .into_any_element()
     }
 

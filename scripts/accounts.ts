@@ -15,7 +15,7 @@ import {
 } from '../src/core/store/database.ts';
 import { createProfile, deleteProfile, listProfiles, profileDir } from '../src/browser/profiles.ts';
 import { ProviderSettings } from '../src/core/providers/settings.ts';
-import { GatewaySettings } from '../src/core/settings/gateway-settings.ts';
+import { AGENT_OPTIONS, GatewaySettings, type AgentOption } from '../src/core/settings/gateway-settings.ts';
 import { siteForUrl, WEB_CHAT_SITES } from '../src/providers/web-chat-sites.ts';
 import { buildOverview } from '../src/cli/overview.ts';
 import { INIT_MESSAGES, initAccountsSecret } from '../src/cli/accounts-secret.ts';
@@ -67,7 +67,12 @@ try {
       const settings = new GatewaySettings({ load: key => loadGatewaySetting(db, key), save: (key, value) => saveGatewaySetting(db, key, value) });
       if (change.focus !== undefined) settings.setAutoFocus(change.focus);
       if (change.mode !== undefined) settings.setAutoMode(change.mode);
-      return { focus: settings.autoFocus(), mode: settings.autoMode() };
+      for (const [name, value] of Object.entries(change.agents ?? {})) if (value !== undefined) settings.setAgentOption(name, value);
+      return {
+        focus: settings.autoFocus(),
+        mode: settings.autoMode(),
+        agents: Object.fromEntries(Object.keys(AGENT_OPTIONS).map(name => [name, settings.agentOption(name as AgentOption)])),
+      };
     }),
     providerAuto: (provider, auto) => {
       const known = new Set(['deepseek', ...API_KEY_PROVIDERS.map(entry => entry.id), ...WEB_CHAT_SITES.map(site => site.id)]);

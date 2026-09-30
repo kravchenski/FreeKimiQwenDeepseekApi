@@ -17,6 +17,7 @@ import type { ChatMessage, ProviderStream } from '../core/providers/provider.ts'
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
 import { checkProviderModels } from '../core/models/model-check.ts';
 import { DecisionLog } from '../core/router/decisions.ts';
+import { compactToolResults } from '../core/agents/compact.ts';
 import { decide, readDecisionRequest, type DecisionAnswer, type DecisionRequest } from '../core/decisions/engine.ts';
 import { rankModels } from '../core/models/stats.ts';
 import type { ImageProvider } from '../core/images/images.ts';
@@ -511,9 +512,12 @@ app.post('/api/chat/completions', async (c) => {
             ? functions.map((fn: Record<string, unknown>) => ({ type: 'function', function: fn }))
             : null);
         const toolPrompt = toolsToPrompt(combinedTools);
+        const compaction = gatewaySettings.agentOption('compact') ? compactToolResults(messages) : undefined;
+        const agentMessages = compaction?.messages ?? messages;
         const upstreamMessages = toolPrompt
-            ? [{ role: 'system', content: toolPrompt }, ...messages]
-            : messages;
+            ? [{ role: 'system', content: toolPrompt }, ...agentMessages]
+            : agentMessages;
+        const details = compaction?.stats.results ? { compaction: compaction.stats } : undefined;
         const id = `chatcmpl-${crypto.randomUUID().replaceAll('-', '').slice(0, 24)}`;
         const created = Math.floor(Date.now() / 1000);
         const captureToolCalls = Array.isArray(combinedTools) && combinedTools.length > 0;
@@ -522,7 +526,7 @@ app.post('/api/chat/completions', async (c) => {
         const sessionKey = model === AUTO_MODEL ? conversationId ?? conversationKey(messages) : undefined;
         const sessions = sessionKey ? affinity() : undefined;
         const pinned = sessionKey ? sessions?.get(sessionKey, AUTO_MODEL) : undefined;
-        const first = await router.open(model, route => ({ model: route.model, messages: upstreamMessages, conversationId }), pinned?.model)
+        const first = await router.open(model, route => ({ model: route.model, messages: upstreamMessages, conversationId }), pinned?.model, details)
             .catch(error => {
                 logRequest({ provider: registry.resolve(model)?.id ?? 'none', model, status: 'error', latencyMs: Date.now() - startedAt, error: errorText(error) });
                 throw error;
@@ -537,7 +541,10 @@ app.post('/api/chat/completions', async (c) => {
             ...(error === undefined ? {} : { error: errorText(error) }),
         });
         const open = () => provider.stream({ model: routedModel, messages: upstreamMessages, conversationId });
-        const routeHeaders = { 'x-gateway-route': `${provider.id}/${routedModel}` };
+        const routeHeaders: Record<string, string> = {
+            'x-gateway-route': `${provider.id}/${routedModel}`,
+            ...(details ? { 'x-gateway-compacted': `${details.compaction.charsBefore}->${details.compaction.charsAfter}` } : {}),
+        };
 
         if (stream) {
             return handleProviderStream(id, created, routedModel, captureToolCalls, combinedTools, messages, first, open, routeHeaders, finish);
@@ -559,7 +566,7 @@ app.post('/api/chat/completions', async (c) => {
         }
         finish();
         const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
-        c.header('x-gateway-route', routeHeaders['x-gateway-route']);
+        for (const [name, value] of Object.entries(routeHeaders)) c.header(name, value);
         return c.json({
             id, object: 'chat.completion', created, model: routedModel,
             choices: [{
