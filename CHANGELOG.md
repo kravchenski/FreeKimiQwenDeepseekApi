@@ -1,5 +1,35 @@
 # Changelog
 
+## [2.2.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.1.0...v2.2.0) (2026-09-30)
+
+
+### Features
+
+* **agents:** keep only the tools a coding agent request needs ([862383b](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/862383b340693679cbb889e59b4d711d89251e4f))
+* **agents:** keep only the tools a coding agent request needs ([affcc78](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/affcc78dca91e5866fab537a3e8599bcc402e4bd))
+* **agents:** pass tools natively to API providers ([8d9f0aa](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/8d9f0aaae7f1107b2d8e2385b90535e0e07ee696))
+* **agents:** pass tools natively to API providers and route agent requests to them ([4f554f7](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/4f554f7b4ffb00fd966a783c8a6863409511aacb))
+* **agents:** run coding agents' shell commands through rtk ([9f14514](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/9f145142b87a40306c3062a1a826ec0417e67b6e))
+* **agents:** trim tool output in coding agent requests ([b699f66](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/b699f66841a566073ad827a982b09d6387857497))
+* **agents:** trim tool output in coding agent requests ([a41574e](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/a41574ea4ab2868456e54c3f33cb12c435fc44cb))
+* **router:** send agent requests on auto to strong models with native tool calling first ([97cd5f6](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/97cd5f66a509569c6275d9a24b008a99f4297b53))
+
+
+### Bug Fixes
+
+* **agents:** follow rtk rewrite exit codes and scrub RTK_REWRITE_HOST ([1d71378](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/1d71378f57b58ed66fdf239b2fb6eedbf504f790))
+* **agents:** keep rtk out of the history the model sees and collapse similar output lines ([b2f7c69](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/b2f7c691022aef3dd0b668e05129059685aedc0f))
+* **agents:** keep the model's answer after a tool result instead of forcing ls ([fff8cee](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/fff8cee0b7854a274e2820e4d99057b1637fb3c3))
+* **agents:** nudge replies that end by announcing the next action ([b643ec5](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/b643ec5dc905ca121b628c5e9fdbb3d81c672ee4))
+* **agents:** read DeepSeek DSML and broken JSON tool calls and nudge replies that only announce an action ([9d78884](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/9d78884d3f0fcfb47fb4e455c6d7dcaa4be61a21))
+* **agents:** retry an empty agent reply with a nudge ([9df2bf9](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/9df2bf9537b45adb335c0f0f96bcbfae1d81ff15))
+* **kimi:** report errors that arrive after the done event ([bbffe20](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/bbffe20a6cd043054e4df131a2d08d9b3f56e56d))
+
+
+### Tests
+
+* **agents:** check rtk exit codes without running a shell script ([3a77fb2](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/3a77fb2f735abc18f15e6331c1dd76903a0801f7))
+
 ## [2.1.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.0.1...v2.1.0) (2026-09-30)
 
 
