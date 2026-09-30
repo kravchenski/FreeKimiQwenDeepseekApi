@@ -13,6 +13,7 @@ export interface ChatSite {
   verificationText?: RegExp;
   signIn?: SignInRule;
   challengeResponse?: RegExp;
+  ignoredResponse?: RegExp;
 }
 
 export interface BrowserChatOptions {
@@ -83,19 +84,46 @@ class ChunkQueue {
 
 export class BrowserChatSession {
   private browser?: Promise<CdpBrowser>;
+  private closing?: Promise<void>;
   private readonly queues = new Map<string, Promise<unknown>>();
 
   constructor(private readonly options: BrowserChatOptions = {}) {}
 
   private cdp() {
-    this.browser ??= (this.options.launch ?? launchCdpBrowser)({
+    if (this.browser) return this.browser;
+    const launch = this.options.launch ?? launchCdpBrowser;
+    const launched: Promise<CdpBrowser> = (this.closing ?? Promise.resolve()).then(() => launch({
       profileDir: this.options.profileDir ?? googleProfileDir(),
       headless: this.options.headless ?? false,
+    })).then(cdp => {
+      const forget = () => this.forget(launched, cdp);
+      cdp.browser.on('disconnected', forget);
+      cdp.exited.then(forget);
+      return cdp;
     }).catch(error => {
-      this.browser = undefined;
+      if (this.browser === launched) this.browser = undefined;
       throw error;
     });
-    return this.browser;
+    this.browser = launched;
+    return launched;
+  }
+
+  private forget(launched: Promise<CdpBrowser>, cdp: CdpBrowser) {
+    if (this.browser !== launched) return;
+    this.browser = undefined;
+    this.closing = cdp.close().catch(() => {});
+  }
+
+  private async context() {
+    const current = this.cdp();
+    let cdp = await current;
+    if (!cdp.browser.isConnected() || !cdp.browser.contexts()[0]) {
+      this.forget(current, cdp);
+      cdp = await this.cdp();
+    }
+    const context = cdp.browser.contexts()[0];
+    if (!context) throw new ProviderError('Browser profile has no default context', 'unavailable');
+    return context;
   }
 
   async close() {
@@ -121,8 +149,7 @@ export class BrowserChatSession {
   }
 
   private async openPage(site: ChatSite, prompt: string) {
-    const context = (await this.cdp()).browser.contexts()[0];
-    if (!context) throw new ProviderError('Browser profile has no default context', 'unavailable');
+    const context = await this.context();
     const page = await context.newPage();
     const queue = new ChunkQueue();
     await page.exposeFunction(BINDING, (chunk: string | null) => queue.push(chunk === null ? null : Buffer.from(chunk, 'base64')));
@@ -136,7 +163,9 @@ export class BrowserChatSession {
       }
       const input = page.locator(site.inputSelector).first();
       await input.waitFor({ timeout: 30_000 });
-      await input.fill(prompt);
+      await input.fill('');
+      await input.click();
+      await page.keyboard.insertText(prompt);
       await input.press('Enter');
       return { page, queue };
     } catch (error) {
@@ -161,6 +190,11 @@ export class BrowserChatSession {
           throw new ProviderError(`${site.id} asks for a security verification; complete it in the browser window`, 'unavailable');
         }
         first = await queue.next(500);
+        if (first instanceof Uint8Array && site.ignoredResponse?.test(new TextDecoder().decode(first))) {
+          await drainResponse(queue);
+          first = 'timeout';
+          continue;
+        }
         if (first instanceof Uint8Array && site.challengeResponse?.test(new TextDecoder().decode(first))) {
           if (!challenged) deadline = Math.max(deadline, Date.now() + CHALLENGE_GRACE_MS);
           challenged = true;
