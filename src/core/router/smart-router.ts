@@ -123,8 +123,9 @@ export class SmartRouter {
     else if (!modelMissing) this.cooldownUntil.set(route.provider.id, this.now() + PROVIDER_COOLDOWN_MS);
   }
 
-  private decide(model: string, mode: RoutingDecision['mode'], preferredModel: string | undefined, skipped: SkippedRoute[], attempts: RouteAttempt[], chosen?: Route, error?: unknown, picked?: string, decisionMs?: number, decisionError?: string) {
+  private decide(model: string, mode: RoutingDecision['mode'], preferredModel: string | undefined, skipped: SkippedRoute[], attempts: RouteAttempt[], chosen?: Route, error?: unknown, picked?: string, decisionMs?: number, decisionError?: string, details?: Record<string, unknown>) {
     this.options.onDecision?.({
+      ...(details ? { details } : {}),
       at: this.now(),
       requestedModel: model,
       mode,
@@ -139,7 +140,7 @@ export class SmartRouter {
     });
   }
 
-  async open(model: string, build: (route: Route) => ChatRequest, preferredModel?: string): Promise<RoutedStream> {
+  async open(model: string, build: (route: Route) => ChatRequest, preferredModel?: string, details?: Record<string, unknown>): Promise<RoutedStream> {
     const skipped: SkippedRoute[] = [];
     let routes = this.routes(model, preferredModel, skipped);
     const autoMode = model === AUTO_MODEL && routes.length > 1 ? this.options.autoMode?.() : undefined;
@@ -149,10 +150,10 @@ export class SmartRouter {
       : 'fallback';
     if (!routes.length) {
       const error = new ProviderError(`No available provider for model ${model}`, 'unavailable');
-      this.decide(model, mode, preferredModel, skipped, [], undefined, error);
+      this.decide(model, mode, preferredModel, skipped, [], undefined, error, undefined, undefined, undefined, details);
       throw error;
     }
-    if (mode === 'race') return this.race(model, routes, build, preferredModel, skipped);
+    if (mode === 'race') return this.race(model, routes, build, preferredModel, skipped, details);
     let picked: string | undefined;
     let decisionMs: number | undefined;
     let decisionError: string | undefined;
@@ -174,24 +175,24 @@ export class SmartRouter {
         const { stream, chunks, latencyMs } = await this.attempt(route, build, new AbortController(), timeoutMs);
         this.succeeded(route, latencyMs);
         attempts.push({ model: route.model, provider: route.provider.id, outcome: 'chosen', latencyMs });
-        this.decide(model, mode, preferredModel, skipped, attempts, route, undefined, picked, decisionMs, decisionError);
+        this.decide(model, mode, preferredModel, skipped, attempts, route, undefined, picked, decisionMs, decisionError, details);
         return { ...stream, chunks, route };
       } catch (error) {
         this.recordFailure(route, error, routes.length > 1);
         attempts.push(failedAttempt(route, error, this.now() - startedAt));
         if (routes.length === 1) {
-          this.decide(model, mode, preferredModel, skipped, attempts, undefined, error, picked, decisionMs, decisionError);
+          this.decide(model, mode, preferredModel, skipped, attempts, undefined, error, picked, decisionMs, decisionError, details);
           throw error;
         }
         failures.push(`${route.model}: ${errorText(error)}`);
       }
     }
     const error = new ProviderError(`All routes failed for model ${model}: ${failures.join('; ')}`, 'unavailable');
-    this.decide(model, mode, preferredModel, skipped, attempts, undefined, error, picked, decisionMs, decisionError);
+    this.decide(model, mode, preferredModel, skipped, attempts, undefined, error, picked, decisionMs, decisionError, details);
     throw error;
   }
 
-  private async race(model: string, routes: Route[], build: (route: Route) => ChatRequest, preferredModel: string | undefined, skipped: SkippedRoute[]): Promise<RoutedStream> {
+  private async race(model: string, routes: Route[], build: (route: Route) => ChatRequest, preferredModel: string | undefined, skipped: SkippedRoute[], details?: Record<string, unknown>): Promise<RoutedStream> {
     const contenders = routes.slice(0, this.options.raceWidth ?? DEFAULT_RACE_WIDTH);
     const controllers = contenders.map(() => new AbortController());
     const failures: string[] = [];
@@ -222,11 +223,11 @@ export class SmartRouter {
       this.succeeded(winner.route, winner.latencyMs);
       outcomes.set(winner.index, { model: winner.route.model, provider: winner.route.provider.id, outcome: 'chosen', latencyMs: winner.latencyMs });
       const raced = contenders.map((route, index) => outcomes.get(index) ?? { model: route.model, provider: route.provider.id, outcome: 'lost' as const });
-      this.decide(model, 'race', preferredModel, skipped, raced, winner.route);
+      this.decide(model, 'race', preferredModel, skipped, raced, winner.route, undefined, undefined, undefined, undefined, details);
       return { ...winner.stream, chunks: winner.chunks, route: winner.route };
     } catch {
       const error = new ProviderError(`All raced routes failed for model ${model}: ${failures.join('; ')}`, 'unavailable');
-      this.decide(model, 'race', preferredModel, skipped, contenders.map((route, index) => outcomes.get(index) ?? { model: route.model, provider: route.provider.id, outcome: 'failed' as const }), undefined, error);
+      this.decide(model, 'race', preferredModel, skipped, contenders.map((route, index) => outcomes.get(index) ?? { model: route.model, provider: route.provider.id, outcome: 'failed' as const }), undefined, error, undefined, undefined, undefined, details);
       throw error;
     }
   }

@@ -172,6 +172,10 @@ impl AccountsCli {
         self.run(&["auto", "--mode", mode], None)
     }
 
+    pub fn set_agent_option(&self, name: &str, on: bool) -> Result<String, String> {
+        self.run(&["auto", &format!("--{name}"), if on { "on" } else { "off" }], None)
+    }
+
     pub fn set_auto(&self, provider: &str, auto: bool) -> Result<String, String> {
         self.run(&["provider", provider, "--auto", if auto { "on" } else { "off" }], None)
     }
