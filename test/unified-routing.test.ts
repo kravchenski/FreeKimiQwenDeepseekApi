@@ -270,6 +270,29 @@ describe('unified server routing', () => {
     expect(events.at(-1).type).toBe('message_stop');
   });
 
+  test('keeps the answer after a tool result and trims the tool output', async () => {
+    const bash = [{ type: 'function', function: { name: 'bash', description: 'Run a shell command', parameters: { type: 'object', properties: { command: { type: 'string' } } } } }];
+    const output = ['\x1b[32mok\x1b[0m', ...Array.from({ length: 600 }, (_, index) => `test ${index} passes`), 'FAIL parseDate', 'Tests: 1 failed'].join('\n');
+    replies.push([{ type: 'content', text: 'The parseDate test fails.' }]);
+    const response = await chat({
+      model: 'fake-model',
+      tools: bash,
+      messages: [
+        { role: 'user', content: 'Run the tests and tell me which one fails.' },
+        { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'bash', arguments: '{"command":"npm test"}' } }] },
+        { role: 'tool', tool_call_id: 'c1', content: output },
+      ],
+    });
+    const body = await response.json();
+    expect(body.choices[0].message.content).toBe('The parseDate test fails.');
+    expect(body.choices[0].message.tool_calls).toBeUndefined();
+    expect(response.headers.get('x-gateway-compacted')).toMatch(/^\d+->\d+$/);
+    const sent = requests[0]!.messages.find(message => message.role === 'tool')!.content as string;
+    expect(sent.length).toBeLessThan(output.length);
+    expect(sent).toContain('FAIL parseDate');
+    expect(sent).not.toContain('\x1b[');
+  });
+
   test('validates image generation requests', async () => {
     const images = (body: unknown) => server.app.fetch(new Request('http://local/v1/images/generations', {
       method: 'POST',

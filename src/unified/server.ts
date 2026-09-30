@@ -299,6 +299,7 @@ function scheduleModelRefresh() {
 }
 
 function isCodebaseActionRequest(messages: Array<Record<string, any>>) {
+    if (messages.at(-1)?.role !== 'user') return false;
     const lastUser = [...messages].reverse().find(message => message?.role === 'user');
     const text = typeof lastUser?.content === 'string' ? lastUser.content.toLowerCase() : '';
     return /рефактор|исправ|измени|добав|удал|проверь|тест|review|refactor|implement|fix|change|inspect|test/.test(text);
