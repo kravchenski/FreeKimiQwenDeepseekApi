@@ -29,7 +29,7 @@
   OPENCODE_API_URL=http://localhost:3260
   OPENCODE_API_KEY=
   ```
-- Supports OpenAI `/v1/chat/completions`, `/v1/responses`, Anthropic `/v1/messages`, model listing `/v1/models` and image generation `/v1/images/generations` (`/v1/images/models`) and routing decisions `/v1/decisions`.
+- Supports OpenAI `/v1/chat/completions`, `/v1/responses`, Anthropic `/v1/messages`, model listing `/v1/models` and image generation `/v1/images/generations` (`/v1/images/models`) a Jev-style decision API `/v1/decisions` (also `/v1/systemone`) and the router's decision log `/v1/gateway/decisions`.
 
 ## Coding Style & Naming Conventions
 - **Runtime**: Bun-first; avoid Node-specific APIs when Bun equivalents exist.

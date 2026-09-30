@@ -47,7 +47,7 @@ export class GatewaySettings {
   }
 
   setAutoMode(mode: string) {
-    if (!isAutoMode(mode)) throw new Error(`Unknown mode: ${mode}. Use fallback or race`);
+    if (!isAutoMode(mode)) throw new Error(`Unknown mode: ${mode}. Use fallback, race or decide`);
     this.write('auto.mode', mode);
   }
 }

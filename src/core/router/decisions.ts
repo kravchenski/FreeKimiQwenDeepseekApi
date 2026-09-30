@@ -17,7 +17,10 @@ export interface RoutingDecision {
   id: number;
   at: number;
   requestedModel: string;
-  mode: 'direct' | 'fallback' | 'race';
+  mode: 'direct' | 'fallback' | 'race' | 'decide';
+  picked?: string;
+  decisionMs?: number;
+  decisionError?: string;
   preferredModel?: string;
   skipped: SkippedRoute[];
   attempts: RouteAttempt[];
