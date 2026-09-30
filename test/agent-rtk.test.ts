@@ -3,7 +3,7 @@ import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { rewriteShellCalls, rtkPath, rtkRewriter } from '../src/core/agents/rtk.ts';
+import { restoreShellCalls, rewriteShellCalls, rtkPath, rtkRewriter } from '../src/core/agents/rtk.ts';
 
 const call = (name: string, args: Record<string, unknown>) => ({ id: 'c', type: 'function', function: { name, arguments: JSON.stringify(args) } });
 const fake = (command: string) => (/^(?:git|ls|cat) /.test(command) ? `rtk ${command}` : undefined);
@@ -29,6 +29,22 @@ describe('rtk rewriting', () => {
       { from: 'ls -la src', to: 'rtk ls -la src' },
       { from: 'cat package.json', to: 'rtk cat package.json' },
     ]);
+  });
+
+  test('shows the model its own commands again so it does not start writing rtk itself', () => {
+    const { toolCalls } = rewriteShellCalls([call('Bash', { command: 'git log --oneline -3' }), call('shell', { command: ['bash', '-lc', 'ls src'] })], fake);
+    const history = [
+      { role: 'user', content: 'what changed?' },
+      { role: 'assistant', content: null, tool_calls: toolCalls },
+      { role: 'tool', tool_call_id: 'c', content: 'abc fix' },
+      { role: 'assistant', content: null, tool_calls: [call('Bash', { command: 'rtk gain' })] },
+    ];
+    const { messages, restored } = restoreShellCalls(history);
+    expect(restored).toBe(2);
+    expect(JSON.parse(messages[1]!.tool_calls![0]!.function.arguments)).toEqual({ command: 'git log --oneline -3' });
+    expect(JSON.parse(messages[1]!.tool_calls![1]!.function.arguments)).toEqual({ command: ['bash', '-lc', 'ls src'] });
+    expect(messages[3]).toBe(history[3]);
+    expect(messages[2]).toBe(history[2]);
   });
 
   test('leaves calls with broken arguments untouched', () => {

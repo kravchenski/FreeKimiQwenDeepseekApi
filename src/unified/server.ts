@@ -18,7 +18,7 @@ import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts
 import { checkProviderModels } from '../core/models/model-check.ts';
 import { DecisionLog } from '../core/router/decisions.ts';
 import { compactToolResults } from '../core/agents/compact.ts';
-import { rewriteShellCalls, rtkRewriter, type RtkRewrite } from '../core/agents/rtk.ts';
+import { restoreShellCalls, rewriteShellCalls, rtkRewriter, type RtkRewrite } from '../core/agents/rtk.ts';
 import { TOOL_SELECTION_THRESHOLD, ToolSelector } from '../core/agents/tools.ts';
 import { decide, readDecisionRequest, type DecisionAnswer, type DecisionRequest } from '../core/decisions/engine.ts';
 import { rankModels } from '../core/models/stats.ts';
@@ -515,7 +515,8 @@ app.post('/api/chat/completions', async (c) => {
         return c.json({ error: { message: 'Invalid JSON body', type: 'invalid_request_error' } }, 400);
     }
     try {
-        const { messages, model = 'deepseek-default', stream = false, tools, functions } = body || {};
+        let { messages } = body || {};
+        const { model = 'deepseek-default', stream = false, tools, functions } = body || {};
         if (!Array.isArray(messages) || messages.length === 0) {
             return c.json({ error: { message: 'messages must be a non-empty array' } }, 400);
         }
@@ -524,6 +525,8 @@ app.post('/api/chat/completions', async (c) => {
             return c.json({ error: { message: `Unknown model: ${model}. Available: ${visibleModels().map(entry => entry.id).join(', ')}` } }, 400);
         }
 
+        const { messages: restoredMessages } = restoreShellCalls(messages);
+        messages = restoredMessages;
         const conversationId = body.conversation_id || body.chat_id || c.req.header('x-conversation-id') || undefined;
         const combinedTools = tools || (Array.isArray(functions)
             ? functions.map((fn: Record<string, unknown>) => ({ type: 'function', function: fn }))
