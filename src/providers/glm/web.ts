@@ -1,4 +1,5 @@
 import type { ChatSite } from '../../browser/browser-chat.ts';
+import { readOpenWebUiModels } from '../qwen/web.ts';
 import type { ChatChunk } from '../../core/providers/provider.ts';
 import { bytesToLines } from '../browser-chat-provider.ts';
 
@@ -9,6 +10,15 @@ export const ZAI_CHAT_SITE: ChatSite = {
   responseUrl: /\/api\/v2\/chat\/completions/,
   verificationText: /security verification/i,
   signIn: { storageKey: 'token', claim: 'email', guestPattern: /guest/i },
+  modelFields: model => ({ model }),
+  pageModels: page => readOpenWebUiModels(page).then(models => models.filter(model => !/research|rumination|-DR$/i.test(`${model.id} ${model.name}`))),
+  defaultModels: [
+    { id: 'x-preview-l', name: 'GLM-5.3-Flash' },
+    { id: 'glm-5.3', name: 'GLM-5.3' },
+    { id: 'glm-5.2', name: 'GLM-5.2' },
+    { id: 'GLM-5-Turbo', name: 'GLM-5-Turbo' },
+    { id: 'glm-4.7', name: 'GLM-4.7' },
+  ],
 };
 
 export function parseZaiEvent(line: string): ChatChunk | 'done' | null {

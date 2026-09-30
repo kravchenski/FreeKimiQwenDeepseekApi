@@ -24,6 +24,9 @@ document.getElementById('box').addEventListener('keydown', async event => {
 
 const precheckPage = chatPage.replace("const response = await fetch('/api/stream'", "await (await fetch('/api/stream?precheck=1', { method: 'POST' })).text();\n  const response = await fetch('/api/stream'");
 
+const jsonPage = chatPage.replace("body: event.target.value", "body: JSON.stringify({ model: 'site-default', messages: [{ models: ['site-default'], content: event.target.value }] })");
+const framedPage = chatPage.replace("body: event.target.value", "body: (() => { const json = new TextEncoder().encode(JSON.stringify({ options: { model: 'site-default' } })); const out = new Uint8Array(5 + json.length); new DataView(out.buffer).setUint32(1, json.length); out.set(json, 5); return out; })()");
+
 const verifyPage = '<!doctype html><textarea></textarea><p>Please complete security verification</p>';
 
 const jwt = (payload: Record<string, unknown>) => `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.sig`;
@@ -42,7 +45,12 @@ beforeAll(() => {
         return Response.json({ code: 0, sig: 'from bx' });
       }
       if (url.pathname === '/api/stream') {
-        const prompt = await request.text();
+        const bytes = new Uint8Array(await request.arrayBuffer());
+        if (bytes[0] === 0 && bytes.length > 5) {
+          return new Response(`data: ${new TextDecoder().decode(bytes.subarray(5))}\n\n`);
+        }
+        const prompt = new TextDecoder().decode(bytes);
+        if (prompt.startsWith('{')) return new Response(`data: ${prompt}\n\n`);
         const parts = ['data: first\n\n', `data: echo ${prompt}\n\n`, 'data: [DONE]\n\n'];
         return new Response(new ReadableStream({
           async start(controller) {
@@ -56,6 +64,8 @@ beforeAll(() => {
       }
       const html = url.pathname === '/verify' ? verifyPage
         : url.pathname === '/precheck' ? precheckPage
+        : url.pathname === '/json' ? jsonPage
+        : url.pathname === '/framed' ? framedPage
         : url.pathname === '/member' ? withToken({ email: 'me@example.com' })
         : url.pathname === '/guest' ? withToken({ email: 'Guest-123@guest.com' })
         : url.pathname === '/signed-out' ? clearToken
@@ -110,6 +120,19 @@ describe.skipIf(process.env.RUN_BROWSER_TESTS !== '1' || !findBrowserExecutable(
     try {
       const text = await collect(await session.send({ ...site('/precheck'), ignoredResponse: /"sig":"from bx"/ }, 'real one'));
       expect(text).toBe('data: first\n\ndata: echo real one\n\ndata: [DONE]\n\n');
+    } finally {
+      await session.close();
+    }
+  }, 60_000);
+
+  test('puts the chosen model into the request the page sends', async () => {
+    const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });
+    try {
+      const json = { ...site('/json'), modelFields: (model: string) => ({ model, 'messages.*.models': [model] }) };
+      expect(JSON.parse((await collect(await session.send(json, 'hi', 'picked'))).slice(6))).toEqual({ model: 'picked', messages: [{ models: ['picked'], content: 'hi' }] });
+      expect(JSON.parse((await collect(await session.send(json, 'hi'))).slice(6)).model).toBe('site-default');
+      const framed = { ...site('/framed'), modelFields: (model: string) => ({ 'options.model': model }) };
+      expect(JSON.parse((await collect(await session.send(framed, 'hi', 'k3-agent'))).slice(6))).toEqual({ options: { model: 'k3-agent' } });
     } finally {
       await session.close();
     }

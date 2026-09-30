@@ -1,4 +1,4 @@
-import type { ChatSite } from '../../browser/browser-chat.ts';
+import type { ChatSite, WebChatModel } from '../../browser/browser-chat.ts';
 import { ProviderError } from '../../core/providers/errors.ts';
 import type { ChatChunk } from '../../core/providers/provider.ts';
 import { bytesToLines } from '../browser-chat-provider.ts';
@@ -11,7 +11,42 @@ export const ARENA_CHAT_SITE: ChatSite = {
   inputSelector: 'textarea[name="message"]',
   responseUrl: /\/nextjs-api\/stream\/(?:create|post-to)-evaluation/,
   verificationText: /verify you are human|security verification/i,
+  modelFields: model => ({ modelAId: model }),
+  pageModels: page => page.evaluate(() => {
+    const flight = [...document.querySelectorAll('script')].map(script => {
+      const literal = /self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/.exec(script.textContent ?? '')?.[1];
+      try {
+        return literal ? String(JSON.parse(literal)) : '';
+      } catch {
+        return '';
+      }
+    }).join('');
+    const start = flight.indexOf('"initialModels":[');
+    if (start < 0) return '';
+    let depth = 0;
+    const from = flight.indexOf('[', start);
+    for (let index = from; index < flight.length; index++) {
+      if (flight[index] === '[') depth++;
+      else if (flight[index] === ']' && --depth === 0) return flight.slice(from, index + 1);
+    }
+    return '';
+  }).then(parseArenaModels),
+  defaultModels: [{ id: '019b24bb-5caf-71c3-b854-37d0c7086f21', name: 'Max' }],
 };
+
+export function parseArenaModels(json: string): WebChatModel[] {
+  let models: Array<{ id?: unknown; publicName?: unknown; displayName?: unknown; userSelectable?: unknown; capabilities?: { inputCapabilities?: { text?: unknown }; outputCapabilities?: { text?: unknown } } }>;
+  try {
+    models = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  return models
+    .filter(model => typeof model.id === 'string' && typeof model.publicName === 'string' && model.userSelectable !== false
+      && model.capabilities?.inputCapabilities?.text === true && model.capabilities?.outputCapabilities?.text === true)
+    .map(model => ({ id: model.id as string, name: model.publicName as string }))
+    .filter((model, index, all) => all.findIndex(other => other.name === model.name) === index);
+}
 
 function decode(value: string) {
   try {

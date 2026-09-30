@@ -1,4 +1,4 @@
-import type { BrowserChatSession, ChatSite } from '../browser/browser-chat.ts';
+import { webChatModelSlug, type BrowserChatSession, type ChatSite, type WebChatModel } from '../browser/browser-chat.ts';
 import { ProviderError } from '../core/providers/errors.ts';
 import type { ChatChunk, Provider, ProviderHealth, ProviderStream } from '../core/providers/provider.ts';
 import { messagesToPrompt } from '../core/providers/prompt.ts';
@@ -19,6 +19,7 @@ export interface BrowserChatProviderConfig {
   reasoning?: boolean;
   health?: () => ProviderHealth;
   onResult?: (profile: string, ok: boolean) => void;
+  models?: () => WebChatModel[] | undefined;
 }
 
 function message(error: unknown) {
@@ -26,21 +27,32 @@ function message(error: unknown) {
 }
 
 export function createBrowserChatProvider(config: BrowserChatProviderConfig): Provider {
+  const prefix = `${config.model}/`;
+  const models = () => {
+    const listed = config.models?.();
+    return listed?.length ? listed : config.site.defaultModels ?? [];
+  };
+  const upstreamModel = (model: string) => {
+    if (!model.startsWith(prefix)) return undefined;
+    const slug = model.slice(prefix.length);
+    return models().find(entry => webChatModelSlug(entry.name) === slug)?.id ?? slug;
+  };
   return {
     id: config.id,
     ownedBy: config.ownedBy,
-    supports: model => model === config.model,
-    listModels: async () => [config.model],
+    supports: model => model === config.model || model.startsWith(prefix),
+    listModels: async () => [config.model, ...models().map(entry => `${prefix}${webChatModelSlug(entry.name)}`)],
     capabilities: () => ({ nativeTools: false, reasoning: config.reasoning ?? true, vision: false }),
     health: () => config.health?.() ?? { available: true },
     async stream(request): Promise<ProviderStream> {
       const candidates = config.sessions();
       if (!candidates.length) throw new ProviderError(`${config.id}: no account is signed in`, 'unavailable');
       const prompt = messagesToPrompt(request.messages);
+      const model = upstreamModel(request.model);
       const failures: string[] = [];
       for (const candidate of candidates) {
         try {
-          const chunks = await primeChunks(config.parse(await candidate.session.send(config.site, prompt)));
+          const chunks = await primeChunks(config.parse(await candidate.session.send(config.site, prompt, model)));
           config.onResult?.(candidate.profile, true);
           return { chunks };
         } catch (error) {

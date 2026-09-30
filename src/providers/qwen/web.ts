@@ -1,4 +1,6 @@
-import type { ChatSite } from '../../browser/browser-chat.ts';
+import type { Page } from 'playwright-core';
+
+import type { ChatSite, WebChatModel } from '../../browser/browser-chat.ts';
 import { ProviderError } from '../../core/providers/errors.ts';
 import type { ChatChunk } from '../../core/providers/provider.ts';
 import { bytesToLines } from '../browser-chat-provider.ts';
@@ -13,7 +15,32 @@ export const QWEN_CHAT_SITE: ChatSite = {
   signIn: { storageKey: 'token', claim: 'id' },
   challengeResponse: /FAIL_SYS_USER_VALIDATE|\/punish\?/,
   ignoredResponse: /^\{"code":0,[^\n]*"sig":"from bx"/,
+  modelFields: model => ({ model, 'messages.*.models': [model] }),
+  pageModels: page => readOpenWebUiModels(page),
+  defaultModels: [
+    { id: 'qwen3.7-plus', name: 'Qwen3.7-Plus' },
+    { id: 'qwen3.8-max', name: 'Qwen3.8-Max' },
+    { id: 'qwen3.7-max', name: 'Qwen3.7-Max' },
+    { id: 'qwen3.8-omni-flash', name: 'Qwen3.8-Omni-Flash' },
+    { id: 'qwen3.6-plus', name: 'Qwen3.6-Plus' },
+  ],
 };
+
+export function readOpenWebUiModels(page: Page) {
+  return page.evaluate(async () => {
+    const token = localStorage.getItem('token');
+    const response = await fetch('/api/models', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    return response.ok ? response.json() : null;
+  }).then(parseOpenWebUiModels);
+}
+
+export function parseOpenWebUiModels(body: unknown): WebChatModel[] {
+  const data = (body as { data?: Array<{ id?: unknown; name?: unknown; info?: { is_active?: boolean } }> })?.data ?? [];
+  return data
+    .filter(model => typeof model.id === 'string' && model.info?.is_active !== false)
+    .map(model => ({ id: model.id as string, name: typeof model.name === 'string' ? model.name : model.id as string }))
+    .filter(model => /^[\x20-\x7e]+$/.test(model.name));
+}
 
 const VERIFICATION = /FAIL_SYS_USER_VALIDATE|action=captcha|\/punish\?/;
 

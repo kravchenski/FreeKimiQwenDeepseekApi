@@ -14,6 +14,20 @@ export interface ChatSite {
   signIn?: SignInRule;
   challengeResponse?: RegExp;
   ignoredResponse?: RegExp;
+  modelFields?: (model: string) => Record<string, unknown>;
+  modelsResponse?: RegExp;
+  parseModels?: (body: unknown) => WebChatModel[];
+  pageModels?: (page: Page) => Promise<WebChatModel[]>;
+  defaultModels?: WebChatModel[];
+}
+
+export interface WebChatModel {
+  id: string;
+  name: string;
+}
+
+export function webChatModelSlug(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, '-');
 }
 
 export interface BrowserChatOptions {
@@ -23,15 +37,56 @@ export interface BrowserChatOptions {
   idleTimeoutMs?: number;
   launch?: (options: LaunchOptions) => Promise<CdpBrowser>;
   onSignIn?: (siteId: string, result: SignInResult) => void;
+  onModels?: (siteId: string, models: WebChatModel[]) => void;
 }
 
 const BINDING = '__freeapiStreamChunk';
 const CHALLENGE_GRACE_MS = 120_000;
 
-function teeScript({ pattern, binding }: { pattern: string; binding: string }) {
+function teeScript({ pattern, binding, fields }: { pattern: string; binding: string; fields?: Record<string, unknown> }) {
   const matcher = new RegExp(pattern);
   const original = window.fetch;
+  const setPath = (node: unknown, keys: string[], value: unknown): void => {
+    if (node === null || typeof node !== 'object') return;
+    const [key, ...rest] = keys;
+    if (key === '*') {
+      if (Array.isArray(node)) for (const child of node) setPath(child, rest, value);
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    if (!rest.length) record[key!] = value;
+    else setPath(record[key!], rest, value);
+  };
+  const rewrite = (json: string) => {
+    const body = JSON.parse(json);
+    for (const [path, value] of Object.entries(fields ?? {})) setPath(body, path.split('.'), value);
+    return JSON.stringify(body);
+  };
+  const rewriteBody = (body: unknown) => {
+    if (typeof body === 'string') return rewrite(body);
+    if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+      const bytes = body instanceof ArrayBuffer ? new Uint8Array(body) : new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+      if (bytes.length < 5) return body;
+      const length = new DataView(bytes.buffer, bytes.byteOffset + 1, 4).getUint32(0);
+      const payload = new TextEncoder().encode(rewrite(new TextDecoder().decode(bytes.subarray(5, 5 + length))));
+      const rest = bytes.subarray(5 + length);
+      const framed = new Uint8Array(5 + payload.length + rest.length);
+      framed[0] = bytes[0]!;
+      new DataView(framed.buffer).setUint32(1, payload.length);
+      framed.set(payload, 5);
+      framed.set(rest, 5 + payload.length);
+      return framed;
+    }
+    return body;
+  };
   window.fetch = Object.assign(async function (this: unknown, ...args: Parameters<typeof fetch>) {
+    const requested = args[0];
+    const requestedUrl = typeof requested === 'string' ? requested : requested instanceof URL ? requested.href : requested.url;
+    if (fields && matcher.test(requestedUrl) && args[1]?.body) {
+      try {
+        args[1] = { ...args[1], body: rewriteBody(args[1].body) as BodyInit };
+      } catch {}
+    }
     const response = await original.apply(this, args);
     const target = args[0];
     const url = typeof target === 'string' ? target : target instanceof URL ? target.href : target.url;
@@ -132,14 +187,14 @@ export class BrowserChatSession {
     await browser?.close();
   }
 
-  send(site: ChatSite, prompt: string): Promise<AsyncGenerator<Uint8Array>> {
+  send(site: ChatSite, prompt: string, model?: string): Promise<AsyncGenerator<Uint8Array>> {
     const previous = this.queues.get(site.id) ?? Promise.resolve();
     let release!: () => void;
     const done = new Promise<void>(resolve => { release = resolve; });
     this.queues.set(site.id, previous.then(() => done));
     return previous.then(async () => {
       try {
-        const { page, queue } = await this.openPage(site, prompt);
+        const { page, queue } = await this.openPage(site, prompt, model);
         return this.stream(site, page, queue, release);
       } catch (error) {
         release();
@@ -148,14 +203,34 @@ export class BrowserChatSession {
     });
   }
 
-  private async openPage(site: ChatSite, prompt: string) {
+  private watchModels(site: ChatSite, page: Page) {
+    const report = (models: WebChatModel[]) => {
+      if (models.length) this.options.onModels?.(site.id, models);
+    };
+    if (site.modelsResponse && site.parseModels) {
+      const pattern = site.modelsResponse;
+      const parse = site.parseModels;
+      page.waitForResponse(response => pattern.test(response.url()) && response.ok(), { timeout: 30_000 })
+        .then(response => response.json())
+        .then(body => report(parse(body)))
+        .catch(() => {});
+    }
+    return () => {
+      if (site.pageModels) site.pageModels(page).then(report).catch(() => {});
+    };
+  }
+
+  private async openPage(site: ChatSite, prompt: string, model?: string) {
     const context = await this.context();
     const page = await context.newPage();
     const queue = new ChunkQueue();
     await page.exposeFunction(BINDING, (chunk: string | null) => queue.push(chunk === null ? null : Buffer.from(chunk, 'base64')));
-    await page.addInitScript(teeScript, { pattern: site.responseUrl.source, binding: BINDING });
+    const fields = model && site.modelFields ? site.modelFields(model) : undefined;
+    await page.addInitScript(teeScript, { pattern: site.responseUrl.source, binding: BINDING, ...(fields ? { fields } : {}) });
+    const readPageModels = this.options.onModels ? this.watchModels(site, page) : () => {};
     try {
       await page.goto(site.url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      readPageModels();
       if (site.signIn) {
         const signIn = await readSignIn(page, site.signIn);
         this.options.onSignIn?.(site.id, signIn);

@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { DEFAULT_PROFILE, type SignInRecord } from '../accounts/sign-in-status.ts';
 import type { ProviderSetting } from '../providers/settings.ts';
+import type { WebChatModel } from '../../browser/browser-chat.ts';
 import type { UnavailableModel } from '../models/availability.ts';
 import type { ModelStat } from '../models/stats.ts';
 
@@ -108,6 +109,11 @@ const MIGRATIONS = [
     reason TEXT NOT NULL,
     until INTEGER NOT NULL
   )`,
+  `CREATE TABLE web_chat_models (
+    site TEXT PRIMARY KEY,
+    models TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
 ];
 
 export function defaultDatabaseFile() {
@@ -193,6 +199,16 @@ export function replaceUnavailableModels(db: Database, entries: UnavailableModel
     const insert = db.query('INSERT INTO unavailable_models (model, reason, until) VALUES ($model, $reason, $until)');
     for (const entry of entries) insert.run({ model: entry.model, reason: entry.reason, until: entry.until });
   })();
+}
+
+export function loadWebChatModels(db: Database): Map<string, WebChatModel[]> {
+  const rows = db.query('SELECT site, models FROM web_chat_models').all() as Array<{ site: string; models: string }>;
+  return new Map(rows.map(row => [row.site, JSON.parse(row.models) as WebChatModel[]]));
+}
+
+export function saveWebChatModels(db: Database, site: string, models: WebChatModel[], now = Date.now()) {
+  db.query(`INSERT INTO web_chat_models (site, models, updated_at) VALUES ($site, $models, $now)
+    ON CONFLICT (site) DO UPDATE SET models = excluded.models, updated_at = excluded.updated_at`).run({ site, models: JSON.stringify(models), now });
 }
 
 export function saveSignIn(db: Database, record: SignInRecord) {
