@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { collectChunks } from '../src/core/streaming/sse.ts';
+import { parseToolCallJson } from '../src/core/tools/tool-calls.ts';
 import { apiKeyProvider, createApiProvider } from '../src/providers/catalog.ts';
 
 const tools = [{ type: 'function', function: { name: 'bash', description: 'Run a shell command', parameters: { type: 'object', properties: { command: { type: 'string' } } } } }];
@@ -45,5 +46,26 @@ describe('native tool calls', () => {
     expect(provider.capabilities('groq/old').nativeTools).toBeFalse();
     expect(provider.capabilities('groq/other').nativeTools).toBeTrue();
     expect(calls).toBe(1);
+  });
+});
+
+describe('text tool calls from web chats', () => {
+  const bash = [{ type: 'function', function: { name: 'bash', parameters: { type: 'object', properties: { command: { type: 'string' } } } } }];
+  const commands = (text: string) => (parseToolCallJson(text, bash) ?? []).map(call => JSON.parse(call.function.arguments).command);
+
+  test('reads DeepSeek DSML tool calls', () => {
+    const dsml = '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="bash">\n<｜｜DSML｜｜ parameter name="arguments" string="true">{"command":"bun test 2>&1 | tail -8"}</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>';
+    expect(commands(dsml)).toEqual(['bun test 2>&1 | tail -8']);
+    const named = '<|DSML|invoke name="bash"><|DSML|parameter name="command" string="true">ls -la</|DSML|parameter></|DSML|invoke>';
+    expect(commands(named)).toEqual(['ls -la']);
+  });
+
+  test('repairs a command string that was never closed', () => {
+    expect(commands('{"tool_calls":[{"name":"bash","arguments":{"command":"cd bench && ls && bun test 2>&1 | tail -40}}]}')).toEqual(['cd bench && ls && bun test 2>&1 | tail -40']);
+  });
+
+  test('repairs an extra brace after string arguments in several calls', () => {
+    const text = '{"tool_calls":[{"name":"bash","arguments":"{\\"command\\":\\"git log -3\\"}"}},{"name":"bash","arguments":"{\\"command\\":\\"bun test\\"}"}}]}';
+    expect(commands(text)).toEqual(['git log -3', 'bun test']);
   });
 });

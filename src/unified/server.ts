@@ -309,6 +309,13 @@ function needsNudge(content: string) {
     return !content.trim() || isEmptyToolCallResponse(content);
 }
 
+const ANNOUNCEMENT = /^(?:i'?ll|i will|i'm going to|let me|let's|first,? i|now i|next,? i|\u0441\u043d\u0430\u0447\u0430\u043b\u0430|\u0441\u0435\u0439\u0447\u0430\u0441|\u0434\u0430\u0432\u0430\u0439|\u043d\u0430\u0447\u043d\u0443)(?=[\s,.:!]|$)/iu;
+
+function announcesAction(content: string, tools: Array<Record<string, any>> | null) {
+    const text = content.trim();
+    return text.length > 0 && text.length < 400 && ANNOUNCEMENT.test(text) && !parseToolCallJson(text, tools);
+}
+
 function isCodebaseActionRequest(messages: Array<Record<string, any>>) {
     if (messages.at(-1)?.role !== 'user') return false;
     const lastUser = [...messages].reverse().find(message => message?.role === 'user');
@@ -429,7 +436,7 @@ function handleProviderStream(
         }
         let nativeCalls = assembler.result();
 
-        if (captureToolCalls && !nativeCalls.length && needsNudge(content) && !isCodebaseActionRequest(messages)) {
+        if (captureToolCalls && !nativeCalls.length && (needsNudge(content) || announcesAction(content, combinedTools)) && !isCodebaseActionRequest(messages)) {
             ({ content, reasoning, toolCalls: nativeCalls } = await collectChunks((await retry()).chunks));
         }
 
@@ -612,7 +619,7 @@ app.post('/api/chat/completions', async (c) => {
         let nativeCalls: ToolCall[] = [];
         try {
             ({ content, reasoning, toolCalls: nativeCalls } = await collectChunks(first.chunks));
-            if (captureToolCalls && !nativeCalls.length && needsNudge(content) && !isCodebaseActionRequest(messages)) {
+            if (captureToolCalls && !nativeCalls.length && (needsNudge(content) || announcesAction(content, combinedTools)) && !isCodebaseActionRequest(messages)) {
                 const retried = await open(true);
                 ({ content, reasoning, toolCalls: nativeCalls } = await collectChunks(retried.chunks));
                 responseFields = retried.responseFields;

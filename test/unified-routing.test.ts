@@ -312,6 +312,16 @@ describe('unified server routing', () => {
     expect(requests[1]!.messages.at(-1)!.content).toContain('Your last reply was empty');
   });
 
+  test('nudges a web chat that only announces what it will do', async () => {
+    const bash = [{ type: 'function', function: { name: 'bash', description: 'Run a shell command', parameters: { type: 'object', properties: { command: { type: 'string' } } } } }];
+    replies.push([{ type: 'content', text: "I'll start by running the tests." }]);
+    replies.push([{ type: 'content', text: '{"tool_calls":[{"name":"bash","arguments":{"command":"bun test"}}]}' }]);
+    const response = await chat({ model: 'fake-model', tools: bash, messages: [{ role: 'user', content: 'The build is red, find out why.' }] });
+    const body = await response.json();
+    expect(JSON.parse(body.choices[0].message.tool_calls[0].function.arguments)).toEqual({ command: 'bun test' });
+    expect(requests).toHaveLength(2);
+  });
+
   test('passes tools natively to providers that take them and returns their tool calls', async () => {
     const seen: ChatRequest[] = [];
     server.registry.register({
