@@ -62,7 +62,7 @@ The desktop app does the same on the Accounts page (Add account, Connect chats, 
 
 ### Tuning `auto`
 
-`bun run account auto --focus coding` makes `model=auto` prefer models made for the task (`general`, `coding`, `reasoning`, `fast`); `--mode race` sends each request to the first three models of the chain at the same time and keeps the first answer (`fallback`, the default, tries them one by one). The desktop app has the same options, plus a light, dark or system theme, on its Settings page.
+`bun run account auto --focus coding` makes `model=auto` prefer models made for the task (`general`, `coding`, `reasoning`, `fast`); `--mode race` sends each request to the first three models of the chain at the same time and keeps the first answer (`fallback`, the default, tries them one by one); `--mode decide` lets a fast decision model read each request and pick the model that suits it (a large model for coding or reasoning, a small one for small talk), keeping the rest of the chain as backup. Modes only change chat requests; images are not affected. The desktop app has the same options, plus a light, dark or system theme, on its Settings page.
 
 To keep a provider out of `model=auto` without disconnecting it, run `bun run account provider <id> --auto off` (or use the switch on the provider's page in the desktop app).
 
@@ -90,7 +90,8 @@ curl http://localhost:3260/v1/chat/completions \
 |--------|----------|-------------|
 | `GET` | `/v1/models` | List models |
 | `POST` | `/v1/chat/completions` | Chat Completions (streaming + non-streaming) |
-| `GET` | `/v1/decisions` | Recent routing decisions, newest first: requested model, mode (`direct`, `fallback`, `race`), skipped candidates with the reason, every attempt with its outcome and latency, and the chosen route (`?limit=`, `?model=`) |
+| `POST` | `/v1/decisions` (also `/v1/systemone`) | Decision API in TypeSafe's System One shape (as used by Jev): `state` plus `questions` of type `choice` (with `criteria`), `noul` or `boolean`; answers carry `choice`, `confidence` and `probabilities`, or `noul` / `probability`. Answered by the fastest strong free API model |
+| `GET` | `/v1/gateway/decisions` | Recent routing decisions, newest first: requested model, mode (`direct`, `fallback`, `race`, `decide`), the decision model's pick, skipped candidates with the reason, every attempt with its outcome and latency, and the chosen route (`?limit=`, `?model=`) |
 | `GET` | `/v1/images/models` | List image models |
 | `POST` | `/v1/images/generations` | OpenAI Images API: `prompt`, optional `model`, `size` (`WIDTHxHEIGHT`), `n` (1–4), `response_format` (`url` or `b64_json`) |
 | `GET` | `/health` | Server status |

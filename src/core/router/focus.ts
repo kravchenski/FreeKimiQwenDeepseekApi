@@ -1,7 +1,7 @@
 export const AUTO_FOCUSES = ['general', 'coding', 'reasoning', 'fast'] as const;
 export type AutoFocus = typeof AUTO_FOCUSES[number];
 
-export const AUTO_MODES = ['fallback', 'race'] as const;
+export const AUTO_MODES = ['fallback', 'race', 'decide'] as const;
 export type AutoMode = typeof AUTO_MODES[number];
 
 const FOCUS_MODELS: Record<AutoFocus, RegExp | undefined> = {

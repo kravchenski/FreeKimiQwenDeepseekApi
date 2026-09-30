@@ -13,10 +13,12 @@ import { ResponsesStreamTranslator } from '../gateway/responses-stream.ts';
 import { anthropicError, anthropicToChatRequest, chatToAnthropicMessage, estimateInputTokens } from '../api/anthropic/messages.ts';
 import { AnthropicStreamTranslator } from '../api/anthropic/stream.ts';
 import { readLines } from '../core/streaming/sse.ts';
-import type { ProviderStream } from '../core/providers/provider.ts';
+import type { ChatMessage, ProviderStream } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
 import { checkProviderModels } from '../core/models/model-check.ts';
 import { DecisionLog } from '../core/router/decisions.ts';
+import { decide, readDecisionRequest, type DecisionAnswer, type DecisionRequest } from '../core/decisions/engine.ts';
+import { rankModels } from '../core/models/stats.ts';
 import type { ImageProvider } from '../core/images/images.ts';
 import { generateImages, listImageModels } from '../api/images.ts';
 import { createCloudflareImages } from '../providers/images/cloudflare.ts';
@@ -27,7 +29,7 @@ import { ProviderError, toHttpError } from '../core/providers/errors.ts';
 import { buildAutoChain } from '../core/router/auto-chain.ts';
 import { focusPreference, type AutoFocus } from '../core/router/focus.ts';
 import { GatewaySettings } from '../core/settings/gateway-settings.ts';
-import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
+import { AUTO_MODEL, parseAutoModels, SmartRouter, type Route } from '../core/router/smart-router.ts';
 import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
 import { listBrowserProfiles, loadGatewaySetting, loadModelStats, loadWebChatModels, saveWebChatModels, loadUnavailableModels, replaceUnavailableModels, loadProviderSetting, loadSignIn, saveGatewaySetting, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
 import { WebSignInStatus } from '../core/accounts/sign-in-status.ts';
@@ -186,6 +188,7 @@ const decisions = new DecisionLog();
 
 export const router = new SmartRouter(registry, parseAutoModels(config.AUTO_MODELS), Date.now, {
     onDecision: decision => decisions.add(decision),
+    choose: (prompt, routes) => chooseRoute(prompt, routes),
     firstChunkTimeoutMs: config.AUTO_FIRST_CHUNK_TIMEOUT_MS,
     autoEnabled: provider => providerSettings.autoEnabled(provider),
     autoMode: () => gatewaySettings.autoMode(),
@@ -593,7 +596,96 @@ const imageProviders: ImageProvider[] = [
     createPollinationsImages(),
 ];
 
-app.get('/v1/decisions', (c) => {
+const DECISION_TIMEOUT_MS = 15_000;
+const DECISION_CANDIDATES = 3;
+const QUICK_DECISION_MS = 8_000;
+const STRONG_DECIDER = /gpt-oss[-:]?120b|nemotron-3-(?:super|ultra)|gemma-?4|llama-3\.3-70b|qwen3|deepseek|glm|kimi/i;
+const WEAK_DECIDER = /nano|mini|small|lite|tiny|vision|calibration|guard|safety|\b(?:[1-9]|1[0-4])b\b|-(?:[1-9]|1[0-4])b\b/i;
+const deciderRank = (model: string) => WEAK_DECIDER.test(model) ? 2 : STRONG_DECIDER.test(model) ? 0 : 1;
+const CHOOSE_OPTIONS = 16;
+
+function decisionModels(requested?: string) {
+    if (requested && requested !== AUTO_MODEL && registry.resolve(requested)) return [requested];
+    const api = visibleModels().map(entry => entry.id).filter(id => {
+        const provider = registry.resolve(id);
+        return Boolean(provider?.fallback && provider.health().available);
+    });
+    const quick = api
+        .map(model => ({ model, latency: registry.stats.get(model)?.lastOutcome === 'success' ? registry.stats.get(model)?.latencyMs : undefined }))
+        .filter((entry): entry is { model: string; latency: number } => entry.latency !== undefined && entry.latency <= QUICK_DECISION_MS)
+        .sort((a, b) => deciderRank(a.model) - deciderRank(b.model) || a.latency - b.latency)
+        .map(entry => entry.model);
+    return (quick.length ? quick : rankModels(api, registry.stats)).slice(0, DECISION_CANDIDATES);
+}
+
+async function completeDecision(messages: ChatMessage[], read: (text: string) => Record<string, DecisionAnswer>, requested?: string) {
+    const failures: string[] = [];
+    for (const model of decisionModels(requested)) {
+        try {
+            const opened = await router.open(model, route => ({ model: route.model, messages }));
+            const signal = AbortSignal.timeout(DECISION_TIMEOUT_MS);
+            const result = await Promise.race([
+                collectChunks(opened.chunks),
+                new Promise<never>((_, reject) => signal.addEventListener('abort', () => reject(new Error(`no answer within ${DECISION_TIMEOUT_MS / 1000}s`)), { once: true })),
+            ]);
+            return { answers: read(result.content), model: opened.route.model };
+        } catch (error) {
+            failures.push(`${model}: ${errorText(error)}`);
+        }
+    }
+    throw new ProviderError(failures.length ? `No decision model answered: ${failures.join('; ')}` : 'No API model is available for decisions', 'unavailable', 503);
+}
+
+function describeRoute(route: Route) {
+    const stat = registry.stats.get(route.model);
+    const traits = (['coding', 'reasoning', 'fast'] as const).filter(focus => focusPreference(focus)(route.model) > 0);
+    const size = /(\d+(?:\.\d+)?)b\b/i.exec(route.model.replace(/-a\d+(?:\.\d+)?b\b/i, ''))?.[1];
+    return [
+        route.provider.fallback ? `${route.model} through the ${route.provider.id} API` : `${route.model}: a flagship model in the ${route.provider.id} web chat, strong but slower`,
+        size ? `about ${size}B parameters` : undefined,
+        traits.length ? `good for ${traits.join(', ')}` : undefined,
+        stat?.latencyMs !== undefined ? `first answer in about ${(stat.latencyMs / 1000).toFixed(1)}s` : undefined,
+    ].filter(Boolean).join('; ');
+}
+
+async function chooseRoute(prompt: string, routes: Route[]) {
+    const options = routes.slice(0, CHOOSE_OPTIONS);
+    const request: DecisionRequest = {
+        state: { request: prompt.slice(0, 4_000) },
+        questions: {
+            which: {
+                type: 'choice',
+                instructions: 'Which model should answer this request? For coding, reasoning, analysis or long writing pick a large, strong model (a flagship web chat or an API model well above 30B parameters). Pick a small fast model only for a greeting or a trivial one-line answer.',
+                criteria: Object.fromEntries(options.map(route => [route.model, describeRoute(route)])),
+            },
+        },
+    };
+    const { answers } = await decide(request, (messages, read) => completeDecision(messages, read));
+    const answer = answers.which;
+    return answer && 'choice' in answer ? answer.choice : undefined;
+}
+
+async function handleDecision(c: Context) {
+    let request: DecisionRequest;
+    try {
+        request = readDecisionRequest(await c.req.json());
+    } catch (error) {
+        const { status, type, message } = toHttpError(error instanceof SyntaxError ? new ProviderError('Invalid JSON body', 'invalid_request', 400) : error);
+        return c.json({ error: { message, type } }, status as ContentfulStatusCode);
+    }
+    try {
+        const { model, answers } = await decide(request, (messages, read) => completeDecision(messages, read, request.model));
+        return c.json({ id: `decision-${crypto.randomUUID()}`, object: 'decision', model, answers });
+    } catch (error) {
+        const { status, type, message } = toHttpError(error);
+        return c.json({ error: { message, type } }, status as ContentfulStatusCode);
+    }
+}
+
+app.post('/v1/decisions', handleDecision);
+app.post('/v1/systemone', handleDecision);
+
+app.get('/v1/gateway/decisions', (c) => {
     const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50) || 50, 1), 200);
     return c.json({ object: 'list', data: decisions.list(limit, c.req.query('model') || undefined) });
 });
