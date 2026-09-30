@@ -90,7 +90,11 @@ curl http://localhost:3260/v1/chat/completions \
 |--------|----------|-------------|
 | `GET` | `/v1/models` | List models |
 | `POST` | `/v1/chat/completions` | Chat Completions (streaming + non-streaming) |
+| `GET` | `/v1/images/models` | List image models |
+| `POST` | `/v1/images/generations` | OpenAI Images API: `prompt`, optional `model`, `size` (`WIDTHxHEIGHT`), `n` (1–4), `response_format` (`url` or `b64_json`) |
 | `GET` | `/health` | Server status |
+
+Image models: `qwen-chat/image` (your signed-in Qwen Chat, up to 2688×1536), `cloudflare/@cf/<model>` (FLUX and SDXL with the Cloudflare key) and `pollinations/<model>` (no key, watermarked). Without a `model` the first available one is used and the next is tried when it fails.
 
 DeepSeek supports tool calls. Web providers (DeepSeek) work through browser (Puppeteer) and support streaming. NVIDIA providers use `https://integrate.api.nvidia.com/v1`.
 

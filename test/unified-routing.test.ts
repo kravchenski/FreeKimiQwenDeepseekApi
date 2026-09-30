@@ -270,13 +270,17 @@ describe('unified server routing', () => {
     expect(events.at(-1).type).toBe('message_stop');
   });
 
-  test('no longer serves image endpoints', async () => {
-    const response = await server.app.fetch(new Request('http://local/v1/images/generations', {
+  test('validates image generation requests', async () => {
+    const images = (body: unknown) => server.app.fetch(new Request('http://local/v1/images/generations', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-      body: JSON.stringify({ prompt: 'a fox' }),
+      body: JSON.stringify(body),
     }));
-    expect(response.status).toBe(404);
+    expect((await images({})).status).toBe(400);
+    const unknown = await images({ prompt: 'a fox', model: 'nope/model' });
+    expect(unknown.status).toBe(404);
+    expect((await unknown.json()).error.message).toContain('Unknown image model');
+    expect((await images({ prompt: 'a fox', model: 'pollinations/sana', size: 'huge' })).status).toBe(400);
   });
 
 

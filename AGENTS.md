@@ -29,7 +29,7 @@
   OPENCODE_API_URL=http://localhost:3260
   OPENCODE_API_KEY=
   ```
-- Supports OpenAI `/v1/chat/completions`, `/v1/responses`, Anthropic `/v1/messages` and model listing `/v1/models`.
+- Supports OpenAI `/v1/chat/completions`, `/v1/responses`, Anthropic `/v1/messages`, model listing `/v1/models` and image generation `/v1/images/generations` (`/v1/images/models`).
 
 ## Coding Style & Naming Conventions
 - **Runtime**: Bun-first; avoid Node-specific APIs when Bun equivalents exist.
