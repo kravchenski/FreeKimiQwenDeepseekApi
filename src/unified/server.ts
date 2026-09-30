@@ -38,6 +38,7 @@ import { BrowserChatSession, notSignedIn, type ChatSite } from '../browser/brows
 import { listProfiles, profileDir } from '../browser/profiles.ts';
 import { ProfileRotation } from '../core/accounts/profile-rotation.ts';
 import { DEFAULT_PROFILE } from '../core/accounts/sign-in-status.ts';
+import { ARENA_CHAT_SITE, parseArenaStream } from '../providers/arena/web.ts';
 import { createBrowserChatProvider, type BrowserChatProviderConfig } from '../providers/browser-chat-provider.ts';
 import { parseZaiStream, ZAI_CHAT_SITE } from '../providers/glm/web.ts';
 import { KIMI_CHAT_SITE, parseKimiStream } from '../providers/kimi/web.ts';
@@ -135,6 +136,7 @@ function registerWebChat(id: string, ownedBy: string, site: ChatSite, parse: Bro
 registerWebChat('qwen-chat', 'qwen-web', QWEN_CHAT_SITE, parseQwenStream);
 registerWebChat('glm-chat', 'z-ai-web', ZAI_CHAT_SITE, parseZaiStream);
 registerWebChat('kimi-chat', 'kimi-web', KIMI_CHAT_SITE, parseKimiStream);
+registerWebChat('arena-chat', 'arena-web', ARENA_CHAT_SITE, parseArenaStream);
 
 const providerSettings = new ProviderSettings({
     load: provider => loadProviderSetting(db(), provider),
@@ -689,7 +691,7 @@ export async function startUnifiedServer() {
   Endpoint: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}
   Models:   ${modelCount} total (fetched from upstream APIs)
 
-  Providers: deepseek qwen-chat glm-chat kimi-chat (browser); nvidia openrouter groq gemini cerebras mistral sambanova (API keys, fallback)
+  Providers: deepseek qwen-chat glm-chat kimi-chat arena-chat (browser); nvidia openrouter groq gemini cerebras mistral sambanova (API keys, fallback)
   API providers need a key in .env or: bun run account add <provider> --api-key
 
   ${apiKey ? 'API key required (GATEWAY_API_KEY).' : 'No API key required. Set GATEWAY_API_KEY to protect the API.'} Configure OpenCode:

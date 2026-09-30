@@ -109,6 +109,10 @@ function collectRows(input: OverviewInput): Row[] {
   rows.push(deepseekRow);
 
   for (const site of input.webSites) {
+    if (!site.signIn) {
+      rows.push({ id: site.id, kind: 'web', state: 'connected', detail: `${new URL(site.url).hostname}: no sign-in needed`, url: site.url });
+      continue;
+    }
     let records: SignInRecord[] = [];
     try {
       records = input.accountSignIns ? input.accountSignIns(site.id) : [input.signIn(site.id)].filter(record => record !== undefined);

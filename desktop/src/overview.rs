@@ -73,6 +73,7 @@ pub fn display_name(id: &str) -> &str {
         "deepseek" => "DeepSeek Chat",
         "glm-chat" => "GLM Chat",
         "kimi-chat" => "Kimi Chat",
+        "arena-chat" => "Arena Chat",
         "nvidia" => "NVIDIA",
         "openrouter" => "OpenRouter",
         "groq" => "Groq",

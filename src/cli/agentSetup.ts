@@ -47,6 +47,7 @@ const FALLBACK_MODELS = [
     'deepseek-search',
     'glm-chat',
     'kimi-chat',
+    'arena-chat',
     'deepseek-ai/deepseek-v4.1-flash',
     'moonshotai/kimi-k3',
     'z-ai/glm-5.3',
