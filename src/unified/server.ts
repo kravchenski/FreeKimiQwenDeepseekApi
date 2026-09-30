@@ -18,6 +18,7 @@ import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts
 import { checkProviderModels } from '../core/models/model-check.ts';
 import { DecisionLog } from '../core/router/decisions.ts';
 import { compactToolResults } from '../core/agents/compact.ts';
+import { rewriteShellCalls, rtkRewriter, type RtkRewrite } from '../core/agents/rtk.ts';
 import { TOOL_SELECTION_THRESHOLD, ToolSelector } from '../core/agents/tools.ts';
 import { decide, readDecisionRequest, type DecisionAnswer, type DecisionRequest } from '../core/decisions/engine.ts';
 import { rankModels } from '../core/models/stats.ts';
@@ -342,7 +343,12 @@ function processToolCalls(
             }];
         }
     }
-    return { content, toolCalls, conversationalText };
+    let rtkChanges: RtkRewrite[] = [];
+    if (toolCalls?.length && gatewaySettings.agentOption('rtk')) {
+        const rewrite = rtkRewriter();
+        if (rewrite) ({ toolCalls, changes: rtkChanges } = rewriteShellCalls(toolCalls, rewrite));
+    }
+    return { content, toolCalls, conversationalText, rtkChanges };
 }
 
 function streamChunk(
@@ -581,8 +587,9 @@ app.post('/api/chat/completions', async (c) => {
             throw error;
         }
         finish();
-        const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
+        const { toolCalls, conversationalText, rtkChanges } = processToolCalls(content, captureToolCalls, combinedTools, messages);
         for (const [name, value] of Object.entries(routeHeaders)) c.header(name, value);
+        if (rtkChanges.length) c.header('x-gateway-rtk', String(rtkChanges.length));
         return c.json({
             id, object: 'chat.completion', created, model: routedModel,
             choices: [{

@@ -72,6 +72,18 @@ To see which models actually answer for your keys and accounts, run `bun run mod
 curl http://localhost:3260/v1/models
 ```
 
+### Coding agents
+
+Requests that carry tools (Claude Code, Codex, pi, OpenCode and other agents) get three extra steps, each switchable with `bun run account auto --<option> on|off` or on the desktop Settings page:
+
+| Option | Default | What it does |
+|---|---|---|
+| `--compact` | on | Trims tool output the agent sends back: colours, progress redraws and repeated lines go, very long output keeps its start, its end and every error or warning line. |
+| `--tools` | on | With more than 15 tools, the decision model keeps only the ones the task needs; core tools (read, edit, write, shell, search) and tools already used stay. The answer is cached per task. |
+| `--rtk` | off | Rewrites the agent's shell commands with the installed [rtk](https://github.com/rtk-ai/rtk) (`git status` → `rtk git status`), so their output comes back compact. Needs `rtk` on the machine that runs the gateway and the agent. |
+
+The response headers `x-gateway-compacted`, `x-gateway-tools` and `x-gateway-rtk` and the entries in `/v1/gateway/decisions` show what was saved.
+
 ## First Request
 
 ```bash

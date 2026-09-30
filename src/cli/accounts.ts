@@ -46,10 +46,11 @@ export const ACCOUNTS_USAGE = `Usage: bun run account <command>
   init                                            Create ACCOUNTS_SECRET in the system keyring (moves it out of .env)
   secret                                          Show where ACCOUNTS_SECRET is loaded from
   provider <id> [--auto on|off]                   Show or change whether model=auto may use a provider
-  auto [--focus <f>] [--mode <m>] [--compact on|off] [--tools on|off]
+  auto [--focus <f>] [--mode <m>] [--compact on|off] [--tools on|off] [--rtk on|off]
                                                   Show or change model=auto (focus general|coding|reasoning|fast, mode fallback|race|decide)
                                                   and coding agent requests (--compact trims tool output,
-                                                  --tools keeps only the tools a request needs)
+                                                  --tools keeps only the tools a request needs,
+                                                  --rtk runs the agent's shell commands through rtk)
   add <provider> --api-key [--label <name>]       Save an API key (the key is always prompted)
   list [provider]                                 List saved API keys
   remove <id>                                     Delete a saved API key
@@ -116,7 +117,7 @@ export async function runAccountsCommand(args: string[], deps: AccountsCliDeps) 
   }
 
   if (command === 'auto' && deps.autoSettings) {
-    const current = deps.autoSettings({ focus: option(args, '--focus'), mode: option(args, '--mode'), agents: { compact: option(args, '--compact'), tools: option(args, '--tools') } });
+    const current = deps.autoSettings({ focus: option(args, '--focus'), mode: option(args, '--mode'), agents: { compact: option(args, '--compact'), tools: option(args, '--tools'), rtk: option(args, '--rtk') } });
     deps.log(`auto focus: ${current.focus}`);
     deps.log(`auto mode: ${current.mode}`);
     for (const [name, on] of Object.entries(current.agents ?? {})) deps.log(`agents ${name}: ${on ? 'on' : 'off'}`);
