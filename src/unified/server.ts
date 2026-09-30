@@ -16,6 +16,11 @@ import { readLines } from '../core/streaming/sse.ts';
 import type { ProviderStream } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
 import { checkProviderModels } from '../core/models/model-check.ts';
+import type { ImageProvider } from '../core/images/images.ts';
+import { generateImages, listImageModels } from '../api/images.ts';
+import { createCloudflareImages } from '../providers/images/cloudflare.ts';
+import { createPollinationsImages } from '../providers/images/pollinations.ts';
+import { createQwenChatImages } from '../providers/images/qwen-chat.ts';
 import { collectChunks } from '../core/streaming/sse.ts';
 import { ProviderError, toHttpError } from '../core/providers/errors.ts';
 import { buildAutoChain } from '../core/router/auto-chain.ts';
@@ -31,8 +36,8 @@ import { parseQwenStream, QWEN_CHAT_SITE } from '../providers/qwen/web.ts';
 import { gatewayStatus } from '../core/status.ts';
 import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
-import { API_KEY_PROVIDERS, createApiProvider, createNvidiaProvider, defaultAuto, forgetSavedKeys, FREE_API_PROVIDERS } from '../providers/catalog.ts';
-import { openCredentialStore } from '../core/accounts/credential-store.ts';
+import { API_KEY_PROVIDERS, apiKeyProvider, createApiProvider, createNvidiaProvider, defaultAuto, forgetSavedKeys, FREE_API_PROVIDERS } from '../providers/catalog.ts';
+import { openCredentialStore, savedApiKey } from '../core/accounts/credential-store.ts';
 import { loadAccountsSecret } from '../core/secrets/accounts-secret.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
 import { BrowserChatSession, notSignedIn, type ChatSite, type WebChatModel } from '../browser/browser-chat.ts';
@@ -573,6 +578,41 @@ app.post('/api/v1/chat/completions', async (c) => {
         headers: c.req.raw.headers,
         body: c.req.raw.body
     }));
+});
+
+const imageProviders: ImageProvider[] = [
+    createQwenChatImages(
+        () => rotation.order('qwen-chat').map(profile => ({ profile, session: browserSession(profile) })),
+        () => signIns.health('qwen-chat', accountProfiles()).available,
+    ),
+    createCloudflareImages(apiKeyProvider('cloudflare')!, () => process.env.CLOUDFLARE_API_KEY || savedApiKey(credentialStore, 'cloudflare')),
+    createPollinationsImages(),
+];
+
+app.get('/v1/images/models', async (c) => {
+    const models = await listImageModels(imageProviders);
+    return c.json({ object: 'list', data: models.map(({ id, ownedBy }) => ({ id, object: 'model', created: 0, owned_by: ownedBy })) });
+});
+
+app.post('/v1/images/generations', async (c) => {
+    let body: Record<string, unknown>;
+    try {
+        body = await c.req.json();
+    } catch {
+        return c.json({ error: { message: 'Invalid JSON body', type: 'invalid_request_error' } }, 400);
+    }
+    try {
+        return c.json(await generateImages(imageProviders, body, attempt => logRequest({
+            provider: attempt.provider,
+            model: attempt.model,
+            status: attempt.ok ? 'success' : 'error',
+            latencyMs: attempt.latencyMs,
+            ...(attempt.error ? { error: attempt.error.slice(0, 500) } : {}),
+        })));
+    } catch (error) {
+        const { status, type, message } = toHttpError(error);
+        return c.json({ error: { message, type } }, status as ContentfulStatusCode);
+    }
 });
 
 app.get('/v1/models', (c) => {
