@@ -91,7 +91,7 @@ curl http://localhost:3260/v1/chat/completions \
 | `GET` | `/v1/models` | List models |
 | `POST` | `/v1/chat/completions` | Chat Completions (streaming + non-streaming) |
 | `POST` | `/v1/decisions` (also `/v1/systemone`) | Decision API in TypeSafe's System One shape (as used by Jev): `state` plus `questions` of type `choice` (with `criteria`), `noul` or `boolean`; answers carry `choice`, `confidence` and `probabilities`, or `noul` / `probability`. Answered by the fastest strong free API model |
-| `GET` | `/v1/gateway/decisions` | Recent routing decisions, newest first: requested model, mode (`direct`, `fallback`, `race`, `decide`), the decision model's pick, skipped candidates with the reason, every attempt with its outcome and latency, and the chosen route (`?limit=`, `?model=`) |
+| `GET` | `/v1/gateway/decisions` | Recent routing decisions, newest first: requested model, mode (`direct`, `fallback`, `race`, `decide`), the decision model's pick and how long it took (`decisionMs`), skipped candidates with the reason, every attempt with its outcome and latency, and the chosen route (`?limit=`, `?model=`) |
 | `GET` | `/v1/images/models` | List image models |
 | `POST` | `/v1/images/generations` | OpenAI Images API: `prompt`, optional `model`, `size` (`WIDTHxHEIGHT`), `n` (1–4), `response_format` (`url` or `b64_json`) |
 | `GET` | `/health` | Server status |

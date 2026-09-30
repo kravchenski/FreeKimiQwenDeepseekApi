@@ -123,13 +123,15 @@ export class SmartRouter {
     else if (!modelMissing) this.cooldownUntil.set(route.provider.id, this.now() + PROVIDER_COOLDOWN_MS);
   }
 
-  private decide(model: string, mode: RoutingDecision['mode'], preferredModel: string | undefined, skipped: SkippedRoute[], attempts: RouteAttempt[], chosen?: Route, error?: unknown, picked?: string) {
+  private decide(model: string, mode: RoutingDecision['mode'], preferredModel: string | undefined, skipped: SkippedRoute[], attempts: RouteAttempt[], chosen?: Route, error?: unknown, picked?: string, decisionMs?: number, decisionError?: string) {
     this.options.onDecision?.({
       at: this.now(),
       requestedModel: model,
       mode,
       ...(preferredModel ? { preferredModel } : {}),
       ...(picked ? { picked } : {}),
+      ...(decisionMs !== undefined ? { decisionMs } : {}),
+      ...(decisionError ? { decisionError } : {}),
       skipped,
       attempts,
       ...(chosen ? { chosen: { model: chosen.model, provider: chosen.provider.id } } : {}),
@@ -152,8 +154,15 @@ export class SmartRouter {
     }
     if (mode === 'race') return this.race(model, routes, build, preferredModel, skipped);
     let picked: string | undefined;
+    let decisionMs: number | undefined;
+    let decisionError: string | undefined;
     if (mode === 'decide') {
-      picked = await this.options.choose!(promptOf(build(routes[0]!).messages), routes).catch(() => undefined);
+      const decisionStarted = this.now();
+      picked = await this.options.choose!(promptOf(build(routes[0]!).messages), routes).catch(error => {
+        decisionError = errorText(error);
+        return undefined;
+      });
+      decisionMs = this.now() - decisionStarted;
       if (picked) routes = [...routes.filter(route => route.model === picked), ...routes.filter(route => route.model !== picked)];
     }
     const failures: string[] = [];
@@ -165,20 +174,20 @@ export class SmartRouter {
         const { stream, chunks, latencyMs } = await this.attempt(route, build, new AbortController(), timeoutMs);
         this.succeeded(route, latencyMs);
         attempts.push({ model: route.model, provider: route.provider.id, outcome: 'chosen', latencyMs });
-        this.decide(model, mode, preferredModel, skipped, attempts, route, undefined, picked);
+        this.decide(model, mode, preferredModel, skipped, attempts, route, undefined, picked, decisionMs, decisionError);
         return { ...stream, chunks, route };
       } catch (error) {
         this.recordFailure(route, error, routes.length > 1);
         attempts.push(failedAttempt(route, error, this.now() - startedAt));
         if (routes.length === 1) {
-          this.decide(model, mode, preferredModel, skipped, attempts, undefined, error, picked);
+          this.decide(model, mode, preferredModel, skipped, attempts, undefined, error, picked, decisionMs, decisionError);
           throw error;
         }
         failures.push(`${route.model}: ${errorText(error)}`);
       }
     }
     const error = new ProviderError(`All routes failed for model ${model}: ${failures.join('; ')}`, 'unavailable');
-    this.decide(model, mode, preferredModel, skipped, attempts, undefined, error, picked);
+    this.decide(model, mode, preferredModel, skipped, attempts, undefined, error, picked, decisionMs, decisionError);
     throw error;
   }
 

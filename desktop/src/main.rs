@@ -848,7 +848,7 @@ impl Shell {
         let modes: [(&'static str, &'static str, &'static str); 3] = [
             ("fallback", "One by one", "Tries the chain in order and moves on only when a model fails."),
             ("race", "All at once", "Sends each request to the first three models at the same time and keeps the first answer. Faster, but uses the limits of several providers."),
-            ("decide", "Decision model", "A fast model reads each request and picks the model that suits it best; the rest of the chain stays as backup. Adds about a second per request. Images are not affected."),
+            ("decide", "Decision model", "A fast model reads each request and picks the model that suits it best; the rest of the chain stays as backup. Adds a few seconds per request. Images are not affected."),
         ];
         let current_mode = auto.as_ref().map(|auto| auto.mode.clone()).unwrap_or_default();
         let mode_hint = modes.iter().find(|(value, _, _)| *value == current_mode).map(|(_, _, hint)| *hint).unwrap_or("Loading…");

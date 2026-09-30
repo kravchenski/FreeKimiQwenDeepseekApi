@@ -77,10 +77,12 @@ describe('decide mode', () => {
     const log = new DecisionLog();
     const prompts: string[] = [];
     const registry = new ProviderRegistry().register(provider('a', seen)).register(provider('b', seen));
-    const router = new SmartRouter(registry, ['a-model', 'b-model'], Date.now, {
+    let clock = 1_000;
+    const router = new SmartRouter(registry, ['a-model', 'b-model'], () => clock, {
       autoMode: () => 'decide',
       choose: async (prompt, routes) => {
         prompts.push(`${prompt} | ${routes.map(route => route.model).join(',')}`);
+        clock += 1_500;
         return 'b-model';
       },
       onDecision: decision => log.add(decision),
@@ -88,14 +90,16 @@ describe('decide mode', () => {
     const opened = await router.open('auto', route => ({ model: route.model, messages: [{ role: 'user', content: 'fix my code' }] }));
     expect(opened.route.model).toBe('b-model');
     expect(prompts).toEqual(['fix my code | a-model,b-model']);
-    expect(log.list()[0]).toMatchObject({ mode: 'decide', picked: 'b-model', chosen: { model: 'b-model' } });
+    expect(log.list()[0]).toMatchObject({ mode: 'decide', picked: 'b-model', decisionMs: 1_500, chosen: { model: 'b-model' } });
   });
 
   test('keeps the chain order when the decision fails', async () => {
     const seen: string[] = [];
     const registry = new ProviderRegistry().register(provider('a', seen)).register(provider('b', seen));
-    const router = new SmartRouter(registry, ['a-model', 'b-model'], Date.now, { autoMode: () => 'decide', choose: async () => { throw new Error('down'); } });
+    const log = new DecisionLog();
+    const router = new SmartRouter(registry, ['a-model', 'b-model'], Date.now, { autoMode: () => 'decide', choose: async () => { throw new Error('down'); }, onDecision: decision => log.add(decision) });
     expect((await router.open('auto', route => ({ model: route.model, messages: [] }))).route.model).toBe('a-model');
+    expect(log.list()[0]).toMatchObject({ mode: 'decide', decisionError: 'down' });
   });
 
   test('reads the latest user text from plain and multi-part messages', () => {
