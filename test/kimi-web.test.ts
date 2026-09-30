@@ -56,4 +56,13 @@ describe('Kimi web chat', () => {
     expect(parseKimiEvent('not json')).toBeNull();
     expect(parseKimiEvent('{"done":{}}')).toBe('done');
   });
+
+  test('reports an error that arrives after the done event', async () => {
+    const overloaded = [
+      frame({ heartbeat: {} }),
+      frame({ eventOffset: 1, done: {} }),
+      frame({ error: { code: 'resource_exhausted', debug: { reason: 'REASON_SERVER_OVERLOADED_FOR_FREE_USER' } } }, 2),
+    ];
+    await expect(collectChunks(parseKimiStream(split(overloaded, 7)))).rejects.toThrow('REASON_SERVER_OVERLOADED_FOR_FREE_USER');
+  });
 });
