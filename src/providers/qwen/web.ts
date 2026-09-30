@@ -12,6 +12,7 @@ export const QWEN_CHAT_SITE: ChatSite = {
   responseUrl: /\/api\/v2\/chat\/completions/,
   signIn: { storageKey: 'token', claim: 'id' },
   challengeResponse: /FAIL_SYS_USER_VALIDATE|\/punish\?/,
+  ignoredResponse: /^\{"code":0,[^\n]*"sig":"from bx"/,
 };
 
 const VERIFICATION = /FAIL_SYS_USER_VALIDATE|action=captcha|\/punish\?/;
