@@ -50,7 +50,7 @@ describe('SmartRouter', () => {
     const { open, calls } = setup({ a: 'ok', b: 'ok' }, ['a']);
     const routed = await open('auto');
     expect(routed.route.model).toBe('b-model');
-    expect(await collectChunks(routed.chunks)).toEqual({ content: 'b:1 b:2', reasoning: '' });
+    expect(await collectChunks(routed.chunks)).toMatchObject({ content: 'b:1 b:2', reasoning: '' });
     expect(calls).toEqual(['b-model']);
   });
 
@@ -72,7 +72,7 @@ describe('SmartRouter', () => {
     const { open } = setup({ a: 'empty', b: 'ok' });
     const routed = await open('auto');
     expect(routed.route.model).toBe('a-model');
-    expect(await collectChunks(routed.chunks)).toEqual({ content: '', reasoning: '' });
+    expect(await collectChunks(routed.chunks)).toMatchObject({ content: '', reasoning: '' });
   });
 
   test('cools down failed providers for auto routing', async () => {

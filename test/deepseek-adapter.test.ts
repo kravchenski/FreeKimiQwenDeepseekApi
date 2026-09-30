@@ -33,7 +33,7 @@ describe('DeepSeek provider adapter', () => {
     const result = await provider(body).stream({ model: 'deepseek-reasoner', messages: [] });
 
     expect(result.responseFields).toEqual({ x_deepseek_chat_id: 'session-1' });
-    expect(await collectChunks(result.chunks)).toEqual({ content: 'Hi', reasoning: 'plan' });
+    expect(await collectChunks(result.chunks)).toMatchObject({ content: 'Hi', reasoning: 'plan' });
   });
 
   test('propagates upstream failures before streaming', async () => {
@@ -85,7 +85,7 @@ describe('DeepSeek provider adapter', () => {
     });
 
     const first = await deepseek.stream({ model: 'deepseek-default', messages: [] });
-    expect(await collectChunks(first.chunks)).toEqual({ content: 'ok', reasoning: '' });
+    expect(await collectChunks(first.chunks)).toMatchObject({ content: 'ok', reasoning: '' });
     expect(used.sort()).toEqual(['ds-a', 'ds-b']);
     const status = () => Object.fromEntries(pool.list().map(state => [state.accountId, state.status]));
     expect(status()).toEqual({ 'ds-a': 'cooldown', 'ds-b': 'healthy' });

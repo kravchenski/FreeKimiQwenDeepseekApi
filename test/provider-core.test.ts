@@ -96,6 +96,6 @@ describe('collectChunks', () => {
       yield { type: 'reasoning', text: 'more' };
       yield { type: 'content', text: 'world' };
     }
-    expect(await collectChunks(chunks())).toEqual({ content: 'hello world', reasoning: 'think more' });
+    expect(await collectChunks(chunks())).toMatchObject({ content: 'hello world', reasoning: 'think more' });
   });
 });

@@ -312,6 +312,36 @@ describe('unified server routing', () => {
     expect(requests[1]!.messages.at(-1)!.content).toContain('Your last reply was empty');
   });
 
+  test('passes tools natively to providers that take them and returns their tool calls', async () => {
+    const seen: ChatRequest[] = [];
+    server.registry.register({
+      id: 'native',
+      ownedBy: 'native-owner',
+      fallback: true,
+      supports: model => model === 'native-model',
+      listModels: async () => ['native-model'],
+      capabilities: () => ({ nativeTools: true, reasoning: false, vision: false }),
+      health: () => ({ available: true }),
+      async stream(request) {
+        seen.push(request);
+        return { chunks: (async function* () {
+          yield { type: 'tool_call' as const, index: 0, id: 'call_x', name: 'bash', arguments: '{"command":"git status"}' };
+        })() };
+      },
+    });
+    const bash = [{ type: 'function', function: { name: 'bash', description: 'Run a shell command', parameters: { type: 'object', properties: { command: { type: 'string' } } } } }];
+    for (const stream of [false, true]) {
+      seen.length = 0;
+      const response = await chat({ model: 'native-model', tools: bash, stream, messages: [{ role: 'user', content: 'status?' }] });
+      expect(seen[0]!.tools).toEqual(bash);
+      expect(seen[0]!.messages.some(message => message.role === 'system' && String(message.content).includes('bash'))).toBeFalse();
+      const text = await response.text();
+      expect(text).toContain('"name":"bash"');
+      expect(text).toContain('git status');
+      expect(text).toContain('tool_calls');
+    }
+  });
+
   test('validates image generation requests', async () => {
     const images = (body: unknown) => server.app.fetch(new Request('http://local/v1/images/generations', {
       method: 'POST',

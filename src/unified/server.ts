@@ -13,7 +13,7 @@ import { ResponsesStreamTranslator } from '../gateway/responses-stream.ts';
 import { anthropicError, anthropicToChatRequest, chatToAnthropicMessage, estimateInputTokens } from '../api/anthropic/messages.ts';
 import { AnthropicStreamTranslator } from '../api/anthropic/stream.ts';
 import { readLines } from '../core/streaming/sse.ts';
-import type { ChatMessage, ProviderStream } from '../core/providers/provider.ts';
+import type { ChatMessage, ChatRequest, ProviderStream, ToolCall } from '../core/providers/provider.ts';
 import { ProviderRegistry, type ModelEntry } from '../core/providers/registry.ts';
 import { checkProviderModels } from '../core/models/model-check.ts';
 import { DecisionLog } from '../core/router/decisions.ts';
@@ -27,7 +27,7 @@ import { generateImages, listImageModels } from '../api/images.ts';
 import { createCloudflareImages } from '../providers/images/cloudflare.ts';
 import { createPollinationsImages } from '../providers/images/pollinations.ts';
 import { createQwenChatImages } from '../providers/images/qwen-chat.ts';
-import { collectChunks } from '../core/streaming/sse.ts';
+import { collectChunks, ToolCallAssembler } from '../core/streaming/sse.ts';
 import { ProviderError, toHttpError } from '../core/providers/errors.ts';
 import { buildAutoChain } from '../core/router/auto-chain.ts';
 import { focusPreference, type AutoFocus } from '../core/router/focus.ts';
@@ -302,7 +302,7 @@ function scheduleModelRefresh() {
 
 const EMPTY_REPLY_NUDGE = {
     role: 'user',
-    content: 'Your last reply was empty. Continue the task now: call the next tool in the tool call format described above, or give the final answer.',
+    content: 'Your last reply was empty. Continue the task now: call the next tool you need, or give the final answer.',
 };
 
 function needsNudge(content: string) {
@@ -333,8 +333,10 @@ function processToolCalls(
     content: string,
     captureToolCalls: boolean,
     combinedTools: Array<Record<string, any>> | null,
-    messages: Array<Record<string, any>>
+    messages: Array<Record<string, any>>,
+    nativeCalls: ToolCall[] = []
 ) {
+    if (nativeCalls.length) return withRtk(content, nativeCalls.map((call, index) => ({ ...call, index })), null);
     const recoveredShell = captureToolCalls ? recoverBrokenBashToolCall(content) : null;
     const conversationalText = recoveredShell
         ? conversationalShellText(recoveredShell.name, recoveredShell.arguments)
@@ -352,6 +354,10 @@ function processToolCalls(
             }];
         }
     }
+    return withRtk(content, toolCalls, conversationalText);
+}
+
+function withRtk(content: string, toolCalls: Array<Record<string, any>> | null, conversationalText: string | null) {
     let rtkChanges: RtkRewrite[] = [];
     if (toolCalls?.length && gatewaySettings.agentOption('rtk')) {
         const rewrite = rtkRewriter();
@@ -410,18 +416,24 @@ function handleProviderStream(
 
         let content = '';
         let reasoning = '';
+        const assembler = new ToolCallAssembler();
         for await (const chunk of first.chunks) {
+            if (chunk.type === 'tool_call') {
+                assembler.add(chunk);
+                continue;
+            }
             if (chunk.type === 'content') content += chunk.text;
             else reasoning += chunk.text;
             if (captureToolCalls) continue;
             send(chunk.type === 'content' ? { content: chunk.text } : { reasoning_content: chunk.text });
         }
+        let nativeCalls = assembler.result();
 
-        if (captureToolCalls && needsNudge(content) && !isCodebaseActionRequest(messages)) {
-            ({ content, reasoning } = await collectChunks((await retry()).chunks));
+        if (captureToolCalls && !nativeCalls.length && needsNudge(content) && !isCodebaseActionRequest(messages)) {
+            ({ content, reasoning, toolCalls: nativeCalls } = await collectChunks((await retry()).chunks));
         }
 
-        const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages);
+        const { toolCalls, conversationalText } = processToolCalls(content, captureToolCalls, combinedTools, messages, nativeCalls);
         if (conversationalText) content = conversationalText;
 
         if (toolCalls?.length) {
@@ -559,7 +571,17 @@ app.post('/api/chat/completions', async (c) => {
         const sessionKey = model === AUTO_MODEL ? conversationId ?? conversationKey(messages) : undefined;
         const sessions = sessionKey ? affinity() : undefined;
         const pinned = sessionKey ? sessions?.get(sessionKey, AUTO_MODEL) : undefined;
-        const first = await router.open(model, route => ({ model: route.model, messages: upstreamMessages, conversationId }), pinned?.model, details)
+        const requestFor = (route: Route, nudge = false): ChatRequest => {
+            const native = captureToolCalls && route.provider.capabilities(route.model).nativeTools;
+            const base = native ? agentMessages : upstreamMessages;
+            return {
+                model: route.model,
+                messages: nudge ? [...base, EMPTY_REPLY_NUDGE] : base,
+                conversationId,
+                ...(native ? { tools: promptTools as ChatMessage[] } : {}),
+            };
+        };
+        const first = await router.open(model, route => requestFor(route), pinned?.model, details)
             .catch(error => {
                 logRequest({ provider: registry.resolve(model)?.id ?? 'none', model, status: 'error', latencyMs: Date.now() - startedAt, error: errorText(error) });
                 throw error;
@@ -573,7 +595,7 @@ app.post('/api/chat/completions', async (c) => {
             latencyMs: Date.now() - startedAt,
             ...(error === undefined ? {} : { error: errorText(error) }),
         });
-        const open = (nudge = false) => provider.stream({ model: routedModel, messages: nudge ? [...upstreamMessages, EMPTY_REPLY_NUDGE] : upstreamMessages, conversationId });
+        const open = (nudge = false) => provider.stream(requestFor(first.route, nudge));
         const routeHeaders: Record<string, string> = {
             'x-gateway-route': `${provider.id}/${routedModel}`,
             ...(compaction?.stats.results ? { 'x-gateway-compacted': `${compaction.stats.charsBefore}->${compaction.stats.charsAfter}` } : {}),
@@ -587,11 +609,12 @@ app.post('/api/chat/completions', async (c) => {
         let content: string;
         let reasoning: string;
         let responseFields = first.responseFields;
+        let nativeCalls: ToolCall[] = [];
         try {
-            ({ content, reasoning } = await collectChunks(first.chunks));
-            if (captureToolCalls && needsNudge(content) && !isCodebaseActionRequest(messages)) {
+            ({ content, reasoning, toolCalls: nativeCalls } = await collectChunks(first.chunks));
+            if (captureToolCalls && !nativeCalls.length && needsNudge(content) && !isCodebaseActionRequest(messages)) {
                 const retried = await open(true);
-                ({ content, reasoning } = await collectChunks(retried.chunks));
+                ({ content, reasoning, toolCalls: nativeCalls } = await collectChunks(retried.chunks));
                 responseFields = retried.responseFields;
             }
         } catch (error) {
@@ -599,7 +622,7 @@ app.post('/api/chat/completions', async (c) => {
             throw error;
         }
         finish();
-        const { toolCalls, conversationalText, rtkChanges } = processToolCalls(content, captureToolCalls, combinedTools, messages);
+        const { toolCalls, conversationalText, rtkChanges } = processToolCalls(content, captureToolCalls, combinedTools, messages, nativeCalls);
         for (const [name, value] of Object.entries(routeHeaders)) c.header(name, value);
         if (rtkChanges.length) c.header('x-gateway-rtk', String(rtkChanges.length));
         return c.json({

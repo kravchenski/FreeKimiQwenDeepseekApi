@@ -1,4 +1,4 @@
-import type { ChatChunk } from '../providers/provider.ts';
+import type { ChatChunk, ToolCall } from '../providers/provider.ts';
 
 export async function* readLines(body: ReadableStream<Uint8Array> | null) {
   if (!body) throw new Error('Response body is empty');
@@ -24,14 +24,39 @@ export async function* readLines(body: ReadableStream<Uint8Array> | null) {
   }
 }
 
+export class ToolCallAssembler {
+  private readonly calls = new Map<number, { id?: string; name: string; arguments: string }>();
+
+  add(chunk: Extract<ChatChunk, { type: 'tool_call' }>) {
+    const call = this.calls.get(chunk.index) ?? { name: '', arguments: '' };
+    if (chunk.id) call.id = chunk.id;
+    if (chunk.name) call.name += chunk.name;
+    if (chunk.arguments) call.arguments += chunk.arguments;
+    this.calls.set(chunk.index, call);
+  }
+
+  result(): ToolCall[] {
+    return [...this.calls.entries()]
+      .sort(([a], [b]) => a - b)
+      .filter(([, call]) => call.name)
+      .map(([index, call]) => ({
+        id: call.id || `call_${index}_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`,
+        type: 'function' as const,
+        function: { name: call.name, arguments: call.arguments || '{}' },
+      }));
+  }
+}
+
 export async function collectChunks(chunks: AsyncIterable<ChatChunk>) {
   let content = '';
   let reasoning = '';
+  const tools = new ToolCallAssembler();
   for await (const chunk of chunks) {
     if (chunk.type === 'content') content += chunk.text;
-    else reasoning += chunk.text;
+    else if (chunk.type === 'reasoning') reasoning += chunk.text;
+    else tools.add(chunk);
   }
-  return { content, reasoning };
+  return { content, reasoning, toolCalls: tools.result() };
 }
 
 export interface PrimedChunks extends AsyncIterableIterator<ChatChunk> {

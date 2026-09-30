@@ -21,7 +21,7 @@ async function* bytes(text: string, size = 7) {
 
 describe('Z.ai web chat', () => {
   test('parses thinking, answer and done events across chunk boundaries', async () => {
-    expect(await collectChunks(parseZaiStream(bytes(sample)))).toEqual({ content: 'pong', reasoning: 'The user wants pong.' });
+    expect(await collectChunks(parseZaiStream(bytes(sample)))).toMatchObject({ content: 'pong', reasoning: 'The user wants pong.' });
   });
 
   test('ignores unrelated and malformed lines', () => {
