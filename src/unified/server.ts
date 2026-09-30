@@ -22,6 +22,7 @@ import { restoreShellCalls, rewriteShellCalls, rtkRewriter, type RtkRewrite } fr
 import { TOOL_SELECTION_THRESHOLD, ToolSelector } from '../core/agents/tools.ts';
 import { decide, readDecisionRequest, type DecisionAnswer, type DecisionRequest } from '../core/decisions/engine.ts';
 import { rankModels } from '../core/models/stats.ts';
+import { modelStrength } from '../core/models/strength.ts';
 import type { ImageProvider } from '../core/images/images.ts';
 import { generateImages, listImageModels } from '../api/images.ts';
 import { createCloudflareImages } from '../providers/images/cloudflare.ts';
@@ -591,7 +592,7 @@ app.post('/api/chat/completions', async (c) => {
                 ...(native ? { tools: promptTools as ChatMessage[] } : {}),
             };
         };
-        const first = await router.open(model, route => requestFor(route), pinned?.model, details)
+        const first = await router.open(model, route => requestFor(route), pinned?.model, details, { nativeToolsFirst: captureToolCalls })
             .catch(error => {
                 logRequest({ provider: registry.resolve(model)?.id ?? 'none', model, status: 'error', latencyMs: Date.now() - startedAt, error: errorText(error) });
                 throw error;
@@ -674,9 +675,6 @@ const imageProviders: ImageProvider[] = [
 const DECISION_TIMEOUT_MS = 15_000;
 const DECISION_CANDIDATES = 3;
 const QUICK_DECISION_MS = 8_000;
-const STRONG_DECIDER = /gpt-oss[-:]?120b|nemotron-3-(?:super|ultra)|gemma-?4|llama-3\.3-70b|qwen3|deepseek|glm|kimi/i;
-const WEAK_DECIDER = /nano|mini|small|lite|tiny|vision|calibration|guard|safety|\b(?:[1-9]|1[0-4])b\b|-(?:[1-9]|1[0-4])b\b/i;
-const deciderRank = (model: string) => WEAK_DECIDER.test(model) ? 2 : STRONG_DECIDER.test(model) ? 0 : 1;
 const CHOOSE_OPTIONS = 16;
 
 function decisionModels(requested?: string) {
@@ -688,7 +686,7 @@ function decisionModels(requested?: string) {
     const quick = api
         .map(model => ({ model, latency: registry.stats.get(model)?.lastOutcome === 'success' ? registry.stats.get(model)?.latencyMs : undefined }))
         .filter((entry): entry is { model: string; latency: number } => entry.latency !== undefined && entry.latency <= QUICK_DECISION_MS)
-        .sort((a, b) => deciderRank(a.model) - deciderRank(b.model) || a.latency - b.latency)
+        .sort((a, b) => modelStrength(a.model) - modelStrength(b.model) || a.latency - b.latency)
         .map(entry => entry.model);
     return (quick.length ? quick : rankModels(api, registry.stats)).slice(0, DECISION_CANDIDATES);
 }

@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { ChatChunk, Provider } from '../src/core/providers/provider.ts';
+import { ProviderRegistry } from '../src/core/providers/registry.ts';
+import { SmartRouter } from '../src/core/router/smart-router.ts';
 import { collectChunks } from '../src/core/streaming/sse.ts';
 import { parseToolCallJson } from '../src/core/tools/tool-calls.ts';
 import { apiKeyProvider, createApiProvider } from '../src/providers/catalog.ts';
@@ -67,5 +70,33 @@ describe('text tool calls from web chats', () => {
   test('repairs an extra brace after string arguments in several calls', () => {
     const text = '{"tool_calls":[{"name":"bash","arguments":"{\\"command\\":\\"git log -3\\"}"}},{"name":"bash","arguments":"{\\"command\\":\\"bun test\\"}"}}]}';
     expect(commands(text)).toEqual(['git log -3', 'bun test']);
+  });
+});
+
+describe('auto for agent requests', () => {
+  const provider = (id: string, nativeTools: boolean): Provider => ({
+    id,
+    ownedBy: id,
+    supports: model => model === `${id}-model`,
+    listModels: async () => [`${id}-model`],
+    capabilities: () => ({ nativeTools, reasoning: false, vision: false }),
+    health: () => ({ available: true }),
+    stream: async request => ({ chunks: (async function* (): AsyncGenerator<ChatChunk> { yield { type: 'content', text: request.model }; })() }),
+  });
+
+  test('tries models with native tool calling before web chats, and keeps the order for plain chat', async () => {
+    const registry = new ProviderRegistry().register(provider('web', false)).register(provider('api', true));
+    const router = new SmartRouter(registry, ['web-model', 'api-model']);
+    const build = (route: { model: string }) => ({ model: route.model, messages: [] });
+    expect((await router.open('auto', build, undefined, undefined, { nativeToolsFirst: true })).route.model).toBe('api-model');
+    expect((await router.open('auto', build)).route.model).toBe('web-model');
+    expect((await router.open('web-model', build, undefined, undefined, { nativeToolsFirst: true })).route.model).toBe('web-model');
+  });
+
+  test('puts strong models ahead of small ones for agent requests', async () => {
+    const registry = new ProviderRegistry().register(provider('tiny-mini', true)).register(provider('qwen3-coder', true));
+    const router = new SmartRouter(registry, ['tiny-mini-model', 'qwen3-coder-model']);
+    const build = (route: { model: string }) => ({ model: route.model, messages: [] });
+    expect((await router.open('auto', build, undefined, undefined, { nativeToolsFirst: true })).route.model).toBe('qwen3-coder-model');
   });
 });
