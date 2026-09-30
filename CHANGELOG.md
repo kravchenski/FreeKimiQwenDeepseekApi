@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.1](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.0.0...v2.0.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **browser:** relaunch a closed chat browser and send Qwen prompts reliably ([65cb38d](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/65cb38dd53b2ff7ea54efcb89716d6f7f9bc63c6))
+* **models:** reload provider models as soon as an API key is added or removed ([e635bf5](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/e635bf55335989bbd2cd68af4e05132c5a1396fe))
+
 ## [2.0.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v1.10.0...v2.0.0) (2026-09-28)
 
 
