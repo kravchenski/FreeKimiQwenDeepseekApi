@@ -23,7 +23,7 @@ import { focusPreference, type AutoFocus } from '../core/router/focus.ts';
 import { GatewaySettings } from '../core/settings/gateway-settings.ts';
 import { AUTO_MODEL, parseAutoModels, SmartRouter } from '../core/router/smart-router.ts';
 import { conversationKey, SessionAffinity } from '../core/router/session-affinity.ts';
-import { listBrowserProfiles, loadGatewaySetting, loadModelStats, loadUnavailableModels, replaceUnavailableModels, loadProviderSetting, loadSignIn, saveGatewaySetting, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
+import { listBrowserProfiles, loadGatewaySetting, loadModelStats, loadWebChatModels, saveWebChatModels, loadUnavailableModels, replaceUnavailableModels, loadProviderSetting, loadSignIn, saveGatewaySetting, saveProviderSetting, openDatabase, recordRequest, saveModelStat, saveSignIn, type RequestLog } from '../core/store/database.ts';
 import { WebSignInStatus } from '../core/accounts/sign-in-status.ts';
 import { ProviderSettings } from '../core/providers/settings.ts';
 import { WEB_CHAT_SITES } from '../providers/web-chat-sites.ts';
@@ -35,7 +35,7 @@ import { API_KEY_PROVIDERS, createApiProvider, createNvidiaProvider, forgetSaved
 import { openCredentialStore } from '../core/accounts/credential-store.ts';
 import { loadAccountsSecret } from '../core/secrets/accounts-secret.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
-import { BrowserChatSession, notSignedIn, type ChatSite } from '../browser/browser-chat.ts';
+import { BrowserChatSession, notSignedIn, type ChatSite, type WebChatModel } from '../browser/browser-chat.ts';
 import { listProfiles, profileDir } from '../browser/profiles.ts';
 import { ProfileRotation } from '../core/accounts/profile-rotation.ts';
 import { DEFAULT_PROFILE } from '../core/accounts/sign-in-status.ts';
@@ -104,6 +104,31 @@ function accountProfiles() {
     return ids;
 }
 
+let webChatModels: Map<string, WebChatModel[]> | undefined;
+
+function webChatModelsFor(site: string) {
+    if (!webChatModels) {
+        try {
+            webChatModels = loadWebChatModels(db());
+        } catch (error) {
+            console.error('Web chat models unavailable:', errorText(error));
+            webChatModels = new Map();
+        }
+    }
+    return webChatModels.get(site);
+}
+
+function rememberWebChatModels(site: string, models: WebChatModel[]) {
+    if (JSON.stringify(webChatModelsFor(site)) === JSON.stringify(models)) return;
+    webChatModels!.set(site, models);
+    try {
+        saveWebChatModels(db(), site, models);
+    } catch (error) {
+        console.error('Failed to save web chat models:', errorText(error));
+    }
+    refreshModelLists().catch(error => console.error('Model list refresh failed:', errorText(error)));
+}
+
 function browserSession(profile: string) {
     let session = browserSessions.get(profile);
     if (!session) {
@@ -113,6 +138,7 @@ function browserSession(profile: string) {
                 const site = WEB_CHAT_SITES.find(entry => entry.id === siteId);
                 signIns.record(siteId, result.signedIn, result.signedIn || !site ? undefined : notSignedIn(site, result), profile);
             },
+            onModels: rememberWebChatModels,
         });
         browserSessions.set(profile, session);
     }
@@ -131,6 +157,7 @@ function registerWebChat(id: string, ownedBy: string, site: ChatSite, parse: Bro
         sessions: () => rotation.order(id).map(profile => ({ profile, session: browserSession(profile) })),
         health: () => signIns.health(id, accountProfiles()),
         onResult: (profile, ok) => ok ? rotation.succeeded(id, profile) : rotation.failed(id, profile),
+        models: () => webChatModelsFor(site.id),
     }));
 }
 
