@@ -6,7 +6,7 @@ import { ProviderRegistry } from '../src/core/providers/registry.ts';
 import { parseAutoModels, SmartRouter } from '../src/core/router/smart-router.ts';
 import { collectChunks } from '../src/core/streaming/sse.ts';
 
-type Behavior = 'ok' | 'fail-open' | 'fail-first-chunk' | 'fail-mid-stream' | 'empty';
+type Behavior = 'ok' | 'fail-open' | 'fail-first-chunk' | 'fail-mid-stream' | 'empty' | 'flaky-unavailable' | 'fail-unavailable';
 
 function provider(id: string, behavior: () => Behavior, available = true, calls: string[] = []): Provider {
   return {
@@ -20,6 +20,10 @@ function provider(id: string, behavior: () => Behavior, available = true, calls:
       calls.push(request.model);
       const mode = behavior();
       if (mode === 'fail-open') throw new ProviderError(`${id} limited`, 'rate_limit', 429);
+      if (mode === 'fail-unavailable') throw new ProviderError(`${id} warming up`, 'unavailable');
+      if (mode === 'flaky-unavailable' && calls.filter(model => model === request.model).length === 1) {
+        throw new ProviderError(`${id} warming up`, 'unavailable');
+      }
       return {
         chunks: (async function* (): AsyncGenerator<ChatChunk> {
           if (mode === 'fail-first-chunk') throw new Error(`${id} reset`);
@@ -93,6 +97,22 @@ describe('SmartRouter', () => {
     expect(error).toBeInstanceOf(ProviderError);
     expect(error.kind).toBe('rate_limit');
     expect(calls).toEqual(['a-model']);
+  });
+
+  test('direct retries once on a transient unavailable error', async () => {
+    const { open, calls } = setup({ a: 'flaky-unavailable' });
+    const routed = await open('a-model');
+    expect(routed.route.model).toBe('a-model');
+    expect(await collectChunks(routed.chunks)).toMatchObject({ content: 'a:1 a:2' });
+    expect(calls).toEqual(['a-model', 'a-model']);
+  });
+
+  test('direct surfaces the original error after the single retry', async () => {
+    const { open, calls } = setup({ a: 'fail-unavailable' });
+    const error = await open('a-model').catch(caught => caught);
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(error.kind).toBe('unavailable');
+    expect(calls).toEqual(['a-model', 'a-model']);
   });
 
   test('reports every failure when all auto routes fail', async () => {
