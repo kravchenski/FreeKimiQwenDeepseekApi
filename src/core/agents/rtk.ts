@@ -24,13 +24,20 @@ export function rtkPath() {
   return located;
 }
 
-export function rtkRewriter(binary = rtkPath()): Rewriter | undefined {
+export type RtkRunner = (binary: string, command: string) => { exitCode: number | null; stdout: string };
+
+function runRtk(binary: string, command: string) {
+  const { RTK_REWRITE_HOST: _host, ...env } = process.env;
+  const result = Bun.spawnSync([binary, 'rewrite', command], { stdout: 'pipe', stderr: 'ignore', timeout: TIMEOUT_MS, env });
+  return { exitCode: result.exitCode, stdout: result.stdout.toString() };
+}
+
+export function rtkRewriter(binary = rtkPath(), run: RtkRunner = runRtk): Rewriter | undefined {
   if (!binary) return undefined;
   return command => {
-    const { RTK_REWRITE_HOST: _host, ...env } = process.env;
-    const result = Bun.spawnSync([binary, 'rewrite', command], { stdout: 'pipe', stderr: 'ignore', timeout: TIMEOUT_MS, env });
+    const result = run(binary, command);
     if (result.exitCode !== 0 && result.exitCode !== 3) return undefined;
-    const rewritten = result.stdout.toString().trim().split('\n').at(-1)?.trim() ?? '';
+    const rewritten = result.stdout.trim().split('\n').at(-1)?.trim() ?? '';
     return rewritten && rewritten !== command ? rewritten : undefined;
   };
 }
