@@ -1,5 +1,35 @@
 # Changelog
 
+## [2.3.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.2.0...v2.3.0) (2026-10-01)
+
+
+### Features
+
+* **browser:** keep one page per chat conversation ([94e1cbb](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/94e1cbba81cce4809fa232fbf94d231d0543a291))
+* **browser:** mask automation fingerprints on chat pages ([a5e0657](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/a5e065746f604408acadd786cffbb0a9377d897f))
+* **browser:** reuse chat pages, auto-solve captchas and add image support ([12d60e0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/12d60e0a8fb436502fd12ced3df0d154e69df0a5))
+* **captcha:** auto-solve captchas while opening a chat page ([4f49f8b](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/4f49f8bc246bc2ebbe1225d388cb9fe9095fbd60))
+* **captcha:** decode challenge images into raw pixels ([9297d10](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/9297d10bc2790cb3bd45ea6bae0947fcb4d35a20))
+* **captcha:** drag the pointer along a human-like trajectory ([1818ee9](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/1818ee9840c613ab5cca24e532afd615b47044b4))
+* **captcha:** locate the slider gap in a challenge image ([e67794c](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/e67794cee343745b3be13d64957d8d810a65331e))
+* **captcha:** solve the hCaptcha checkbox and the slider puzzle ([a61c0c0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/a61c0c0f3e433df8976714b5f6573ffbf932a253))
+* **prompt:** collect image urls and mark image parts in prompts ([fb07806](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/fb0780667a9c1da41fbaad2b0fd44e9b430b5e6f))
+* **unified:** give browser chats the configured first chunk timeout ([8f79e59](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/8f79e595060364abd2590074bdff13fa1991ece3))
+* **vision:** send image parts to vision-capable web chats ([544ad94](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/544ad94f2ba792dbfb650ba8b9df2b07a379080e))
+* **vision:** turn image urls into files for upload ([ab0279b](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/ab0279bb22097a53ccd3a655e1427667441fd22a))
+* **vision:** upload images through each site's own attach flow ([ed1277f](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/ed1277fecfeb048aec39234e7c31554507c6e0ff))
+
+
+### Bug Fixes
+
+* **deps:** bump hono to 4.13.7 to patch the JSX XSS advisory ([0112946](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/0112946256a74271e885150f96dee193d61e5f6b))
+* **router:** retry a direct route once on a transient unavailable error ([46886b1](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/46886b10b491511c83ff7d5c252b48778254d7bf))
+
+
+### Tests
+
+* **captcha:** run the solvers against a real browser ([3677f06](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/3677f06891792cf29da6ffeb2ba4412e4df5128f))
+
 ## [2.2.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.1.0...v2.2.0) (2026-09-30)
 
 
