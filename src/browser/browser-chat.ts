@@ -32,6 +32,7 @@ export interface ChatSite {
   captcha?: CaptchaHints;
   modelFields?: (model: string) => Record<string, unknown>;
   images?: boolean;
+  attachImages?: (page: Page, files: AttachFile[]) => Promise<void>;
   modelsResponse?: RegExp;
   parseModels?: (body: unknown) => WebChatModel[];
   pageModels?: (page: Page) => Promise<WebChatModel[]>;
@@ -374,7 +375,8 @@ export class BrowserChatSession {
     const images = conversation.extractImages?.(delta) ?? [];
     await thread.page.evaluate(urls => {
       (window as unknown as Record<string, unknown>).__freeapiImages = urls;
-    }, images);
+    }, site.attachImages ? [] : images);
+    if (site.attachImages && images.length) await site.attachImages(thread.page, await toAttachFiles(images));
     const input = thread.page.locator(site.inputSelector).first();
     await input.waitFor({ timeout: 30_000 });
     await input.fill('');
@@ -422,11 +424,12 @@ export class BrowserChatSession {
     });
     const fields = model && site.modelFields ? site.modelFields(model) : undefined;
     const images = conversation?.extractImages?.(conversation.messages ?? []) ?? [];
+    const attached = site.attachImages && images.length ? await toAttachFiles(images) : [];
     await page.addInitScript(teeScript, {
       pattern: site.responseUrl.source,
       binding: BINDING,
       ...(fields ? { fields } : {}),
-      ...(images.length ? { images } : {}),
+      ...(!site.attachImages && images.length ? { images } : {}),
     });
     const readPageModels = this.options.onModels ? this.watchModels(site, page) : () => {};
     try {
@@ -445,6 +448,7 @@ export class BrowserChatSession {
       }
       const input = page.locator(site.inputSelector).first();
       await input.waitFor({ timeout: 30_000 });
+      if (attached.length && site.attachImages) await site.attachImages(page, attached);
       await input.fill('');
       await input.click();
       await page.keyboard.insertText(prompt);

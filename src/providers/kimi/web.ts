@@ -14,6 +14,12 @@ export const KIMI_CHAT_SITE: ChatSite = {
     ? { 'options.model': model }
     : { 'options.model': model, scenario: 'SCENARIO_OK_COMPUTER', 'message.scenario': 'SCENARIO_OK_COMPUTER' },
   images: true,
+  attachImages: async (page, files) => {
+    const uploaded = page.waitForResponse(response => /apiv2-files|kimi-fs/.test(response.url()) && response.ok(), { timeout: 60_000 }).catch(() => undefined);
+    await page.locator('input[type=file]').last().setInputFiles(files);
+    if (!(await uploaded)) await Bun.sleep(5_000);
+    await Bun.sleep(10_000);
+  },
   modelsResponse: /ConfigService\/GetAvailableModels/,
   parseModels: parseKimiModels,
   defaultModels: [{ id: 'k2d6-chat', name: 'Instant' }, { id: 'k3-agent', name: 'K3' }],

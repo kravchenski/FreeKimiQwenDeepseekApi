@@ -156,6 +156,37 @@ describe.skipIf(process.env.RUN_BROWSER_TESTS !== '1' || !findBrowserExecutable(
     }
   }, 120_000);
 
+  test('attaches images through the site upload flow instead of injecting them', async () => {
+    const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });
+    const imageUrl = 'data:image/png;base64,QUJD';
+    const toPrompt = (messages: Array<{ role?: string; content?: unknown }>) =>
+      messagesToPrompt(stripImages(messages, true));
+    const extractImages = (messages: Array<{ role?: string; content?: unknown }>) => collectImageUrls(messages);
+    const attached: Array<{ name: string; mimeType: string; body: string }> = [];
+    try {
+      const withAttach: ChatSite = {
+        ...site('/json'),
+        images: true,
+        attachImages: async (_page, files) => {
+          for (const file of files) attached.push({ name: file.name, mimeType: file.mimeType, body: file.buffer.toString('utf8') });
+        },
+      };
+      const first = [{ role: 'user', content: 'turn one' }];
+      expect(await collect(await session.send(withAttach, 'turn one', undefined, { messages: first, toPrompt, extractImages }))).toContain('turn one');
+      expect(attached).toEqual([]);
+
+      const imageTurn = [{ type: 'text', text: 'turn two' }, { type: 'image_url', image_url: { url: imageUrl } }];
+      const second = [...first, { role: 'user', content: imageTurn }];
+      const resumed = await collect(await session.send(withAttach, 'stale prompt', undefined, { messages: second, toPrompt, extractImages }));
+      expect(resumed).toContain('turn two');
+      expect(resumed).not.toContain('stale prompt');
+      expect(resumed).not.toContain('image_url');
+      expect(attached).toEqual([{ name: 'image-1.png', mimeType: 'image/png', body: 'ABC' }]);
+    } finally {
+      await session.close();
+    }
+  }, 120_000);
+
   test('relaunches the browser after its window was closed', async () => {
     const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });
     try {

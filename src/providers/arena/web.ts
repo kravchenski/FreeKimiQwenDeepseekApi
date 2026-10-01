@@ -13,6 +13,11 @@ export const ARENA_CHAT_SITE: ChatSite = {
   verificationText: /verify you are human|security verification/i,
   modelFields: model => ({ modelAId: model }),
   images: true,
+  attachImages: async (page, files) => {
+    const uploaded = page.waitForResponse(response => /messages-prod|r2\.cloudflare/.test(response.url()) && response.ok(), { timeout: 60_000 }).catch(() => undefined);
+    await page.locator('input[type=file]').last().setInputFiles(files);
+    if (!(await uploaded)) await Bun.sleep(5_000);
+  },
   captcha: { checkbox: true },
   pageModels: page => page.evaluate(() => {
     const flight = [...document.querySelectorAll('script')].map(script => {
