@@ -1,4 +1,5 @@
 import type { ChatSite } from './browser-chat.ts';
+import { autoSolveCaptcha } from './captcha/index.ts';
 import { launchCdpBrowser, type CdpBrowser, type LaunchOptions } from './cdp.ts';
 import { googleProfileDir } from './google-profile.ts';
 import { readSignIn, type SignInResult } from './sign-in.ts';
@@ -27,6 +28,7 @@ export async function checkSignIns(
       const page = await context.newPage();
       try {
         await page.goto(site.url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+        await autoSolveCaptcha(page, site.captcha);
         results.push({ site, result: await readSignIn(page, site.signIn!) });
       } catch (error) {
         results.push({ site, result: { signedIn: false, reason: `page did not load: ${error instanceof Error ? error.message : error}`.slice(0, 200) } });

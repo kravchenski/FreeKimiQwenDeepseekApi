@@ -146,6 +146,7 @@ function browserSession(profile: string) {
     if (!session) {
         session = new BrowserChatSession({
             profileDir: profileDir(profile),
+            firstChunkTimeoutMs: config.AUTO_FIRST_CHUNK_TIMEOUT_MS,
             onSignIn: (siteId, result) => {
                 const site = WEB_CHAT_SITES.find(entry => entry.id === siteId);
                 signIns.record(siteId, result.signedIn, result.signedIn || !site ? undefined : notSignedIn(site, result), profile);

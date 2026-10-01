@@ -5,7 +5,7 @@ import { solveDeepSeekPow } from './pow.ts';
 import { getAvailableDeepSeekAccount, markDeepSeekAccountInvalid, type DeepSeekAccount } from './accounts.ts';
 import { PersistentStringMap } from '../../utils/persistentMap.ts';
 import { ProviderError, upstreamError } from '../../core/providers/errors.ts';
-import { messagesToPrompt } from '../../core/providers/prompt.ts';
+import { messagesToPrompt, stripImages } from '../../core/providers/prompt.ts';
 
 export { messagesToPrompt };
 
@@ -140,7 +140,7 @@ export async function deepSeekCompletion(options: {
         body: JSON.stringify({
             chat_session_id: sessionId,
             parent_message_id: null,
-            prompt: messagesToPrompt(options.messages),
+            prompt: messagesToPrompt(stripImages(options.messages, false)),
             ref_file_ids: [],
             thinking_enabled: model.includes('reasoner') || model.includes('r1'),
             search_enabled: model.includes('search'),

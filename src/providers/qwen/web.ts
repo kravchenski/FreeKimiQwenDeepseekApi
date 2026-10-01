@@ -15,7 +15,18 @@ export const QWEN_CHAT_SITE: ChatSite = {
   signIn: { storageKey: 'token', claim: 'id' },
   challengeResponse: /FAIL_SYS_USER_VALIDATE|\/punish\?/,
   ignoredResponse: /^\{"code":0,[^\n]*"sig":"from bx"/,
+  captcha: { slider: true },
   modelFields: model => ({ model, 'messages.*.models': [model] }),
+  images: true,
+  attachImages: async (page, files) => {
+    const uploaded = page.waitForResponse(response => response.request().method() === 'PUT' && /oss-accelerate/.test(response.url()) && response.ok(), { timeout: 60_000 }).catch(() => undefined);
+    await page.locator('div.mode-select-open').first().click({ timeout: 15_000 });
+    const chooser = page.waitForEvent('filechooser', { timeout: 15_000 });
+    await page.getByText(/upload attachment/i).first().click({ timeout: 10_000 });
+    (await chooser).setFiles(files);
+    if (!(await uploaded)) await Bun.sleep(5_000);
+    await Bun.sleep(12_000);
+  },
   pageModels: page => readOpenWebUiModels(page),
   defaultModels: [
     { id: 'qwen3.7-plus', name: 'Qwen3.7-Plus' },

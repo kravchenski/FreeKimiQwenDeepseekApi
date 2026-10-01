@@ -10,7 +10,14 @@ export const ZAI_CHAT_SITE: ChatSite = {
   responseUrl: /\/api\/v2\/chat\/completions/,
   verificationText: /security verification/i,
   signIn: { storageKey: 'token', claim: 'email', guestPattern: /guest/i },
+  captcha: { checkbox: true },
   modelFields: model => ({ model }),
+  images: true,
+  attachImages: async (page, files) => {
+    const uploaded = page.waitForResponse(response => /\/api\/v1\/files|z-cdn-media/.test(response.url()) && response.ok(), { timeout: 60_000 }).catch(() => undefined);
+    await page.locator('input[type=file]').last().setInputFiles(files);
+    if (!(await uploaded)) await Bun.sleep(5_000);
+  },
   pageModels: page => readOpenWebUiModels(page).then(models => models.filter(model => !/research|rumination|-DR$/i.test(`${model.id} ${model.name}`))),
   defaultModels: [
     { id: 'x-preview-l', name: 'GLM-5.3-Flash' },

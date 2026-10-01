@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { BrowserChatSession, type ChatSite } from '../src/browser/browser-chat.ts';
+import { collectImageUrls, messagesToPrompt, stripImages } from '../src/core/providers/prompt.ts';
 import { findBrowserExecutable } from '../src/platform/browserExecutable.ts';
 
 const chatPage = `<!doctype html><textarea id="box"></textarea><div id="out"></div>
@@ -102,6 +103,89 @@ describe.skipIf(process.env.RUN_BROWSER_TESTS !== '1' || !findBrowserExecutable(
       await session.close();
     }
   }, 90_000);
+
+  test('keeps one page per conversation and sends only the new turns', async () => {
+    const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });
+    const toPrompt = (messages: Array<{ role?: string; content?: string }>) =>
+      messages.map(message => `${message.role}: ${message.content}`).join('\n\n');
+    const pageCount = async () => (await (session as unknown as { context: () => Promise<{ pages(): unknown[] }> }).context()).pages().length;
+    try {
+      const base = await pageCount();
+      const first = [{ role: 'user', content: 'hello there' }];
+      expect(await collect(await session.send(site(), 'hello there', undefined, { messages: first, toPrompt }))).toContain('echo hello there');
+      expect(await pageCount()).toBe(base + 1);
+
+      const second = [...first, { role: 'assistant', content: 'reply' }, { role: 'user', content: 'second turn' }];
+      const resumed = await collect(await session.send(site(), 'stale full prompt', undefined, { messages: second, toPrompt }));
+      expect(resumed).toContain('user: second turn');
+      expect(resumed).not.toContain('stale full prompt');
+      expect(resumed).not.toContain('hello there');
+      expect(await pageCount()).toBe(base + 1);
+
+      const diverged = [{ role: 'user', content: 'different thread' }];
+      expect(await collect(await session.send(site(), 'fresh full', undefined, { messages: diverged, toPrompt }))).toContain('echo fresh full');
+      expect(await pageCount()).toBe(base + 2);
+    } finally {
+      await session.close();
+    }
+  }, 120_000);
+
+  test('injects image urls into the request body and clears them on the next turn', async () => {
+    const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });
+    const imageUrl = 'data:image/png;base64,QUJD';
+    const toPrompt = (messages: Array<{ role?: string; content?: unknown }>) =>
+      messagesToPrompt(stripImages(messages, true));
+    const extractImages = (messages: Array<{ role?: string; content?: unknown }>) => collectImageUrls(messages);
+    try {
+      const first = [{ role: 'user', content: 'turn one' }];
+      expect(await collect(await session.send(site('/json'), 'turn one', undefined, { messages: first, toPrompt, extractImages }))).toContain('turn one');
+
+      const imageTurn = [{ type: 'text', text: 'turn two' }, { type: 'image_url', image_url: { url: imageUrl } }];
+      const second = [...first, { role: 'user', content: imageTurn }];
+      const resumed = await collect(await session.send(site('/json'), 'stale prompt', undefined, { messages: second, toPrompt, extractImages }));
+      expect(resumed).toContain('"type":"image_url"');
+      expect(resumed).toContain(imageUrl);
+      expect(resumed).not.toContain('stale prompt');
+
+      const third = [...second, { role: 'assistant', content: 'reply' }, { role: 'user', content: 'turn three' }];
+      const afterImage = await collect(await session.send(site('/json'), 'stale prompt', undefined, { messages: third, toPrompt, extractImages }));
+      expect(afterImage).toContain('turn three');
+      expect(afterImage).not.toContain('image_url');
+    } finally {
+      await session.close();
+    }
+  }, 120_000);
+
+  test('attaches images through the site upload flow instead of injecting them', async () => {
+    const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });
+    const imageUrl = 'data:image/png;base64,QUJD';
+    const toPrompt = (messages: Array<{ role?: string; content?: unknown }>) =>
+      messagesToPrompt(stripImages(messages, true));
+    const extractImages = (messages: Array<{ role?: string; content?: unknown }>) => collectImageUrls(messages);
+    const attached: Array<{ name: string; mimeType: string; body: string }> = [];
+    try {
+      const withAttach: ChatSite = {
+        ...site('/json'),
+        images: true,
+        attachImages: async (_page, files) => {
+          for (const file of files) attached.push({ name: file.name, mimeType: file.mimeType, body: file.buffer.toString('utf8') });
+        },
+      };
+      const first = [{ role: 'user', content: 'turn one' }];
+      expect(await collect(await session.send(withAttach, 'turn one', undefined, { messages: first, toPrompt, extractImages }))).toContain('turn one');
+      expect(attached).toEqual([]);
+
+      const imageTurn = [{ type: 'text', text: 'turn two' }, { type: 'image_url', image_url: { url: imageUrl } }];
+      const second = [...first, { role: 'user', content: imageTurn }];
+      const resumed = await collect(await session.send(withAttach, 'stale prompt', undefined, { messages: second, toPrompt, extractImages }));
+      expect(resumed).toContain('turn two');
+      expect(resumed).not.toContain('stale prompt');
+      expect(resumed).not.toContain('image_url');
+      expect(attached).toEqual([{ name: 'image-1.png', mimeType: 'image/png', body: 'ABC' }]);
+    } finally {
+      await session.close();
+    }
+  }, 120_000);
 
   test('relaunches the browser after its window was closed', async () => {
     const session = new BrowserChatSession({ profileDir: join(mkdtempSync(join(tmpdir(), 'chat-')), 'profile'), headless: true });

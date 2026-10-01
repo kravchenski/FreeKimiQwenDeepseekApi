@@ -178,22 +178,30 @@ export class SmartRouter {
     const failures: string[] = [];
     const attempts: RouteAttempt[] = [];
     for (const route of routes) {
-      const startedAt = this.now();
-      try {
-        const timeoutMs = routes.length > 1 ? this.options.firstChunkTimeoutMs : undefined;
-        const { stream, chunks, latencyMs } = await this.attempt(route, build, new AbortController(), timeoutMs);
-        this.succeeded(route, latencyMs);
-        attempts.push({ model: route.model, provider: route.provider.id, outcome: 'chosen', latencyMs });
-        this.decide(model, mode, preferredModel, skipped, attempts, route, undefined, picked, decisionMs, decisionError, details);
-        return { ...stream, chunks, route };
-      } catch (error) {
-        this.recordFailure(route, error, routes.length > 1);
-        attempts.push(failedAttempt(route, error, this.now() - startedAt));
-        if (routes.length === 1) {
-          this.decide(model, mode, preferredModel, skipped, attempts, undefined, error, picked, decisionMs, decisionError, details);
-          throw error;
+      // A direct (single-route) open gets one extra chance: browser chats
+      // often fail transiently on a cold start (page not hydrated yet, model
+      // list still loading) and a fresh attempt re-opens the page warm.
+      const tries = routes.length === 1 ? 2 : 1;
+      for (let tryIndex = 1; ; tryIndex++) {
+        const startedAt = this.now();
+        try {
+          const timeoutMs = routes.length > 1 ? this.options.firstChunkTimeoutMs : undefined;
+          const { stream, chunks, latencyMs } = await this.attempt(route, build, new AbortController(), timeoutMs);
+          this.succeeded(route, latencyMs);
+          attempts.push({ model: route.model, provider: route.provider.id, outcome: 'chosen', latencyMs });
+          this.decide(model, mode, preferredModel, skipped, attempts, route, undefined, picked, decisionMs, decisionError, details);
+          return { ...stream, chunks, route };
+        } catch (error) {
+          attempts.push(failedAttempt(route, error, this.now() - startedAt));
+          if (tryIndex < tries && error instanceof ProviderError && error.kind === 'unavailable') continue;
+          this.recordFailure(route, error, routes.length > 1);
+          if (routes.length === 1) {
+            this.decide(model, mode, preferredModel, skipped, attempts, undefined, error, picked, decisionMs, decisionError, details);
+            throw error;
+          }
+          failures.push(`${route.model}: ${errorText(error)}`);
+          break;
         }
-        failures.push(`${route.model}: ${errorText(error)}`);
       }
     }
     const error = new ProviderError(`All routes failed for model ${model}: ${failures.join('; ')}`, 'unavailable');
