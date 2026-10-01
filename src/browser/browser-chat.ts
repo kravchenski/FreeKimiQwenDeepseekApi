@@ -11,6 +11,7 @@ export interface SendContext {
   conversationId?: string;
   messages?: ChatMessage[];
   toPrompt?: (messages: ChatMessage[]) => string;
+  extractImages?: (messages: ChatMessage[]) => string[];
 }
 
 export interface ChatSite {
@@ -24,6 +25,7 @@ export interface ChatSite {
   ignoredResponse?: RegExp;
   captcha?: CaptchaHints;
   modelFields?: (model: string) => Record<string, unknown>;
+  images?: boolean;
   modelsResponse?: RegExp;
   parseModels?: (body: unknown) => WebChatModel[];
   pageModels?: (page: Page) => Promise<WebChatModel[]>;
@@ -70,9 +72,12 @@ function isHistoryPrefix(sent: ChatMessage[], incoming?: ChatMessage[]) {
   return true;
 }
 
-function teeScript({ pattern, binding, fields }: { pattern: string; binding: string; fields?: Record<string, unknown> }) {
+function teeScript({ pattern, binding, fields, images }: { pattern: string; binding: string; fields?: Record<string, unknown>; images?: string[] }) {
   const matcher = new RegExp(pattern);
   const original = window.fetch;
+  const store = window as unknown as Record<string, unknown>;
+  if (images?.length) store.__freeapiImages = images;
+  const activeImages = () => (Array.isArray(store.__freeapiImages) ? store.__freeapiImages as string[] : []) as string[];
   const setPath = (node: unknown, keys: string[], value: unknown): void => {
     if (node === null || typeof node !== 'object') return;
     const [key, ...rest] = keys;
@@ -84,9 +89,33 @@ function teeScript({ pattern, binding, fields }: { pattern: string; binding: str
     if (!rest.length) record[key!] = value;
     else setPath(record[key!], rest, value);
   };
+  const injectImages = (body: unknown) => {
+    const urls = activeImages();
+    if (!urls.length || body === null || typeof body !== 'object') return;
+    const parts = urls.map(url => ({ type: 'image_url', image_url: { url } }));
+    const inject = (message: unknown): boolean => {
+      if (message === null || typeof message !== 'object') return false;
+      const record = message as Record<string, unknown>;
+      if (record.role !== undefined && record.role !== 'user') return false;
+      const content = record.content;
+      if (typeof content === 'string') record.content = [{ type: 'text', text: content }, ...parts];
+      else if (Array.isArray(content)) content.push(...parts);
+      else return false;
+      return true;
+    };
+    const record = body as Record<string, unknown>;
+    if (Array.isArray(record.messages)) {
+      for (let index = record.messages.length - 1; index >= 0; index--) {
+        if (inject(record.messages[index])) return;
+      }
+    } else if (record.message !== null && typeof record.message === 'object') {
+      inject(record.message);
+    }
+  };
   const rewrite = (json: string) => {
     const body = JSON.parse(json);
     for (const [path, value] of Object.entries(fields ?? {})) setPath(body, path.split('.'), value);
+    injectImages(body);
     return JSON.stringify(body);
   };
   const rewriteBody = (body: unknown) => {
@@ -109,7 +138,7 @@ function teeScript({ pattern, binding, fields }: { pattern: string; binding: str
   window.fetch = Object.assign(async function (this: unknown, ...args: Parameters<typeof fetch>) {
     const requested = args[0];
     const requestedUrl = typeof requested === 'string' ? requested : requested instanceof URL ? requested.href : requested.url;
-    if (fields && matcher.test(requestedUrl) && args[1]?.body) {
+    if ((fields || activeImages().length) && matcher.test(requestedUrl) && args[1]?.body) {
       try {
         args[1] = { ...args[1], body: rewriteBody(args[1].body) as BodyInit };
       } catch {}
@@ -300,6 +329,10 @@ export class BrowserChatSession {
     this.pageQueues.set(thread.page, queue);
     thread.sent = messages.slice();
     thread.lastUsed = Date.now();
+    const images = conversation.extractImages?.(delta) ?? [];
+    await thread.page.evaluate(urls => {
+      (window as unknown as Record<string, unknown>).__freeapiImages = urls;
+    }, images);
     const input = thread.page.locator(site.inputSelector).first();
     await input.waitFor({ timeout: 30_000 });
     await input.fill('');
@@ -346,10 +379,12 @@ export class BrowserChatSession {
       this.pageQueues.get(page)?.push(chunk === null ? null : Buffer.from(chunk, 'base64'));
     });
     const fields = model && site.modelFields ? site.modelFields(model) : undefined;
+    const images = conversation?.extractImages?.(conversation.messages ?? []) ?? [];
     await page.addInitScript(teeScript, {
       pattern: site.responseUrl.source,
       binding: BINDING,
       ...(fields ? { fields } : {}),
+      ...(images.length ? { images } : {}),
     });
     const readPageModels = this.options.onModels ? this.watchModels(site, page) : () => {};
     try {

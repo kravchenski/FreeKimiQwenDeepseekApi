@@ -17,6 +17,7 @@ export const QWEN_CHAT_SITE: ChatSite = {
   ignoredResponse: /^\{"code":0,[^\n]*"sig":"from bx"/,
   captcha: { slider: true },
   modelFields: model => ({ model, 'messages.*.models': [model] }),
+  images: true,
   pageModels: page => readOpenWebUiModels(page),
   defaultModels: [
     { id: 'qwen3.7-plus', name: 'Qwen3.7-Plus' },

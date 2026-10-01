@@ -13,6 +13,7 @@ export const KIMI_CHAT_SITE: ChatSite = {
   modelFields: model => /-chat$/.test(model)
     ? { 'options.model': model }
     : { 'options.model': model, scenario: 'SCENARIO_OK_COMPUTER', 'message.scenario': 'SCENARIO_OK_COMPUTER' },
+  images: true,
   modelsResponse: /ConfigService\/GetAvailableModels/,
   parseModels: parseKimiModels,
   defaultModels: [{ id: 'k2d6-chat', name: 'Instant' }, { id: 'k3-agent', name: 'K3' }],

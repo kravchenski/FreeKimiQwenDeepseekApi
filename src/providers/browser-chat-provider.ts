@@ -1,7 +1,7 @@
 import { webChatModelSlug, type BrowserChatSession, type ChatSite, type WebChatModel } from '../browser/browser-chat.ts';
 import { ProviderError } from '../core/providers/errors.ts';
 import type { ChatChunk, Provider, ProviderHealth, ProviderStream } from '../core/providers/provider.ts';
-import { messagesToPrompt } from '../core/providers/prompt.ts';
+import { collectImageUrls, messagesToPrompt, stripImages } from '../core/providers/prompt.ts';
 import { primeChunks } from '../core/streaming/sse.ts';
 
 export interface ProfileSession {
@@ -42,12 +42,14 @@ export function createBrowserChatProvider(config: BrowserChatProviderConfig): Pr
     ownedBy: config.ownedBy,
     supports: model => model === config.model || model.startsWith(prefix),
     listModels: async () => [config.model, ...models().map(entry => `${prefix}${webChatModelSlug(entry.name)}`)],
-    capabilities: () => ({ nativeTools: false, reasoning: config.reasoning ?? true, vision: false }),
+    capabilities: () => ({ nativeTools: false, reasoning: config.reasoning ?? true, vision: config.site.images === true }),
     health: () => config.health?.() ?? { available: true },
     async stream(request): Promise<ProviderStream> {
       const candidates = config.sessions();
       if (!candidates.length) throw new ProviderError(`${config.id}: no account is signed in`, 'unavailable');
-      const prompt = messagesToPrompt(request.messages);
+      const supported = config.site.images === true;
+      const prompt = messagesToPrompt(stripImages(request.messages, supported));
+      const extractImages = (messages: Record<string, any>[]) => supported ? collectImageUrls(messages) : [];
       const model = upstreamModel(request.model);
       const failures: string[] = [];
       for (const candidate of candidates) {
@@ -55,7 +57,8 @@ export function createBrowserChatProvider(config: BrowserChatProviderConfig): Pr
           const chunks = await primeChunks(config.parse(await candidate.session.send(config.site, prompt, model, {
             conversationId: request.conversationId,
             messages: request.messages,
-            toPrompt: messages => messagesToPrompt(messages),
+            toPrompt: messages => messagesToPrompt(stripImages(messages, supported)),
+            extractImages,
           })));
           config.onResult?.(candidate.profile, true);
           return { chunks };

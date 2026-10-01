@@ -12,6 +12,7 @@ export const ZAI_CHAT_SITE: ChatSite = {
   signIn: { storageKey: 'token', claim: 'email', guestPattern: /guest/i },
   captcha: { checkbox: true },
   modelFields: model => ({ model }),
+  images: true,
   pageModels: page => readOpenWebUiModels(page).then(models => models.filter(model => !/research|rumination|-DR$/i.test(`${model.id} ${model.name}`))),
   defaultModels: [
     { id: 'x-preview-l', name: 'GLM-5.3-Flash' },
