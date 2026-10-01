@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { collectImageUrls, messagesToPrompt, stripImages } from '../src/core/providers/prompt.ts';
 import { createBrowserChatProvider } from '../src/providers/browser-chat-provider.ts';
+import { toAttachFiles } from '../src/browser/browser-chat.ts';
 import type { ChatSite } from '../src/browser/browser-chat.ts';
 import type { ChatChunk } from '../src/core/providers/provider.ts';
 
@@ -48,6 +49,38 @@ describe('image handling in prompts', () => {
     const messages = [{ role: 'user', content: 'hello' }];
     expect(stripImages(messages, false)).toEqual(messages);
     expect(messagesToPrompt(stripImages(messages, false))).toBe('user: hello');
+  });
+});
+
+describe('toAttachFiles', () => {
+  test('decodes base64 data urls into files', async () => {
+    const files = await toAttachFiles([DATA_URL]);
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({ name: 'image-1.png', mimeType: 'image/png' });
+    expect(files[0]!.buffer.toString('utf8')).toBe('ABC');
+  });
+
+  test('downloads remote images with their content type', async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => new Response(Uint8Array.from([1, 2, 3]), { headers: { 'content-type': 'image/webp' } }),
+    });
+    try {
+      const files = await toAttachFiles([`http://127.0.0.1:${server.port}/chart`]);
+      expect(files[0]).toMatchObject({ name: 'image-1.webp', mimeType: 'image/webp' });
+      expect([...files[0]!.buffer]).toEqual([1, 2, 3]);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test('reports failed downloads as provider errors', async () => {
+    const server = Bun.serve({ port: 0, fetch: () => new Response('gone', { status: 404 }) });
+    try {
+      await expect(toAttachFiles([`http://127.0.0.1:${server.port}/chart`])).rejects.toThrow('Failed to download image 1: HTTP 404');
+    } finally {
+      server.stop(true);
+    }
   });
 });
 

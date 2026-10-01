@@ -14,6 +14,12 @@ export interface SendContext {
   extractImages?: (messages: ChatMessage[]) => string[];
 }
 
+export interface AttachFile {
+  name: string;
+  mimeType: string;
+  buffer: Buffer;
+}
+
 export interface ChatSite {
   id: string;
   url: string;
@@ -30,6 +36,42 @@ export interface ChatSite {
   parseModels?: (body: unknown) => WebChatModel[];
   pageModels?: (page: Page) => Promise<WebChatModel[]>;
   defaultModels?: WebChatModel[];
+}
+
+const MIME_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg',
+};
+
+export async function toAttachFiles(urls: string[]): Promise<AttachFile[]> {
+  const files: AttachFile[] = [];
+  let index = 0;
+  for (const url of urls) {
+    index += 1;
+    if (url.startsWith('data:')) {
+      const comma = url.indexOf(',');
+      const header = url.slice(5, comma);
+      const base64 = header.endsWith(';base64');
+      const mimeType = (base64 ? header.slice(0, -';base64'.length) : header) || 'application/octet-stream';
+      const payload = url.slice(comma + 1);
+      const buffer = base64 ? Buffer.from(payload, 'base64') : Buffer.from(decodeURIComponent(payload), 'utf8');
+      files.push({ name: `image-${index}.${MIME_EXTENSIONS[mimeType] ?? 'png'}`, mimeType, buffer });
+      continue;
+    }
+    let response: Response;
+    try {
+      response = await fetch(url);
+    } catch (error) {
+      throw new ProviderError(`Failed to download image ${index}: ${error instanceof Error ? error.message : String(error)}`, 'unavailable');
+    }
+    if (!response.ok) throw new ProviderError(`Failed to download image ${index}: HTTP ${response.status}`, 'unavailable');
+    const mimeType = (response.headers.get('content-type') ?? '').split(';')[0] || 'image/png';
+    files.push({ name: `image-${index}.${MIME_EXTENSIONS[mimeType] ?? 'png'}`, mimeType, buffer: Buffer.from(await response.arrayBuffer()) });
+  }
+  return files;
 }
 
 export interface WebChatModel {
