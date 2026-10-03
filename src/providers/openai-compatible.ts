@@ -8,6 +8,7 @@ import type {
 } from '../core/providers/provider.ts';
 import { classifyStatus, ProviderError, upstreamError } from '../core/providers/errors.ts';
 import { readLines } from '../core/streaming/sse.ts';
+import { KeyPool, parseKeyList, rotatesKey } from '../core/accounts/key-pool.ts';
 
 export interface OpenAICompatibleConfig {
   id: string;
@@ -20,8 +21,7 @@ export interface OpenAICompatibleConfig {
   upstreamModel?: (model: string) => string;
   extraBody?: Record<string, unknown>;
   capabilities?: Partial<ModelCapabilities>;
-  resolveApiKey?: () => Promise<string | undefined>;
-  hasApiKey?: () => boolean;
+  savedKeys?: () => string[];
   upstreamModels?: boolean;
   namespace?: string;
   normalizeModel?: (model: string) => string;
@@ -92,18 +92,22 @@ export class OpenAICompatibleProvider implements Provider {
   private listed?: Set<string>;
   private readonly withoutTools = new Set<string>();
 
-  constructor(private readonly config: OpenAICompatibleConfig) {
+  constructor(private readonly config: OpenAICompatibleConfig, now: () => number = Date.now) {
+    this.pool = new KeyPool(now);
     this.id = config.id;
     this.ownedBy = config.ownedBy;
     this.fallback = config.fallback ?? false;
   }
 
-  private get envApiKey() {
-    return (this.config.env ?? process.env)[this.config.apiKeyEnv];
+  private readonly pool: KeyPool;
+
+  private keys() {
+    const fromEnv = parseKeyList((this.config.env ?? process.env)[this.config.apiKeyEnv]);
+    return [...new Set([...fromEnv, ...(this.config.savedKeys?.() ?? [])])];
   }
 
-  private async apiKey() {
-    return this.envApiKey || (await this.config.resolveApiKey?.());
+  private readyKeys() {
+    return this.pool.order(this.keys());
   }
 
   private headers(apiKey: string | undefined): Record<string, string> {
@@ -136,16 +140,20 @@ export class OpenAICompatibleProvider implements Provider {
   }
 
   async listModels() {
-    if (!this.config.optionalKey && !this.envApiKey && this.config.hasApiKey && !this.config.hasApiKey()) return [];
+    if (!this.config.optionalKey && !this.keys().length) return [];
     if (!this.config.upstreamModels) return this.config.models;
     try {
-      const apiKey = await this.apiKey();
-      if (!apiKey && !this.config.optionalKey) return [];
-      const response = await (this.config.fetch ?? fetch)(this.config.modelsUrl ?? `${this.config.baseUrl}/models`, {
-        headers: this.headers(apiKey),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!response.ok) return this.config.models;
+      const keys = this.keys();
+      const candidates: Array<string | undefined> = keys.length ? [...new Set([...this.readyKeys(), ...keys])] : [undefined];
+      let response: Response | undefined;
+      for (const apiKey of candidates) {
+        response = await (this.config.fetch ?? fetch)(this.config.modelsUrl ?? `${this.config.baseUrl}/models`, {
+          headers: this.headers(apiKey),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (response.ok || ![401, 403, 429].includes(response.status)) break;
+      }
+      if (!response?.ok) return this.config.models;
       const body = await response.json() as Array<Record<string, unknown>> | { data?: Array<Record<string, unknown>> };
       const listed = Array.isArray(body) ? body : body.data ?? [];
       const ids = [...new Set(listed.filter(model => typeof model.id === 'string' && this.accepts(model.id, model)).map(model => this.publicId(model.id as string)))];
@@ -163,14 +171,38 @@ export class OpenAICompatibleProvider implements Provider {
   }
 
   health() {
-    return this.config.optionalKey || this.envApiKey || this.config.hasApiKey?.()
-      ? { available: true }
-      : { available: false, reason: this.missingKey() };
+    if (this.config.optionalKey) return { available: true };
+    const keys = this.keys();
+    if (!keys.length) return { available: false, reason: this.missingKey() };
+    if (this.readyKeys().length) return { available: true };
+    const seconds = this.pool.secondsUntilReady(keys);
+    return { available: false, reason: `all ${keys.length} ${this.config.label} keys are rate limited or rejected; next one in ${seconds}s` };
   }
 
   async stream(request: ChatRequest, context: ProviderContext = {}): Promise<ProviderStream> {
-    const apiKey = await this.apiKey();
-    if (!apiKey && !this.config.optionalKey) throw new ProviderError(this.missingKey(), 'unavailable');
+    const keys = this.keys();
+    if (!keys.length) {
+      if (!this.config.optionalKey) throw new ProviderError(this.missingKey(), 'unavailable');
+      return this.streamWith(undefined, request, context);
+    }
+    const ready = this.readyKeys();
+    if (!ready.length) throw new ProviderError(this.health().reason ?? this.missingKey(), 'rate_limit', 429);
+    let lastError: unknown;
+    for (const key of ready) {
+      try {
+        const result = await this.streamWith(key, request, context);
+        this.pool.succeeded(key);
+        return result;
+      } catch (error) {
+        if (!(error instanceof ProviderError) || !rotatesKey(error.kind)) throw error;
+        this.pool.failed(key, error.kind, error.retryAfterSeconds);
+        lastError = error;
+      }
+    }
+    throw lastError;
+  }
+
+  private async streamWith(apiKey: string | undefined, request: ChatRequest, context: ProviderContext): Promise<ProviderStream> {
     const model = this.upstreamId(request.model);
     const target = this.config.endpoint?.(apiKey) ?? { baseUrl: this.config.baseUrl, apiKey };
     const tools = request.tools?.length && this.capabilities(request.model).nativeTools ? request.tools : undefined;

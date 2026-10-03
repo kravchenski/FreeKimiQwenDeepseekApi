@@ -45,6 +45,7 @@ import { Metrics, requestIdFrom } from '../observability/metrics.ts';
 import type { Database } from 'bun:sqlite';
 import { API_KEY_PROVIDERS, apiKeyProvider, createApiProvider, createNvidiaProvider, defaultAuto, forgetSavedKeys, FREE_API_PROVIDERS } from '../providers/catalog.ts';
 import { openCredentialStore, savedApiKey } from '../core/accounts/credential-store.ts';
+import { parseKeyList } from '../core/accounts/key-pool.ts';
 import { loadAccountsSecret } from '../core/secrets/accounts-secret.ts';
 import { createDeepSeekProvider } from '../providers/deepseek/provider.ts';
 import { BrowserChatSession, notSignedIn, type ChatSite, type WebChatModel } from '../browser/browser-chat.ts';
@@ -669,7 +670,7 @@ const imageProviders: ImageProvider[] = [
         () => rotation.order('qwen-chat').map(profile => ({ profile, session: browserSession(profile) })),
         () => signIns.health('qwen-chat', accountProfiles()).available,
     ),
-    createCloudflareImages(apiKeyProvider('cloudflare')!, () => process.env.CLOUDFLARE_API_KEY || savedApiKey(credentialStore, 'cloudflare')),
+    createCloudflareImages(apiKeyProvider('cloudflare')!, () => parseKeyList(process.env.CLOUDFLARE_API_KEY)[0] ?? savedApiKey(credentialStore, 'cloudflare')),
     createPollinationsImages(),
 ];
 

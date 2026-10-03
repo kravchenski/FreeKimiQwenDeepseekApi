@@ -104,10 +104,14 @@ export interface CredentialSource {
   list(provider?: string): Array<Pick<Credential, 'method' | 'token'>>;
 }
 
-export function savedApiKey(store: CredentialSource, provider: string) {
+export function savedApiKeys(store: CredentialSource, provider: string): string[] {
   try {
-    return store.list(provider).find(credential => credential.method === 'api-key' && credential.token)?.token;
+    return store.list(provider).filter(credential => credential.method === 'api-key' && credential.token).map(credential => credential.token!);
   } catch {
-    return undefined;
+    return [];
   }
+}
+
+export function savedApiKey(store: CredentialSource, provider: string) {
+  return savedApiKeys(store, provider)[0];
 }
