@@ -43,7 +43,7 @@ describe('routing decisions', () => {
   });
 
   test('records races with the winner and the routes that lost', async () => {
-    const { router, log } = setup('race', [provider('slow', 'ok', 40), provider('fast', 'ok', 1), provider('bad', 'fail')], ['slow-model', 'fast-model', 'bad-model']);
+    const { router, log } = setup('race', [provider('slow', 'ok', 120), provider('fast', 'ok', 25), provider('bad', 'fail')], ['slow-model', 'fast-model', 'bad-model']);
     await router.open('auto', build);
     const [decision] = log.list() as [RoutingDecision];
     expect(decision.mode).toBe('race');
