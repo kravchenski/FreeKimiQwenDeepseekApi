@@ -104,7 +104,7 @@ export function createDeepSeekProvider(overrides: Partial<DeepSeekDependencies> 
     capabilities: model => ({
       nativeTools: false,
       reasoning: model.includes('reasoner') || model.includes('r1'),
-      vision: false,
+      vision: true,
     }),
     health: () =>
       deps.hasAccount() ? { available: true } : { available: false, reason: 'No active DeepSeek accounts' },
