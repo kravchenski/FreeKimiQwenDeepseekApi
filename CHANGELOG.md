@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.4.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.3.1...v2.4.0) (2026-10-03)
+
+
+### Features
+
+* **deepseek:** send images to DeepSeek through its file upload ([3a679a0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/3a679a014218c0ef04fe0fce244a88702bbc9e17))
+* **deepseek:** send images to DeepSeek through its file upload ([d94df02](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/d94df02806facae680b8b103afc55ea91767b698))
+* **keys:** take several keys per provider from .env and saved keys and rotate on limits ([2a3c8ca](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/2a3c8cac9a62b37725b16503172014ae62b1e267))
+
 ## [2.3.1](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.3.0...v2.3.1) (2026-10-03)
 
 
