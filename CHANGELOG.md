@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.1](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.3.0...v2.3.1) (2026-10-03)
+
+
+### Tests
+
+* **router:** widen the timing margins in the race decision test ([4a2b4bb](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/4a2b4bbaf7ab41e381a3af2d089ba0bbd2e04d64))
+* **router:** widen the timing margins in the race decision test ([1dde494](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/commit/1dde494fa6b183b8d09dcdadc21dfba2cae80639))
+
 ## [2.3.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.2.0...v2.3.0) (2026-10-01)
 
 
