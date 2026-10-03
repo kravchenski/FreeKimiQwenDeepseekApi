@@ -13,6 +13,8 @@ One OpenAI- and Anthropic-compatible endpoint in front of 25+ model providers 鈥
 
 [Quick start](#quick-start) 路 [Agents](#use-it-with-your-agent) 路 [Providers](#providers) 路 [Routing](#routing) 路 [Images](#images) 路 [API](#api) 路 [Desktop app](#desktop-app)
 
+<img src="docs/images/demo.gif" alt="model=auto races three models, DeepSeek answers first, and the decision log shows why" width="900">
+
 </div>
 
 ```mermaid
@@ -136,6 +138,16 @@ The headers `x-gateway-compacted`, `x-gateway-tools` and `x-gateway-rtk` show wh
 ## Desktop app
 
 A native app (Rust + [GPUI](https://www.gpui.rs)) to start and stop the gateway, add API keys and browser accounts, switch providers in or out of `auto`, choose the routing mode and agent options, and watch requests and model health. Installers for Linux (`.deb`), macOS (`.dmg`) and Windows (`.exe`) are attached to every [release](https://github.com/kravchenski/switchyard/releases); they bundle the gateway, so Bun is not needed. Chrome or Chromium is needed for the web chats. The installers are not code-signed yet.
+
+<p align="center">
+  <img src="docs/images/app-tour.gif" alt="Desktop app tour: provider models, routing settings and API keys" width="900">
+</p>
+
+| Provider models and health | Routing and agent options |
+|---|---|
+| ![NVIDIA provider page with the models the key can use and their first-answer time](docs/images/app-nvidia.png) | ![Settings page with auto focus, auto mode and coding agent options](docs/images/app-settings.png) |
+| **Web chat accounts** | **API keys for 20+ providers** |
+| ![DeepSeek provider page with two signed-in accounts](docs/images/app-deepseek.png) | ![API keys page with the provider picker](docs/images/app-keys.png) |
 
 ## Configuration
 
