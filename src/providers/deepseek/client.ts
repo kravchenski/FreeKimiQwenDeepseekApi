@@ -5,7 +5,8 @@ import { solveDeepSeekPow } from './pow.ts';
 import { getAvailableDeepSeekAccount, markDeepSeekAccountInvalid, type DeepSeekAccount } from './accounts.ts';
 import { PersistentStringMap } from '../../utils/persistentMap.ts';
 import { ProviderError, upstreamError } from '../../core/providers/errors.ts';
-import { messagesToPrompt, stripImages } from '../../core/providers/prompt.ts';
+import { collectImageUrls, messagesToPrompt, stripImages } from '../../core/providers/prompt.ts';
+import { toAttachFiles, type AttachFile } from '../../browser/browser-chat.ts';
 
 export { messagesToPrompt };
 
@@ -101,11 +102,11 @@ async function getSession(account: DeepSeekAccount, key: string) {
     return created;
 }
 
-async function getPow(account: DeepSeekAccount, sessionId: string) {
+async function getPow(account: DeepSeekAccount, sessionId: string, targetPath = '/api/v0/chat/completion') {
     const response = await fetch(`${BASE_URL}/api/v0/chat/create_pow_challenge`, {
         method: 'POST',
         headers: headers(account, { referer: `${BASE_URL}/a/chat/s/${sessionId}` }),
-        body: JSON.stringify({ target_path: '/api/v0/chat/completion' })
+        body: JSON.stringify({ target_path: targetPath })
     });
     if (response.status === 401 && account.id !== 'env') markDeepSeekAccountInvalid(account.id);
     if (!response.ok) throw await upstreamError('DeepSeek PoW challenge', response);
@@ -113,6 +114,64 @@ async function getPow(account: DeepSeekAccount, sessionId: string) {
     const challenge = body?.data?.biz_data?.challenge;
     if (!challenge) throw new Error('DeepSeek did not return a PoW challenge');
     return solveDeepSeekPow(challenge);
+}
+
+const FILE_UPLOAD_PATH = '/api/v0/file/upload_file';
+const FILE_READY_TIMEOUT_MS = 60_000;
+
+function bizData(body: any) {
+    return body?.data?.biz_data ?? body?.biz_data ?? body?.data ?? body;
+}
+
+export function uploadedFileId(body: unknown): string | undefined {
+    const biz = bizData(body);
+    const id = biz?.id ?? biz?.file_id ?? biz?.file?.id;
+    return typeof id === 'string' && id ? id : undefined;
+}
+
+export function fileStatuses(body: unknown): Map<string, string> {
+    const biz = bizData(body);
+    const list: any[] = Array.isArray(biz) ? biz : Array.isArray(biz?.files) ? biz.files : biz && typeof biz === 'object' ? Object.entries(biz).map(([id, value]) => ({ id, ...(value as object) })) : [];
+    return new Map(list.filter(file => typeof file?.id === 'string').map(file => [file.id, String(file.status ?? '').toUpperCase()]));
+}
+
+async function uploadImage(account: DeepSeekAccount, sessionId: string, file: AttachFile) {
+    const pow = await getPow(account, sessionId, FILE_UPLOAD_PATH);
+    const { 'content-type': _json, ...rest } = headers(account, { referer: `${BASE_URL}/a/chat/s/${sessionId}`, 'x-ds-pow-response': pow });
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(file.buffer)], { type: file.mimeType }), file.name);
+    const response = await fetch(`${BASE_URL}${FILE_UPLOAD_PATH}`, { method: 'POST', headers: rest, body: form });
+    if (response.status === 401 && account.id !== 'env') markDeepSeekAccountInvalid(account.id);
+    if (!response.ok) throw await upstreamError('DeepSeek image upload', response);
+    const body = await response.json();
+    const id = uploadedFileId(body);
+    if (!id) throw new ProviderError(`DeepSeek image upload returned no file id: ${JSON.stringify(body).slice(0, 200)}`, 'upstream', 502);
+    return id;
+}
+
+async function waitForFiles(account: DeepSeekAccount, ids: string[]) {
+    const deadline = Date.now() + FILE_READY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+        const query = ids.map(id => `file_ids=${encodeURIComponent(id)}`).join('&');
+        const response = await fetch(`${BASE_URL}/api/v0/file/fetch_files?${query}`, { headers: headers(account) });
+        if (!response.ok) throw await upstreamError('DeepSeek file status', response);
+        const statuses = fileStatuses(await response.json());
+        const failed = ids.find(id => /FAIL|ERROR/.test(statuses.get(id) ?? ''));
+        if (failed) throw new ProviderError(`DeepSeek could not read the image (${statuses.get(failed)})`, 'upstream', 502);
+        if (ids.every(id => statuses.get(id) === 'SUCCESS')) return;
+        await Bun.sleep(1_000);
+    }
+    throw new ProviderError('DeepSeek did not finish reading the image in time', 'unavailable');
+}
+
+async function attachImages(account: DeepSeekAccount, sessionId: string, messages: Array<Record<string, any>>) {
+    const urls = collectImageUrls(messages);
+    if (!urls.length) return [];
+    const files = await toAttachFiles(urls);
+    const ids: string[] = [];
+    for (const file of files) ids.push(await uploadImage(account, sessionId, file));
+    await waitForFiles(account, ids);
+    return ids;
 }
 
 export function isEmptyToolCallResponse(content: string) {
@@ -128,6 +187,7 @@ export async function deepSeekCompletion(options: {
     const account = options.account ?? getAccount();
     const key = options.conversationId || conversationKey(options.messages);
     const sessionId = await getSession(account, key);
+    const fileIds = await attachImages(account, sessionId, options.messages);
     const pow = await getPow(account, sessionId);
     const model = options.model || 'deepseek-default';
     const response = await fetch(`${BASE_URL}/api/v0/chat/completion`, {
@@ -140,8 +200,8 @@ export async function deepSeekCompletion(options: {
         body: JSON.stringify({
             chat_session_id: sessionId,
             parent_message_id: null,
-            prompt: messagesToPrompt(stripImages(options.messages, false)),
-            ref_file_ids: [],
+            prompt: messagesToPrompt(stripImages(options.messages, fileIds.length > 0)),
+            ref_file_ids: fileIds,
             thinking_enabled: model.includes('reasoner') || model.includes('r1'),
             search_enabled: model.includes('search'),
             model_type: model.includes('expert') ? 'expert' : 'default'
