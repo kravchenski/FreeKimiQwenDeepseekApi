@@ -1,4 +1,4 @@
-import { savedApiKey, type CredentialSource } from '../core/accounts/credential-store.ts';
+import { savedApiKeys, type CredentialSource } from '../core/accounts/credential-store.ts';
 import { ProviderError, upstreamError } from '../core/providers/errors.ts';
 import { OpenAICompatibleProvider, type OpenAICompatibleConfig } from './openai-compatible.ts';
 
@@ -265,15 +265,15 @@ export function forgetSavedKeys() {
 }
 
 function savedKeyReader(credentials: CredentialSource, provider: string, now: () => number = Date.now) {
-  let key: string | undefined;
+  let keys: string[] = [];
   let readAt = -Infinity;
   savedKeyResets.add(() => { readAt = -Infinity; });
   return () => {
     if (now() - readAt > SAVED_KEY_TTL_MS) {
-      key = savedApiKey(credentials, provider);
+      keys = savedApiKeys(credentials, provider);
       readAt = now();
     }
-    return key;
+    return keys;
   };
 }
 
@@ -326,10 +326,7 @@ export function createApiProvider(definition: ApiProviderDefinition, overrides: 
     ...(definition.headers ? { headers: definition.headers } : {}),
     ...(definition.account ? { endpoint: (apiKey: string | undefined) => accountEndpoint(definition, apiKey ?? '', overrides.env ?? process.env) } : {}),
     ...definition.config,
-    ...(savedKey ? {
-      resolveApiKey: async () => savedKey(),
-      hasApiKey: () => Boolean(savedKey()),
-    } : {}),
+    ...(savedKey ? { savedKeys: savedKey } : {}),
     ...overrides,
   });
 }

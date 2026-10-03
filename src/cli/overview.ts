@@ -1,6 +1,7 @@
 import type { ChatSite } from '../browser/browser-chat.ts';
 import type { AccountStatus } from '../core/accounts/account-pool.ts';
 import type { Credential } from '../core/accounts/credential-store.ts';
+import { parseKeyList } from '../core/accounts/key-pool.ts';
 import type { SignInRecord } from '../core/accounts/sign-in-status.ts';
 
 export type ConnectionState = 'connected' | 'degraded' | 'not-connected' | 'unknown';
@@ -132,11 +133,17 @@ function collectRows(input: OverviewInput): Row[] {
   }
 
   for (const provider of input.apiKeyProviders ?? DEFAULT_API_KEY_PROVIDERS) {
-    const fromEnvironment = Boolean(input.env[provider.apiKeyEnv]);
-    const saved = credentials.some(entry => entry.provider === provider.id && entry.method === 'api-key' && entry.token);
+    const environmentKeys = parseKeyList(input.env[provider.apiKeyEnv]).length;
+    const savedKeys = credentials.filter(entry => entry.provider === provider.id && entry.method === 'api-key' && entry.token).length;
+    const fromEnvironment = environmentKeys > 0;
+    const saved = savedKeys > 0;
     const url = { ...(provider.keyUrl ? { url: provider.keyUrl } : {}), ...(provider.account ? { accountLabel: provider.account.label } : {}) };
     if (fromEnvironment || saved) {
-      rows.push({ id: provider.id, kind: 'api-key', state: 'connected', detail: `API key (${fromEnvironment ? 'environment' : 'saved'})`, ...url });
+      const total = environmentKeys + savedKeys;
+      const detail = total === 1
+        ? `API key (${fromEnvironment ? 'environment' : 'saved'})`
+        : `${total} API keys (${[environmentKeys ? `${environmentKeys} environment` : '', savedKeys ? `${savedKeys} saved` : ''].filter(Boolean).join(', ')}), rotated on limits`;
+      rows.push({ id: provider.id, kind: 'api-key', state: 'connected', detail, ...url });
     } else if (provider.keyOptional) {
       rows.push({ id: provider.id, kind: 'api-key', state: 'connected', detail: 'No key: anonymous limits; add a key for more', ...url });
     } else if (registryError) {

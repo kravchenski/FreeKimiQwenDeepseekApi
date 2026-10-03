@@ -42,6 +42,8 @@ bun run start
 | **Kilo Gateway** | free models only, as `kilo/<model>:free` and `kilo/kilo-auto/free`; works without a key | optional `KILO_API_KEY` |
 | **OVHcloud AI Endpoints** | open-weight models hosted in the EU, as `ovhcloud/<model>`; works without a key at 2 requests per minute | optional `OVHCLOUD_API_KEY` |
 
+Each `<PROVIDER>_API_KEY` takes one key or several (`k1,k2,k3` or `["k1","k2"]`), and they are combined with keys saved through `bun run account add` or the desktop app: the gateway sticks to the key that works and switches to the next one in the same request when a key hits a rate limit, runs out of quota or is rejected.
+
 All models are free. The API providers are fallbacks after the web chats and each needs its own free API key; providers without a key are skipped.
 
 Run `bun run account` to see every provider, whether it is connected and the command that connects it (`--json` for scripts).
