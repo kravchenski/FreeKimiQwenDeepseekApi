@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.4.1](https://github.com/kravchenski/switchyard/compare/v2.4.0...v2.4.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **web-chat:** reject models the site does not offer instead of a silent fallback ([68eef57](https://github.com/kravchenski/switchyard/commit/68eef57cdef4a3b1dfb39b3ad7b452f8adc51532))
+* **web-chat:** reject models the site does not offer instead of a silent fallback ([937b766](https://github.com/kravchenski/switchyard/commit/937b7663eea29a3b1fbc30d27208d9de13f23ec3))
+
+
+### Documentation
+
+* **readme:** add a terminal demo and desktop app screenshots ([a87b916](https://github.com/kravchenski/switchyard/commit/a87b916ae957e8e2cc4b9537f0c9d9c1c991238f))
+* **readme:** present the project as Switchyard with a demo and screenshots ([144b464](https://github.com/kravchenski/switchyard/commit/144b464f7d460f62fec9e4ae8a46d5c9a026084a))
+* **readme:** present the project as Switchyard with its current features ([1a551a7](https://github.com/kravchenski/switchyard/commit/1a551a7c5460c771ab1716e267814dea04108aaf))
+
 ## [2.4.0](https://github.com/kravchenski/FreeKimiQwenDeepseekApi/compare/v2.3.1...v2.4.0) (2026-10-03)
 
 
