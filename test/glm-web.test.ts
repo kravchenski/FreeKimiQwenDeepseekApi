@@ -55,4 +55,30 @@ describe('Z.ai web chat', () => {
     expect((await collectChunks(chunks)).content).toBe('pong');
     expect(sent).toEqual([['glm-chat', 'system: Be brief\n\nuser: Say pong']]);
   });
+
+  test('rejects a model the site does not offer once its model list is known', async () => {
+    const sent: Array<string | undefined> = [];
+    const provider = createBrowserChatProvider({
+      id: 'glm-chat',
+      ownedBy: 'z-ai-web',
+      model: 'glm-chat',
+      site: ZAI_CHAT_SITE,
+      sessions: () => [{
+        profile: 'default',
+        session: {
+          send: async (_site, _prompt, model) => {
+            sent.push(model);
+            return bytes(sample);
+          },
+        },
+      }],
+      parse: parseZaiStream,
+      models: () => [{ id: 'glm-5.3', name: 'GLM-5.3' }],
+    });
+
+    const { chunks } = await provider.stream({ model: 'glm-chat/glm-5.3', messages: [{ role: 'user', content: 'Say pong' }] });
+    expect((await collectChunks(chunks)).content).toBe('pong');
+    await expect(provider.stream({ model: 'glm-chat/no-such-model', messages: [{ role: 'user', content: 'Say pong' }] })).rejects.toMatchObject({ kind: 'model_unavailable' });
+    expect(sent).toEqual(['glm-5.3']);
+  });
 });

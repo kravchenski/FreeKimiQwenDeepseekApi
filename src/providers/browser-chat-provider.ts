@@ -28,14 +28,18 @@ function message(error: unknown) {
 
 export function createBrowserChatProvider(config: BrowserChatProviderConfig): Provider {
   const prefix = `${config.model}/`;
+  const listed = () => config.models?.() ?? [];
   const models = () => {
-    const listed = config.models?.();
-    return listed?.length ? listed : config.site.defaultModels ?? [];
+    const known = listed();
+    return known.length ? known : config.site.defaultModels ?? [];
   };
   const upstreamModel = (model: string) => {
     if (!model.startsWith(prefix)) return undefined;
     const slug = model.slice(prefix.length);
-    return models().find(entry => webChatModelSlug(entry.name) === slug)?.id ?? slug;
+    const found = models().find(entry => webChatModelSlug(entry.name) === slug)?.id;
+    if (found) return found;
+    if (listed().length) throw new ProviderError(`${config.id}: model ${model} is not offered by the site; see GET /v1/models`, 'model_unavailable');
+    return slug;
   };
   return {
     id: config.id,
@@ -45,12 +49,12 @@ export function createBrowserChatProvider(config: BrowserChatProviderConfig): Pr
     capabilities: () => ({ nativeTools: false, reasoning: config.reasoning ?? true, vision: config.site.images === true }),
     health: () => config.health?.() ?? { available: true },
     async stream(request): Promise<ProviderStream> {
+      const model = upstreamModel(request.model);
       const candidates = config.sessions();
       if (!candidates.length) throw new ProviderError(`${config.id}: no account is signed in`, 'unavailable');
       const supported = config.site.images === true;
       const prompt = messagesToPrompt(stripImages(request.messages, supported));
       const extractImages = (messages: Record<string, any>[]) => supported ? collectImageUrls(messages) : [];
-      const model = upstreamModel(request.model);
       const failures: string[] = [];
       for (const candidate of candidates) {
         try {
